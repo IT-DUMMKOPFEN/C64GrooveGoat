@@ -17,6 +17,7 @@
 //  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 //  ---------------------------------------------------------------------------
 
+#include <stdint.h>
 #include "sidfp.h"
 #include <math.h>
 
@@ -622,7 +623,7 @@ static float convolve(const float *a, const float *b, int n)
     /* examine if we can use aligned loads on both pointers -- some x86-32/64
      * hackery here ... should use uintptr_t, but that needs --std=C99... */
     int diff = static_cast<int>(a - b) & 0xf;
-    int a_align = static_cast<int>(reinterpret_cast<long>(a)) & 0xf;
+    int a_align = static_cast<int>(reinterpret_cast<intptr_t>(a)) & 0xf;
 
     /* advance if necessary. We can't let n fall < 0, so no while (n --). */
     while (n > 0 && a_align != 0 && a_align != 16) {

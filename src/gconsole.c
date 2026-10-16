@@ -640,6 +640,9 @@ static void rendercell(int x, int y, unsigned cell)
   }
 }
 
+char autoshotname[1024];
+int autoshotframes = 0;
+
 void fliptoscreen(void)
 {
   int x, y;
@@ -713,6 +716,16 @@ void fliptoscreen(void)
     SDL_RenderCopy(plat_renderer, texture, NULL, &dst);
     SDL_RenderPresent(plat_renderer);
     presented = 1;
+  }
+
+  // Automatic screenshot of whatever is shown (build tests)
+  if ((autoshotname[0]) && (--autoshotframes <= 0))
+  {
+    char name[1024];
+    strcpy(name, autoshotname);
+    autoshotname[0] = 0;
+    savescreenshot(name);
+    exit(0);
   }
 }
 

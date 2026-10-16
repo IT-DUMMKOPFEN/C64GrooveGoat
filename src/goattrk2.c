@@ -135,6 +135,39 @@ static char exportname[MAX_PATHNAME];
 static int exportformat = EXP_SID;
 static unsigned exportbase = 0;
 static int exportsids = 0;
+static char rendername[MAX_PATHNAME];
+static int renderseconds = 60;
+
+// Offline rendering of a subtune to a 44.1kHz 16-bit stereo WAV file
+static int renderwav(const char *name, int subtune, int seconds)
+{
+  FILE *h = fopen(name, "wb");
+  static short buf[4096 * 2];
+  int bpm, frames, f;
+  unsigned datasize = 0;
+  if (!h) return 0;
+  bpm = editorInfo.multiplier ? (editorInfo.ntsc ? 150 : 125) * editorInfo.multiplier : (editorInfo.ntsc ? 75 : 62);
+  sid_init(44100, editorInfo.sidmodel, editorInfo.ntsc, 0, 0, 0, numsids);
+  sid_setpanning(numsids, 1);
+  fwrite("RIFF\0\0\0\0WAVEfmt \x10\0\0\0\x01\0\x02\0\x44\xac\0\0\x10\xb1\x02\0\x04\0\x10\0data\0\0\0\0", 44, 1, h);
+  initsong(subtune, PLAY_BEGINNING);
+  frames = seconds * bpm * 2 / 5;
+  for (f = 0; f < frames; f++)
+  {
+    int n = (44100 * 5 / 2) / bpm;
+    playroutine();
+    sid_fillbuffer(buf, n, editorInfo.adparam, 1);
+    fwrite(buf, n * 4, 1, h);
+    datasize += n * 4;
+  }
+  fseek(h, 4, SEEK_SET);
+  fwritele32(h, datasize + 36);
+  fseek(h, 40, SEEK_SET);
+  fwritele32(h, datasize);
+  fclose(h);
+  printf("Rendered %s (%d seconds)\n", name, seconds);
+  return 1;
+}
 
 int main(int argc, char **argv)
 {
@@ -194,6 +227,23 @@ int main(int argc, char **argv)
         if (!strncmp(argv[c], "--address=", 10))
         {
           sscanf(argv[c] + 10, "%x", &exportbase);
+          break;
+        }
+        if (!strncmp(argv[c], "--makedemo=", 11))
+        {
+          int makedemo(const char *outname, const char *libdir);
+          initpaths();
+          return makedemo(argv[c] + 11, instrlibpath) ? EXIT_SUCCESS : EXIT_FAILURE;
+        }
+        if (!strncmp(argv[c], "--render=", 9))
+        {
+          strncpy(rendername, argv[c] + 9, MAX_PATHNAME - 1);
+          strcpy(exportname, "-");
+          break;
+        }
+        if (!strncmp(argv[c], "--seconds=", 10))
+        {
+          renderseconds = atoi(argv[c] + 10);
           break;
         }
         if (!strncmp(argv[c], "--sids=", 7))
@@ -351,6 +401,8 @@ int main(int argc, char **argv)
       }
       return EXIT_SUCCESS;
     }
+    if (rendername[0])
+      return renderwav(rendername, getenv("GG_SUBTUNE") ? atoi(getenv("GG_SUBTUNE")) : 0, renderseconds) ? EXIT_SUCCESS : EXIT_FAILURE;
     ok = commandlineexport(exportname, exportformat, exportbase ? (int)(exportbase & 0xff00) : playeradr);
     return ok ? EXIT_SUCCESS : EXIT_FAILURE;
   }
@@ -706,6 +758,23 @@ static void runautotest(void)
   if (sids) changenumsids(atoi(sids));
   if (th) settheme(atoi(th));
   if (getenv("GG_PLAY")) initsong(0, PLAY_BEGINNING);
+  if (getenv("GG_SCREEN"))
+  {
+    const char *scr = getenv("GG_SCREEN");
+    strncpy(autoshotname, shot, sizeof autoshotname - 1);
+    autoshotframes = getenv("GG_SHOTFRAMES") ? atoi(getenv("GG_SHOTFRAMES")) : 3;
+    printmainscreen();
+    if (!strcmp(scr, "help")) onlinehelp(0, 0);
+    if (!strcmp(scr, "manual")) showmanual();
+    if (!strcmp(scr, "info")) showinfo();
+    if (!strcmp(scr, "sidinfo")) showsidinfo();
+    if (!strcmp(scr, "exportsid")) exportsid();
+    if (!strcmp(scr, "exportprg")) exportprg();
+    if (!strcmp(scr, "load")) load();
+    if (!strcmp(scr, "loadins")) { editorInfo.editmode = EDIT_INSTRUMENT; load(); }
+    if (!strcmp(scr, "clear")) clear();
+    if (!strcmp(scr, "quit")) quit();
+  }
   while (frames--)
   {
     printstatus();
@@ -851,13 +920,28 @@ void togglethemekey(void)
 
 void newsong(void)
 {
-  if ((songmodified) && (!dlg_confirm("New song", "Discard the current song and start a new one?")))
-    return;
+  static const int sidchoices[4] = {1, 2, 4, 8};
+  const char *lines[3] = {"How many SID chips should the new song use?", "", ""};
+  const char *opts[5] = {"1 SID", "2 SIDs", "4 SIDs", "8 SIDs", "Cancel"};
+  int def = 0, sel, c;
+
+  if (songmodified) lines[2] = "The changes of the current song will be lost.";
+  for (c = 0; c < 4; c++)
+    if (sidchoices[c] == numsids) def = c;
+  sel = dlg_choose("New song", lines, 3, opts, 5, def);
+  if ((sel < 0) || (sel > 3)) return;
   memset(songfilename, 0, sizeof songfilename);
   clearsong(1, 1, 1, 1, 1);
   clearinactivechannels();
+  if (sidchoices[sel] != numsids)
+  {
+    setnumsids(sidchoices[sel]);
+    do_sound_init();
+    validatechnview();
+  }
   undoInitAllAreas();
-  setstatusmessage("New song created");
+  songmodified = 0;
+  sprintf(statusmessage, "New song with %d SID%s (%d channels)", numsids, numsids > 1 ? "s" : "", numchannels);
 }
 
 void docommand(void)

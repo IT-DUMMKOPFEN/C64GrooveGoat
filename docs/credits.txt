@@ -1,0 +1,66 @@
+C64 GrooveGoat 0.1b
+Copyright (C) 2026 IT-Dummkopfen
+
+C64 GrooveGoat is a multi-SID music editor for the Commodore 64 SID chip. It
+is based on GoatTracker 2.76 and the GoatTracker 2 "Silver Fork".
+
+This program is free software; you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation; either version 2 of the License, or (at your option) any later
+version. This program is distributed in the hope that it will be useful, but
+WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+FITNESS FOR A PARTICULAR PURPOSE. See the file COPYING for details.
+
+The C64 playroutines (player.s, altplayer.s, mplayer.s) and the PRG player
+frontend (frontend.s) do not fall under the GPL. Use them, and the music
+files created with them, freely for any purpose, commercial or noncommercial.
+
+
+Credits and used software
+-------------------------
+
+GoatTracker 2 editor & playroutine
+  Lasse Oorni (Cadaver), Covert Bitops - https://cadaver.github.io
+  GNU GPL v2
+
+GoatTracker 2 "Silver Fork" (base of C64 GrooveGoat)
+  Joel Ricci - https://github.com/joelricci/goattracker2
+  GNU GPL v2
+
+GoatTracker Ultra undo system
+  Jason Page
+
+reSID SID chip emulation
+  Dag Lem - GNU GPL v2
+
+reSID-fp (distortion & nonlinearity)
+  Antti S. Lankila - GNU GPL v2
+
+6510 cross assembler (from Exomizer 2)
+  Magnus Lind - free for non-commercial use, see the source code
+
+HardSID 4U support
+  Teli Sandor
+
+Command quick reference
+  Simon Bennett
+
+GoatTracker patches
+  Stefan A. Haubenthal, Valerio Cannone, Raine M. Ekman, Tero Lindeman,
+  Henrik Paulini, Groepaz
+
+Microtonal support
+  Birgit Jauernig
+
+SDL 2 (Simple DirectMedia Layer)
+  Sam Lantinga and contributors - https://www.libsdl.org - zlib license
+
+JetBrains Mono font
+  JetBrains s.r.o. - https://www.jetbrains.com/lp/mono/
+  SIL Open Font License 1.1
+
+SIDGen instrument library ("SIDGen instruments for GoatTracker 2")
+  6581 and 8580 instrument sets, provided with this program
+
+SID file format (PSID v2, v3 and the v5 multi-SID extension)
+  High Voltage SID Collection - https://www.hvsc.c64.org

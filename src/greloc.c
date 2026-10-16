@@ -1960,9 +1960,9 @@ static int exportdialog(EXPORTSETTINGS *es)
 {
   int sel = 0;
   int w = 96;
-  int h = 36;
+  int h = 26;
   int x0 = (MAX_COLUMNS - w) / 2;
-  int y0 = 4;
+  int y0 = (MAX_ROWS - 26) / 2;
   int c;
   int rows[32];
   int numrows;
@@ -2063,7 +2063,7 @@ static int exportdialog(EXPORTSETTINGS *es)
       if (r < 10) ry = y0 + 2 + (r < 4 ? r : 3);
       else if (r < 20) ry = y0 + 14 + (r - 10);
       else if (r < 30) ry = y0 + 5 + (r - 20) / 4 * 0;
-      else ry = y0 + h - 3;
+      else ry = y0 + h - 2;
       buf[0] = 0;
       switch (r)
       {
@@ -2156,7 +2156,7 @@ static int exportdialog(EXPORTSETTINGS *es)
       printtext(x0 + 21, y0 + 11, MKCOL(8, C_PANEL), "LOAD\"NAME\",8,1 then RUN - shows song info & play time");
     }
     printtext(x0 + 3, y0 + 13, MKCOL(14, C_PANEL), "Playroutine options:");
-    printtext(x0 + 3, y0 + h - 3, MKCOL(3, C_PANEL), "UP/DOWN select, LEFT/RIGHT/SPACE change, ENTER edit/export, ESC cancel");
+    printtext(x0 + 3, y0 + h - 4, MKCOL(3, C_PANEL), "UP/DOWN select, LEFT/RIGHT/SPACE change, ENTER edit/export, ESC cancel");
 
     fliptoscreen();
     getkey();

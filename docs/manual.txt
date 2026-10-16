@@ -1,0 +1,703 @@
+# C64 GrooveGoat 0.1b - Manual
+
+C64 GrooveGoat is a tracker-style music editor for the SID sound chip of the Commodore 64. It is
+based on GoatTracker 2 by Lasse Oorni (Cadaver) and the "Silver Fork" of Joel Ricci, and adds
+songs with 1, 2, 4 or 8 SID chips (up to 24 voices), a modern window with mouse support, a day
+and a night theme, an instrument library with preview, SID export for multi-SID players and
+runnable C64 programs with a player screen.
+
+Author of C64 GrooveGoat: IT-Dummkopfen. Click the Info button in the toolbar for all credits.
+
+This manual is built into the program: press M in the keyboard reference (F12) or click the
+Manual button. Use the cursor keys, Page Up/Down, Home/End or the mouse wheel to scroll, click a
+chapter on the left to jump to it and press ESC to close the manual.
+
+## What you need to know
+
+Familiarity with tracker programs, hexadecimal numbers and the SID chip helps a lot. All values
+in the editor are hexadecimal ($00-$FF). The SID chip has three voices; each voice has an
+oscillator (triangle, sawtooth, pulse and noise waveforms), an ADSR envelope, and all voices of
+one SID share a multimode filter and the master volume.
+
+A song consists of:
+
+- Orderlists: the order in which patterns are played, one orderlist per voice (channel) and
+  per subtune.
+- Patterns: single-voice note data (notes, instrument numbers and commands).
+- Instruments: ADSR settings plus pointers into the tables.
+- Tables: the wave, pulse, filter and speed tables, small step programs that create the
+  actual sound of the instruments.
+
+## Warnings
+
+- Always save your songs as .sng or .ggt files. Exported SID, PRG and BIN files can not be
+  loaded back into the editor.
+- Even the reSID emulation is not identical to a real SID, especially when filters are used.
+  Every real 6581 sounds a little different. Test important songs on real hardware or with a
+  good emulator.
+- The editor stops playing on error conditions: an illegal song restart position, a wrong
+  order of orderlist commands, a gateoff timer value that is too high for the tempo, a jump
+  onto a table row that contains a jump, or the pattern commands 0XY, 8XY and EXY used in the
+  wavetable. Exporting such a song gives an error message.
+- Delayed wavetable steps or "no wave change" (0X 00) in the first step of an instrument's
+  wavetable are not supported and may cause missing notes.
+- Songs with 4 or 8 SIDs can only be played by multi-SID capable players and emulators (for
+  example VICE, JSIDPlay2, the Ultimate 64 or SIDBlaster/USBSID hardware with several chips).
+
+# Getting started
+
+## The screen
+
+The window is divided into these areas:
+
+    +------------------------------------------------------------------------------+
+    | Toolbar: New Open Save | Load Ins Save Ins | Export SID Export PRG | Theme...  |
+    | Settings: Play Pos Patt Stop Follow | SIDs 1 2 4 8 | model PAL speed HR ...    |
+    +----------------------------------------------+-------------------------------+
+    | PATTERNS (one column per voice)              | ORDERLIST                     |
+    |                                              | INSTRUMENT                    |
+    |                                              | WAVE  PULSE  FILTER  SPEED    |
+    |                                              | SONG INFO                     |
+    +----------------------------------------------+-------------------------------+
+    | Status: octave, edit/jam mode, advance mode, key mode, step, undo, time, SIDs |
+    | Message line                                                                 |
+    +------------------------------------------------------------------------------+
+
+The window can be resized freely; the contents are scaled. ALT+ENTER switches to fullscreen.
+On high resolution ("Retina") screens a sharper font is used automatically.
+
+## Toolbar
+
+|  New          Start a new, empty song (asks for 1, 2, 4 or 8 SIDs)
+|  Open         Load a song (.sng or .ggt), F10
+|  Save         Save the song, F11 (the format depends on the number of SIDs)
+|  Load Ins     Load an instrument (.ins) into the current instrument slot
+|  Save Ins     Save the current instrument (.ins)
+|  Export SID   Export a SID file; you are asked for the player and SID addresses
+|  Export PRG   Export a runnable C64 program with the GrooveGoat player screen
+|  Night / Day  Switch between the night theme (C64 blue) and the day theme
+|  Help         Keyboard reference, F12
+|  Info         Version, author and credits
+
+## Settings bar
+
+|  Play         Play from the beginning of the subtune (F1)
+|  Pos          Play from the current orderlist position (F2)
+|  Patt         Play the current pattern (F3)
+|  Stop         Stop playing (F4)
+|  Follow       Follow the play position in the pattern and orderlist editors
+|  SIDs 1 2 4 8 Number of SID chips of the song (3, 6, 12 or 24 voices)
+|  6581 / 8580  Emulated SID model (SHIFT+F8)
+|  PAL / NTSC   Timing of the C64
+|  Speed        Speed multiplier: 25Hz, 1x, 2x ... 16x (SHIFT+F5 / SHIFT+F6)
+|  HR           Hard restart ADSR value (SHIFT+F7)
+|  FV           Fine vibrato conversion of old style vibrato parameters
+|  PO           Pulse optimization (skip pulse execution on note fetch rows)
+|  RO           Realtime command optimization (skip realtime commands on tick 0)
+|  INT          reSID interpolation (better quality, more CPU time)
+|  FP           Use reSID-fp (distortion/nonlinearity emulation)
+|  Stereo/Mono  With 2 or more SIDs the SIDs are spread over the stereo field
+
+Left click on a value increases it, right click decreases it where this makes sense (speed,
+octave, subtune and so on).
+
+## A first song in five minutes
+
+1. Press F7 to go to the instrument editor, or click the Library button and choose a ready-made
+   instrument (SPACE plays a preview, ENTER loads it).
+2. Press F5 (or click into a pattern). The cursor is on the note column of voice 1.1.
+3. Press SPACE to switch from jam mode to edit mode (the status bar shows EDIT MODE).
+4. Type notes on the computer keyboard like on a piano: Z S X D C V G B H N J M for the lower
+   octave and Q 2 W 3 E R 5 T 6 Y 7 U for the upper octave. "/" and "*" on the keypad change the
+   octave.
+5. Press F1 to play and F4 to stop.
+6. Press F6 to edit the orderlist and add more patterns, F11 to save.
+
+Note keys are taken from the physical key position, so the piano layout works with QWERTY,
+QWERTZ (German) and AZERTY keyboards alike.
+
+# Multi-SID songs
+
+## Number of SIDs
+
+A song can use 1, 2, 4 or 8 SID chips. Click SIDs 1, 2, 4 or 8 in the settings bar to change
+it. Each SID adds three voices:
+
+|  SIDs   Voices   Channel names        File format when saving
+|  1      3        1.1 - 1.3            GoatTracker 2 .sng
+|  2      6        1.1 - 2.3            GoatTracker 2 Stereo .sng
+|  4      12       1.1 - 4.3            C64 GrooveGoat .ggt
+|  8      24       1.1 - 8.3            C64 GrooveGoat .ggt
+
+The channel name s.v means SID s, voice v. When the number of SIDs is reduced, the voices of
+the removed SIDs are deleted (you are asked first if they contain data). New voices start with
+an empty pattern in every subtune.
+
+The pattern editor shows six voices at a time. With 4 or 8 SIDs, use the SID tabs above the
+patterns (SID 1-2, SID 3-4 ...) or BACKQUOTE to move to the other voices. The orderlist editor
+scrolls in the same way.
+
+## SID addresses
+
+The standard addresses of the SID chips are:
+
+|  SID 1 $D400   SID 2 $D420   SID 3 $D440   SID 4 $D460
+|  SID 5 $D480   SID 6 $D4A0   SID 7 $D4C0   SID 8 $D4E0
+
+Click the SID address button at the bottom right of the status bar to change the addresses. They
+are stored in .ggt songs and used for PRG exports. Allowed are $D400-$D7E0 and $DE00-$DFE0 in
+steps of $20. Each export asks for the addresses again, so you can make versions for different
+hardware.
+
+## How the SIDs work together
+
+- Every SID has its own filter and master volume. The filter commands (AXY, BXY, CXY), the
+  filtertable and the master volume command (DXY) of a voice affect the SID this voice belongs
+  to. The channel bitmask in the filter control selects voices 1-3 of that SID.
+- Synchronization and ring modulation work between the three voices of one SID, as on real
+  hardware.
+- The tempo commands (FXY with $03-$7F and EXY funktempo) change the tempo of all voices of all
+  SIDs; FXY with $83-$FF only changes the current voice.
+- In stereo mode the SIDs are placed in the stereo field: with 2 SIDs one left and one right,
+  with 4 and 8 SIDs spread over the whole stereo field (odd SIDs left, even SIDs right).
+  Exported SID files contain no panning; the player decides.
+- SHIFT+1,2,3 in the pattern editor mutes voice 1-3 of the SID of the current voice; in the
+  orderlist editor it swaps the orderlist with voice 1-3 of the same SID.
+
+## Limits
+
+- Subtunes: up to 32 in the editor. The multi-SID playroutine supports
+  256 / voices subtunes: 42 with 2 SIDs, 21 with 4 SIDs and 10 with 8 SIDs.
+- Patterns: 208, instruments: 63, table rows: 255 per table. These limits are shared by all
+  voices, as in GoatTracker.
+- CPU time: on a real C64 the playroutine needs roughly 1000-2000 cycles per SID and frame,
+  depending on the effects used. 8 SIDs fit into one PAL frame at 1x speed (about 8000 of 19656
+  cycles), but 8 SIDs at 2x speed or more will usually be too slow for a real C64.
+
+# Editing
+
+## General keys
+
+|  F1           Play from beginning (SHIFT+F1 also follows the play position)
+|  F2           Play from current position (SHIFT+F2 with follow)
+|  F3           Play current pattern (SHIFT+F3 with follow)
+|  F4           Stop playing; SHIFT+F4 mutes the current voice
+|  F5           Go to the pattern editor; SHIFT+F5 decreases the speed multiplier
+|  F6           Go to the orderlist editor; SHIFT+F6 increases the speed multiplier
+|  F7           Go to the instrument editor / toggle instrument and table editor
+|  SHIFT+F7     Edit the hard restart ADSR parameter
+|  F8           Go to the song name editor; SHIFT+F8 switches between 6581 and 8580
+|  F9           Export (pack, relocate & save SID/PRG/BIN); SHIFT+F9 toggles interpolation
+|  F10          Load song (pattern/orderlist/names) or instrument (instrument/table editor)
+|  SHIFT+F10    Merge-load a song (adds its subtunes, patterns, instruments and tables)
+|  F11          Save song or instrument
+|  F12          Keyboard reference (SHIFT+F12 shows the part for the current editor)
+|  TAB          Next editor (SHIFT+TAB previous)
+|  INS / DEL    Insert / delete row (on the end mark: change the pattern/orderlist length)
+|  SHIFT+, .    Move the song start position on all voices and restart
+|  CTRL+Z       Undo (CMD+Z on a Mac)
+|  SHIFT+ESC    Optimize music data, or clear music data and set the default pattern length
+|  ESC          Exit the program (asks to save changes)
+|  ALT+ENTER    Toggle fullscreen
+
+SHIFT and CTRL can be used in place of each other in the commands. [ ] or ( ) work in place of
+< >.
+
+## Pattern editor (F5)
+
+|  Z-M, Q-P     Enter notes (piano layout, see "A first song")
+|  0-9, A-F     Enter instrument numbers, commands and data bytes
+|  - +          Select instrument
+|  / *          Select octave (keypad)
+|  < >          Select pattern
+|  BACKQUOTE    Next voice (SHIFT+BACKQUOTE previous voice)
+|  SPACE        Switch between jam mode and edit mode
+|  RETURN       Insert key off (also CAPS LOCK); on a table command: go to the table;
+|               on an instrument number: go to the instrument
+|  SHIFT+RETURN Insert key on; convert an old style portamento/vibrato/funktempo parameter to
+|               a speedtable entry; go to an empty table entry
+|  BACKSPACE    Insert rest; SHIFT+BACKSPACE also clears the command
+|  SHIFT+SPACE  Play from the cursor position
+|  SHIFT+Q / A  Transpose half step up / down
+|  SHIFT+W / S  Transpose octave up / down
+|  SHIFT+O / P  Shrink / expand pattern (divide / multiply the length by 2)
+|  SHIFT+J / K  Join pattern with the next one in the orderlist / split pattern at the cursor
+|  SHIFT+H      Calculate a "hifi" speedtable entry for portamento or vibrato
+|  SHIFT+I      Invert selection or the whole pattern
+|  SHIFT+CURSOR Mark pattern data (up/down), select pattern (left/right)
+|  SHIFT+L      Mark / unmark the whole pattern
+|  SHIFT+M / N  Choose the row highlighting step
+|  SHIFT+X C V  Cut, copy, paste pattern data
+|  SHIFT+E / R  Copy / paste commands
+|  SHIFT+Z      Cycle the autoadvance mode
+|  SHIFT+1 2 3  Mute voice 1-3 of the current SID
+
+The pattern row display is: note, octave, instrument, command, data byte, for example
+"C-4 01 4 03". A rest is shown as "...", key off as "---" and key on as "+++".
+
+### Note entry modes
+
+The key mode (Keys: button in the status bar, or -K command line option) selects how notes are
+entered:
+
+- Tracker (default): two piano octaves on the keyboard.
+      Lower octave: S D  G H J  L       Upper octave: 2 3  5 6 7  9 0
+                   Z X CV B N M , .                 Q W ER T Y UI O P
+- DMC: one octave (A W S E D F T G Y H U J K O L P); the number keys 0-7 select the octave.
+- Janko: a Janko-style keyboard layout on two rows.
+
+Autoadvance modes: advance after notes and data bytes (all), advance only after notes, or no
+automatic advance. The step size (Step) sets how many rows the cursor moves.
+
+## Orderlist editor (F6)
+
+|  0-9, A-F     Enter pattern numbers
+|  < >          Select subtune
+|  - +          Insert transpose down / up command
+|  SHIFT+R      Insert repeat command
+|  SPACE        Set the start position for F2 (SHIFT+SPACE: on all voices)
+|  BACKSPACE    Set the end position for F2
+|  RETURN       Go to the pattern (SHIFT+RETURN: on all voices)
+|  SHIFT+CURSOR Mark orderlist data
+|  SHIFT+L      Mark / unmark the whole orderlist
+|  SHIFT+X C V  Cut, copy, paste orderlist data
+|  SHIFT+1 2 3  Swap the orderlist with voice 1-3 of the same SID
+
+The orderlist contains pattern numbers ($00-$CF), transpose commands (+X / -X, up to 14
+half steps up or 15 down), repeat commands (RX, repeats the following pattern 1-16 times, R0 =
+16 times) and the RST end mark with the restart position.
+
+Rules: if both transpose and repeat come before a pattern, the transpose must come first. The
+last entry before RST must be a pattern number. Transpose is only reset when the song starts,
+not when it loops.
+
+## Instrument editor (F7)
+
+|  0-9, A-F     Enter parameters
+|  - + / < >    Select instrument
+|  SPACE        Play a test note (SHIFT+SPACE silences it)
+|  RETURN       Go to the table row of the wave/pulse/filter/vibrato pointer
+|  SHIFT+RETURN Set the table pointer to an empty position or convert an old vibrato parameter
+|  SHIFT+N      Edit the instrument name
+|  SHIFT+S      Smart paste: move an instrument and renumber it in all patterns
+|  SHIFT+U      Unlock / lock table scrolling
+|  SHIFT+X C V  Cut, copy, paste instrument (without table data)
+|  SHIFT+DEL    Delete the instrument and its table data
+
+The test note plays on the voice where the cursor was last in the pattern editor. To hear a
+filter, play the test note on a voice that is selected in the filter control.
+
+### Instrument parameters
+
+|  Attack/Decay     $0 is the fastest attack or decay, $F the slowest
+|  Sustain/Release  Sustain level $0 silent ... $F loudest; release like attack/decay
+|  Wavetable Pos    Start row in the wavetable ($00 stops the wavetable)
+|  Pulsetable Pos   Start row in the pulsetable ($00 leaves the pulse unchanged)
+|  Filtertable Pos  Start row in the filtertable ($00 leaves the filter unchanged)
+|  Vibrato Param    Speedtable index of the instrument vibrato
+|  Vibrato Delay    Ticks until the instrument vibrato starts ($00 = no vibrato)
+|  HR/Gate Timer    Ticks before the next note when gate off and hard restart happen.
+|                   At most tempo-1. Bit $80 disables hard restart, bit $40 disables gate off
+|  1stFrame Wave    Waveform of the first frame of a note, usually $09 (gate + test bit).
+|                   $00, $FE and $FF keep the waveform and set the gate unchanged / off / on
+
+The ADSR envelope:
+
+      V      /\            |<- gate bit cleared (key off) here
+      O     /  \           |
+      L    /    \__________|
+      U   /                |\
+      M  /                 | \
+      E /                  |  \
+    TIME ---------------------------->
+          A   D      S       R
+
+Examples: A/D 09 S/R 00 starts at full volume and fades out. A/D 00 S/R 8A drops quickly to
+sustain level 8 and fades with release A after key off. A/D CC S/R AF rises slowly, decays
+slowly to level A and fades out very slowly after key off.
+
+Legato: with bit $40 in the HR/Gate Timer no hard restart or gate off happens. With 1stFrame
+Wave $00 the gate is also left untouched, but the table pointers and ADSR are initialized.
+
+## Instrument library
+
+C64 GrooveGoat comes with a library of more than 5000 ready-made instruments ("SIDGen
+instruments for GoatTracker 2") in two sets, one for the old SID (6581) and one for the new SID
+(8580), sorted into categories such as bass, lead, drums, pads and effects.
+
+Open the library with the Library button in the instrument panel or with Load Ins in the
+toolbar. The file selector shows the instrument names. Press SPACE (or click the play symbol)
+to hear a preview with the current octave, and ENTER or double click to load the instrument
+into the current instrument slot. Its table data is added to the song's tables.
+
+Instruments are saved and loaded in the GoatTracker 2 .ins format, so they can be exchanged with
+GoatTracker. You can also drop .ins files onto the window to load them into the current slot.
+
+The library folder ("instruments") is next to the program (Windows, Linux) or inside the
+application bundle (macOS). Your own instruments can be stored anywhere.
+
+## Table editor (F7 twice)
+
+|  0-9, A-F     Enter parameters
+|  BACKQUOTE    Select table (wave, pulse, filter, speed)
+|  SPACE        Play a test note
+|  RETURN       Go back to the instrument parameter
+|  SHIFT+Q / A  Transpose a speedtable portamento speed half step up / down
+|  SHIFT+W / S  Transpose octave up / down, or multiply / divide pulse and filter speeds by 2
+|  SHIFT+L      Convert a limit based modulation step to a time based step
+|  SHIFT+N      Negate a speed (pulse/filter) or relative note (wave)
+|  SHIFT+O      Optimize the table (remove unused rows)
+|  SHIFT+R      Convert a wavetable note between absolute and relative
+|  SHIFT+U      Unlock / lock table scrolling
+|  SHIFT+INS    Insert a row without moving pointers to the first row
+
+## Song name editor (F8)
+
+Use cursor up/down to move between the song name, author and released (copyright) fields. These
+texts are stored in the song and in exported SID files, and shown by the PRG player.
+
+## Mouse
+
+|  Click            Move the cursor, press buttons
+|  Right click      Decrease a value; on a Mac CTRL+click works as right click
+|  Right drag       Mark pattern, orderlist or table data
+|  Wheel            Scroll the panel under the mouse pointer
+|  Double click     Play the pattern from the clicked row
+|  Click P00        Next pattern of the voice (right click: previous)
+|  Click M / S      Mute / solo a voice (in the voice header)
+|  Drop a file      Load a song (.sng, .ggt) or an instrument (.ins)
+
+# Song data reference
+
+## Pattern commands
+
+|  0XY  Do nothing. The data byte is always $00.
+|  1XY  Portamento up. XY is an index to a 16-bit speed in the speedtable.
+|  2XY  Portamento down. XY is an index to a 16-bit speed in the speedtable.
+|  3XY  Toneportamento to the note. XY is a speedtable index, or $00 for "tie note"
+|       (move the pitch to the target note at once).
+|  4XY  Vibrato. XY is a speedtable index: left side = speed (time until the direction
+|       changes), right side = depth (pitch change per tick).
+|  5XY  Set attack/decay to XY.
+|  6XY  Set sustain/release to XY.
+|  7XY  Set waveform to XY (no effect while the wavetable changes the waveform).
+|  8XY  Set wavetable pointer ($00 stops the wavetable).
+|  9XY  Set pulsetable pointer ($00 stops the pulsetable).
+|  AXY  Set filtertable pointer ($00 stops the filtertable) of this voice's SID.
+|  BXY  Set filter control: X = resonance, Y = voice bitmask of this SID. $00 switches the
+|       filter off and stops the filtertable.
+|  CXY  Set filter cutoff to XY.
+|  DXY  X = 0: set the master volume of this SID to Y. X > 0: timing mark, XY is copied to
+|       player address + $3F (only with "Store author-info").
+|  EXY  Funktempo: XY is a speedtable index; the tempo alternates between the left and right
+|       value on each row. Affects all voices.
+|  FXY  Set tempo. $03-$7F sets the tempo of all voices, $83-$FF only of the current voice.
+|       $00-$01 recall the funktempo values.
+
+The master volume is $F by default and is only reset when a song is loaded or cleared, not when
+playback starts. If you change it, reset it at the beginning of your song.
+
+Without a command 1XY-4XY the instrument vibrato is active. The one-shot commands 5XY-FXY let a
+previous 1XY-4XY command continue underneath them.
+
+## Wavetable
+
+|  Left side   00     Leave the waveform unchanged
+|              01-0F  Delay this step by 1-15 frames
+|              10-DF  Waveform register value
+|              E0-EF  Inaudible waveforms $00-$0F (for example E9 = test bit + gate)
+|              F0-FE  Execute pattern command 0XY-EXY, the right side is the parameter
+|              FF     Jump to the row on the right side ($00 = stop)
+|  Right side  00-5F  Relative note up
+|              60-7F  Relative note down
+|              80     Keep the frequency unchanged
+|              81-DF  Absolute note C#0 - B-7
+
+Waveform bits: 01 gate, 02 sync, 04 ring modulation, 08 test bit, 10 triangle, 20 sawtooth,
+40 pulse, 80 noise. Sync and ring modulation use the previous voice of the same SID (voice 1
+uses voice 3).
+
+Examples:
+
+|  01: 41 00    Flute: pulse on the first frame,
+|  02: 11 00    then triangle.
+|  03: FF 00
+|
+|  01: 81 D0    Snare drum with absolute notes (use pulse width $800).
+|  02: 41 AA
+|  03: 41 A4
+|  04: 80 D4
+|  05: 80 D1
+|  06: FF 00
+|
+|  01: 41 00    Looping 4-note arpeggio with pulse waveform.
+|  02: 00 04
+|  03: 00 07
+|  04: 00 0C
+|  05: 00 00
+|  06: FF 02
+
+The pattern commands 0XY, 8XY and EXY can not be executed from the wavetable.
+
+## Pulsetable
+
+|  Left side   01-7F  Modulation step: left = time in ticks, right = signed speed
+|              8X-FX  Set pulse width: X = high 4 bits, right side = low 8 bits
+|              FF     Jump to the row on the right side ($00 = stop)
+
+|  01: 80 10    Pulse $010 (very thin)
+|  02: 20 40    32 ticks up with speed $40
+|  03: 40 E0    64 ticks down with speed -$20
+|  04: 40 20    64 ticks up with speed $20
+|  05: FF 03    Loop back to row 03
+
+## Filtertable
+
+|  Left side   00     Set the cutoff to the right side value
+|              01-7F  Modulation step: left = time, right = signed speed
+|              80-F0  Set filter parameters: high nybble = passband ($90 lowpass,
+|                     $A0 bandpass, $C0 highpass...), right = resonance / voice bitmask
+|              FF     Jump to the row on the right side ($00 = stop)
+
+"Set filter parameters" directly followed by "Set cutoff" are executed on the same frame. Each
+SID has its own filter, so a filtertable started by a voice of SID 2 controls the filter of
+SID 2.
+
+|  01: 90 F1    Lowpass, resonance F, filter voice 1
+|  02: 00 40    Cutoff $40
+|  03: FF 00    Stop
+
+## Speedtable
+
+|  Vibrato      XX YY  XX = speed (time until direction changes), YY = depth
+|  Portamento   XX YY  16-bit speed added to the frequency each tick (XX = high byte)
+|  Funktempo    XX YY  Two tempos that alternate on each row, starting with XX
+
+If XX has bit $80 set, vibrato depth / portamento speed are calculated note-independently and
+YY is the divisor (number of right shifts). You can enter old style parameters in patterns and
+instruments and press SHIFT+RETURN to convert them into speedtable entries.
+
+## Playback details
+
+Every pattern row is divided into "ticks" (frames) as given by the tempo. With tempo 6 and gate
+timer 2:
+
+|  Tick 0     New notes are initialized, orderlist advance, wavetable, one-shot commands
+|  Tick 1     New notes become audible, pulsetable, wavetable or realtime commands
+|  Tick 2,3   Pulsetable, wavetable or realtime commands
+|  Tick 4     New notes are fetched, gate off and hard restart, no pulsetable
+|  Tick 5     Pulsetable, wavetable or realtime commands
+
+The filtertable runs on every tick. PO and RO in the settings bar switch off the pulse and
+realtime command skipping (more CPU time in the exported player).
+
+## Tips
+
+- Patterns use less memory the fewer command changes they contain.
+- Instrument vibrato can make 4XY commands unnecessary.
+- Stop an unneeded pulse modulation with a pulse program "80 00 / FF 00" or command 900.
+- The fastest tempo is normally 3; with funktempo "02 02", gate timer 1 and PO switched off you
+  can reach tempo 2.
+- Without any pattern commands, the start tempo can be set with the Attack/Decay value of
+  instrument $3F (if it is otherwise unused).
+- Multispeed songs: multiply the tempos and gate timers by the speed multiplier and adjust
+  vibrato and modulation speeds.
+
+# Files
+
+## Song formats
+
+|  .sng  GoatTracker 2 song (1 SID) - can be loaded by GoatTracker 2
+|  .sng  GoatTracker 2 Stereo song (2 SIDs) - can be loaded by GoatTracker Stereo
+|  .ggt  C64 GrooveGoat song (4 or 8 SIDs, or any number if you choose this extension)
+
+The song is saved in the format that matches the number of SIDs. Songs with more than 2 SIDs
+are always saved as .ggt, because the GoatTracker formats can not store them. When loading, the
+number of voices of a .sng file is detected automatically. Older GoatTracker formats (GTS2-GTS4,
+v1.x) can be loaded too.
+
+The .ggt format: "GGT1", number of SIDs, flags (NTSC, 8580), speed multiplier, hard restart
+ADSR, the SID addresses, followed by the GoatTracker 2 song data with one orderlist per voice.
+
+## Instruments
+
+Instruments use the GoatTracker 2 .ins format (GTI5). Older GoatTracker instruments are
+converted on loading.
+
+## Configuration
+
+Settings are saved when the program exits:
+
+|  Windows  %APPDATA%\C64 GrooveGoat\groovegoat.cfg
+|  macOS    ~/.groovegoat/groovegoat.cfg
+|  Linux    ~/.groovegoat/groovegoat.cfg
+
+# Export
+
+## Export dialog
+
+Export SID, Export PRG (toolbar) and F9 open the export dialog:
+
+|  Format           SID file, runnable PRG with player screen, PRG with music only, or BIN
+|  Player address   Start address of the music (page aligned, default $1000)
+|  Zeropage         Two zeropage bytes used by the playroutine (default $FC-$FD)
+|  SID address(es)  Where the SID chips are (see below)
+|  Options          Playroutine options (see below)
+
+UP/DOWN selects a line, LEFT/RIGHT changes values, ENTER edits a value or starts the export.
+After packing, the sizes of the parts are shown, then you choose the file name.
+
+The packer removes unused patterns, instruments and table rows, duplicate table parts and all
+playroutine code that the song does not need.
+
+## SID files
+
+C64 GrooveGoat writes PSID files as specified by the High Voltage SID Collection:
+
+|  1 SID    PSID version 2
+|  2 SIDs   PSID version 3; SID 2 can be at any address $D420-$D7E0 or $DE00-$DFE0
+|  4/8 SIDs PSID version 5 (multi-SID format)
+
+In SID files the first SID is always at $D400. For 4 and 8 SIDs the PSID v5 format describes
+the addresses with a layout, which is chosen in the export dialog:
+
+|  +$20 steps    $D400 $D420 $D440 $D460 $D480 $D4A0 $D4C0 $D4E0 (standard)
+|  +$40 steps    $D400 $D440 $D480 $D4C0 ...
+|  +$80 steps    $D400 $D480 $D500 $D580 ...
+|  +$100 steps   $D400 $D500 $D600 $D700 ...
+|  +$20/+$60     $D400 $D420 $D480 $D4A0 ...
+|  +$20/+$E0     $D400 $D420 $D500 $D520 ...
+|  +$100/+$300   $D400 $D500 $DE00 $DF00
+
+"SID 2 starts at" moves the second and all following SIDs. Addresses beyond $D7E0 continue at
+$DE00. If your song's SID addresses match one of the layouts, it is selected automatically.
+
+Song name, author and released are stored in the header (at most 31 characters each). The SID
+model and PAL/NTSC are stored in the flags, multispeed songs contain a CIA timer setup.
+
+## Runnable PRG
+
+"PRG - runnable" creates a C64 program that starts with RUN:
+
+    LOAD"SONGNAME",8,1
+    RUN
+
+The player screen shows the C64 GrooveGoat logo (an eighth note in front of the C64 rainbow),
+the tracker name, version and author, the song name, author and released text, the current
+subtune, its length and the play time, and the number, model and addresses of the SIDs.
+
+|  + or CURSOR RIGHT   next subtune
+|  - or CURSOR LEFT    previous subtune
+|  1-9                 select subtune 1-9
+|  SPACE               restart the subtune
+
+The player screen occupies $0801 up to about $1000, so the music must start at $1000 or higher
+and end below $D000. The song length is calculated by playing the subtune until all voices have
+reached their loop point (at most 30 minutes).
+
+## Music-only PRG and BIN
+
+"PRG - music only" contains the packed music and playroutine with a load address, "BIN" the same
+without load address. Use them in your own programs:
+
+    LDA #subtune      ; starting from 0
+    JSR address       ; init
+    ...
+    JSR address+3     ; play, once per frame (or more often for multispeed)
+
+With sound effect support the sound effect routine is at address+6. The volume routine is at
+address+6, or at address+9 when sound effect support is also enabled.
+
+## Playroutine options
+
+|  Buffered SID-writes     Write each voice's registers in one go. More stable sound, more
+|                          memory and CPU time.
+|  Sound effect support    Adds a sound effect engine for games (implies buffered writes):
+|                          LDA #<effect, LDY #>effect, LDX #voice, JSR address+6.
+|                          Voice index: 0, 7, 14 (1 SID); sid*32 + voice*7 (multi-SID).
+|  Volume change support   Adds a routine to set the master volume (of all SIDs):
+|                          LDA #volume, JSR address+6 (+9 with sound effects).
+|  Store author-info       Stores the author text at address+$20 and enables timing marks.
+|  Use zeropage ghostregs  (1 SID only) The playroutine writes to zeropage instead of the SID.
+|  Disable optimization    Keep all playroutine code (only needed in case of trouble).
+|  Full SID buffering      Copy all registers of the previous frame at the start of each
+|                          play call (maximum stability, one frame latency).
+
+## Multi-SID playroutine
+
+Songs with 2 or more SIDs use the C64 GrooveGoat multi-SID playroutine, an extension of the
+GoatTracker 2 playroutine. It plays all voices of all SIDs; every SID has its own filter and
+volume. It produces exactly the same SID register values as the GoatTracker playroutine plays
+for a single SID.
+
+If the SIDs are $20 apart (the standard layout), the registers are written directly. For any
+other layout the playroutine writes into a register buffer, which is copied to the SIDs at the
+beginning of the next play call (one frame latency, like "Full SID buffering"). The buffer is
+placed at the end of the music data.
+
+If the hard restart attack is $F, the alternative SID register write order is used (waveform
+before ADSR), as in GoatTracker.
+
+# Command line
+
+    groovegoat [options] [songfile]
+
+|  -Axx   Hard restart ADSR parameter in hex (default 0F00)
+|  -Bxx   Sound buffer length in milliseconds (default 100)
+|  -Dxx   Pattern row display (0 decimal, 1 hex, 2 decimal with dots, 3 hex with dots)
+|  -Exx   SID model (0 = 6581, 1 = 8580)
+|  -Fxx   Custom SID clock (cycles per second, 0 = PAL/NTSC default)
+|  -Gxx   Pitch of A-4 in Hz (0 = default frequency table)
+|  -Ixx   reSID interpolation (0 off, 1 on, 2 distortion, 3 distortion and on)
+|  -Jxx   Special note names
+|  -Kxx   Note entry mode (0 tracker, 1 DMC, 2 Janko)
+|  -Lxx   SID address of 1-SID songs in hex (default D400)
+|  -Mxx   Mixing rate (default 44100)
+|  -Oxx   Pulse optimization (0 off, 1 on)
+|  -Qxx   Equal divisions per octave (12 default)
+|  -Rxx   Realtime command optimization (0 off, 1 on)
+|  -Sxx   Speed multiplier (0 = 25Hz, 1 = 1x, 2 = 2x ...)
+|  -Txx   Theme (0 night, 1 day)
+|  -Vxx   Fine vibrato conversion (0 off, 1 on)
+|  -Xxx   Window (0) or fullscreen (1)
+|  -Yxx   Scala tuning file (.scl)
+|  -N     NTSC timing
+|  -P     PAL timing
+|  -W     Write the sound output to sidaudio.raw
+|  -?     Show the options
+
+Export without opening a window:
+
+    groovegoat song.sng --export=song.sid
+    groovegoat song.ggt --export=song.prg --format=prg --address=1000
+
+|  --export=FILE      Export the song and exit
+|  --format=FMT       sid (default), prg (runnable), prgmusic, bin
+|  --address=XXXX     Player address (hex)
+|  --options=N        Playroutine options as a number (8 buffered, 16 sound effects,
+|                     32 volume, 64 author-info, 256 no optimization, 512 full buffering)
+
+# Credits
+
+C64 GrooveGoat 0.1b by IT-Dummkopfen.
+
+|  GoatTracker 2 editor & playroutine   Lasse Oorni (Cadaver), Covert Bitops
+|  GoatTracker 2 "Silver Fork"          Joel Ricci (github.com/joelricci/goattracker2)
+|  Undo system                          Jason Page (GoatTracker Ultra)
+|  reSID SID chip emulation             Dag Lem
+|  reSID-fp distortion / nonlinearity   Antti S. Lankila
+|  6510 cross assembler (Exomizer 2)    Magnus Lind
+|  HardSID 4U support                   Teli Sandor
+|  Command quick reference              Simon Bennett
+|  GoatTracker patches                  S. A. Haubenthal, V. Cannone, R. M. Ekman,
+|                                       T. Lindeman, H. Paulini, Groepaz
+|  Microtonal support                   Birgit Jauernig
+|  SDL 2                                libsdl.org (zlib license)
+|  JetBrains Mono font                  JetBrains (SIL Open Font License 1.1)
+|  SIDGen instrument library            6581 & 8580 instrument sets
+|  SID file format (PSID v2/v3/v5)      High Voltage SID Collection
+
+License: C64 GrooveGoat is free software under the GNU General Public License version 2 or
+later, like GoatTracker 2. The C64 playroutines (player.s, altplayer.s, mplayer.s and the PRG
+player frontend) do not fall under the GPL: the music files you create with them are yours and
+can be used freely for any purpose, commercial or noncommercial.

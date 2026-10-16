@@ -60,6 +60,8 @@ void drawimage(int x, int y, const char *name, int cellsw, int cellsh);
 void drawrainbow(int x, int y, int length);
 void getkey(void);
 int savescreenshot(const char *filename);
+extern char autoshotname[1024];
+extern int autoshotframes;
 unsigned getcell(int x, int y);
 
 #ifndef GCONSOLE_C
