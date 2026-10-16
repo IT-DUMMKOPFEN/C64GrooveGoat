@@ -34,8 +34,9 @@ by Lasse Öörni (Cadaver) and the
 
 ## Downloads
 
-Ready-to-run packages for Windows (x64), macOS (Apple Silicon) and Linux (x86-64) are on the
-[Releases](https://github.com/IT-DUMMKOPFEN/C64GrooveGoat/releases) page.
+Ready-to-run packages for Windows (x64), macOS (Apple Silicon) and Linux (x86-64) are attached
+to the [Releases](https://github.com/IT-DUMMKOPFEN/C64GrooveGoat/releases) of this repository
+and can be built with `tools/package.sh` (see below).
 
 ## Building
 
