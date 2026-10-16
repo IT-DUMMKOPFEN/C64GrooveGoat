@@ -61,6 +61,7 @@ void drawrainbow(int x, int y, int length);
 void getkey(void);
 int savescreenshot(const char *filename);
 extern char autoshotname[1024];
+void autoscript_tick(void);
 extern int autoshotframes;
 unsigned getcell(int x, int y);
 

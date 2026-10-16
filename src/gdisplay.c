@@ -802,7 +802,7 @@ static void drawstatusarea(void)
   else
   {
     if (strlen(loadedsongfilename))
-      sprintf(buf, "%s", loadedsongfilename);
+      snprintf(buf, sizeof buf, "%s", loadedsongfilename);
     else
       sprintf(buf, "Untitled song");
     printtext(1, MESSAGE_Y, MKCOL(C_HEADERTEXT, C_HEADER), buf);

@@ -330,14 +330,14 @@ int savesong(void)
     strcpy(loadedsongfilename, songfilename);
     songmodified = 0;
     if (ggt)
-      sprintf(statusmessage, "Saved %s (%d SIDs, C64 GrooveGoat format)", songfilename, numsids);
+      snprintf(statusmessage, sizeof statusmessage, "Saved %s (%d SIDs, C64 GrooveGoat format)", songfilename, numsids);
     else if (numsids == 2)
-      sprintf(statusmessage, "Saved %s (2 SIDs, GoatTracker Stereo format)", songfilename);
+      snprintf(statusmessage, sizeof statusmessage, "Saved %s (2 SIDs, GoatTracker Stereo format)", songfilename);
     else
-      sprintf(statusmessage, "Saved %s (GoatTracker 2 format)", songfilename);
+      snprintf(statusmessage, sizeof statusmessage, "Saved %s (GoatTracker 2 format)", songfilename);
     return 1;
   }
-  sprintf(statusmessage, "Could not save %s!", songfilename);
+  snprintf(statusmessage, sizeof statusmessage, "Could not save %s!", songfilename);
   return 0;
 }
 
@@ -534,6 +534,7 @@ void loadsong(void)
   int c;
   int ok = 0;
   char ident[4];
+  char bodyversion = '5';
   FILE *handle;
   int len = 0;
   unsigned char *buf = readwholefile(songfilename, &len);
@@ -543,6 +544,7 @@ void loadsong(void)
   if ((buf) && (len >= 4))
   {
     memcpy(ident, buf, 4);
+    bodyversion = ident[3];
 
     // C64 GrooveGoat multi-SID format
     if (!memcmp(ident, "GGT1", 4))
@@ -591,7 +593,8 @@ void loadsong(void)
       {
         countpatternlengths();
         songchange();
-        sprintf(statusmessage, "Loaded %s (%d SIDs, C64 GrooveGoat format)", songfilename, numsids);
+        snprintf(statusmessage, sizeof statusmessage, "Loaded %s (%d SIDs, C64 GrooveGoat format)", songfilename, numsids);
+        bodyversion = '5';  // GGT1 contains a GTS5 body: no old format conversions
       }
     }
 
@@ -611,9 +614,9 @@ void loadsong(void)
         countpatternlengths();
         songchange();
         if (nch == 6)
-          sprintf(statusmessage, "Loaded %s (2 SIDs, GoatTracker Stereo format)", songfilename);
+          snprintf(statusmessage, sizeof statusmessage, "Loaded %s (2 SIDs, GoatTracker Stereo format)", songfilename);
         else
-          sprintf(statusmessage, "Loaded %s (GoatTracker 2 format)", songfilename);
+          snprintf(statusmessage, sizeof statusmessage, "Loaded %s (GoatTracker 2 format)", songfilename);
       }
     }
   }
@@ -1199,11 +1202,11 @@ void loadsong(void)
     }
     fclose(handle);
     if ((ok) && (!statusmessage[0]))
-      sprintf(statusmessage, "Loaded %s (imported old GoatTracker format)", songfilename);
+      snprintf(statusmessage, sizeof statusmessage, "Loaded %s (imported old GoatTracker format)", songfilename);
   }
   LOADDONE:
   if (!ok)
-    sprintf(statusmessage, "Could not load %s - unknown or damaged file", songfilename);
+    snprintf(statusmessage, sizeof statusmessage, "Could not load %s - unknown or damaged file", songfilename);
   if (ok)
   {
     songmodified = 0;
@@ -1213,7 +1216,7 @@ void loadsong(void)
     for (c = 0; c < MAX_TABLES; c++) settableview(c, 0);
 
     // Convert pulsemodulation speed of < v2.4 songs
-    if (ident[3] < '4')
+    if (bodyversion < '4')
     {
       for (c = 0; c < MAX_TABLELEN; c++)
       {
@@ -1229,7 +1232,7 @@ void loadsong(void)
     }
 
     // Convert old legato/nohr parameters
-    if (ident[3] < '5')
+    if (bodyversion < '5')
     {
         for (c = 1; c < MAX_INSTR; c++)
         {
@@ -2015,7 +2018,7 @@ void mergesong(void)
   buf = readwholefile(songfilename, &len);
   if ((!buf) || (len < 4))
   {
-    sprintf(statusmessage, "Could not read %s", songfilename);
+    snprintf(statusmessage, sizeof statusmessage, "Could not read %s", songfilename);
     free(buf);
     return;
   }
@@ -2034,13 +2037,13 @@ void mergesong(void)
   }
   if ((!fnch) || (pos >= len) || (parsesongbody(buf + pos, len - pos, fnch, 0) <= 0))
   {
-    sprintf(statusmessage, "Merge: unsupported or damaged file %s", songfilename);
+    snprintf(statusmessage, sizeof statusmessage, "Merge: unsupported or damaged file %s", songfilename);
     free(buf);
     return;
   }
   if (fnch > numchannels)
   {
-    sprintf(statusmessage, "Merge: the song uses %d SIDs - raise the SID count first", fnch / 3);
+    snprintf(statusmessage, sizeof statusmessage, "Merge: the song uses %d SIDs - raise the SID count first", fnch / 3);
     free(buf);
     return;
   }
@@ -2053,7 +2056,7 @@ void mergesong(void)
     int amount = buf[pos++];
     if (amount + songbase > MAX_SONGS)
     {
-      sprintf(statusmessage, "Merge: too many subtunes");
+      snprintf(statusmessage, sizeof statusmessage, "Merge: too many subtunes");
       goto ABORT;
     }
     for (d = 0; d < amount; d++)
@@ -2091,7 +2094,7 @@ void mergesong(void)
     int amount = buf[pos++];
     if (amount + instrbase >= MAX_INSTR)
     {
-      sprintf(statusmessage, "Merge: too many instruments");
+      snprintf(statusmessage, sizeof statusmessage, "Merge: too many instruments");
       goto ABORT;
     }
     for (c = 1; c <= amount; c++)
@@ -2121,7 +2124,7 @@ void mergesong(void)
     int loadsize = buf[pos++];
     if (loadsize + tablebase[c] > MAX_TABLELEN)
     {
-      sprintf(statusmessage, "Merge: tables are full");
+      snprintf(statusmessage, sizeof statusmessage, "Merge: tables are full");
       goto ABORT;
     }
     memcpy(&ltable[c][tablebase[c]], buf + pos, loadsize);
@@ -2151,7 +2154,7 @@ void mergesong(void)
     int amount = buf[pos++];
     if (amount + pattbase > MAX_PATT)
     {
-      sprintf(statusmessage, "Merge: too many patterns");
+      snprintf(statusmessage, sizeof statusmessage, "Merge: too many patterns");
       goto ABORT;
     }
     for (c = 0; c < amount; c++)
@@ -2177,7 +2180,7 @@ void mergesong(void)
       }
     }
   }
-  sprintf(statusmessage, "Merged %s as new subtune(s) starting at %02X", songfilename, songbase);
+  snprintf(statusmessage, sizeof statusmessage, "Merged %s as new subtune(s) starting at %02X", songfilename, songbase);
 
   ABORT:
   free(buf);

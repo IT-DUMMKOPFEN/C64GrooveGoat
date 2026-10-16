@@ -132,10 +132,23 @@ static void updatetitle(void);
 static void runautotest(void);
 
 static char exportname[MAX_PATHNAME];
+static char startcwd[MAX_PATHNAME];
+
+// Command line output names are relative to the directory the program was
+// started from (loading a song changes the current directory)
+static void absolutepath(char *name)
+{
+  char tmp[MAX_PATHNAME];
+  if ((!name[0]) || (!strcmp(name, "-"))) return;
+  if ((name[0] == '/') || (name[0] == '\\') || ((name[0]) && (name[1] == ':'))) return;
+  snprintf(tmp, MAX_PATHNAME, "%s/%s", startcwd, name);
+  strcpy(name, tmp);
+}
 static int exportformat = EXP_SID;
 static unsigned exportbase = 0;
 static int exportsids = 0;
 static char rendername[MAX_PATHNAME];
+static char savename[MAX_PATHNAME];
 static int renderseconds = 60;
 
 // Offline rendering of a subtune to a 44.1kHz 16-bit stereo WAV file
@@ -190,6 +203,7 @@ int main(int argc, char **argv)
 
   specialnotenames[0] = 0;
   scalatuningfilepath[0] = 0;
+  if (!getcwd(startcwd, MAX_PATHNAME)) startcwd[0] = 0;
 
   initdirectories();
   loadconfig();
@@ -232,12 +246,22 @@ int main(int argc, char **argv)
         if (!strncmp(argv[c], "--makedemo=", 11))
         {
           int makedemo(const char *outname, const char *libdir);
+          char demoname[MAX_PATHNAME];
+          strncpy(demoname, argv[c] + 11, MAX_PATHNAME - 1);
+          demoname[MAX_PATHNAME - 1] = 0;
+          absolutepath(demoname);
           initpaths();
-          return makedemo(argv[c] + 11, instrlibpath) ? EXIT_SUCCESS : EXIT_FAILURE;
+          return makedemo(demoname, instrlibpath) ? EXIT_SUCCESS : EXIT_FAILURE;
         }
         if (!strncmp(argv[c], "--render=", 9))
         {
           strncpy(rendername, argv[c] + 9, MAX_PATHNAME - 1);
+          strcpy(exportname, "-");
+          break;
+        }
+        if (!strncmp(argv[c], "--save=", 7))
+        {
+          strncpy(savename, argv[c] + 7, MAX_PATHNAME - 1);
           strcpy(exportname, "-");
           break;
         }
@@ -353,9 +377,20 @@ int main(int argc, char **argv)
   if (exportname[0])
   {
     int ok;
+    absolutepath(exportname);
+    absolutepath(savename);
+    absolutepath(rendername);
     initchannels();
     clearsong(1, 1, 1, 1, 1);
-    if (strlen(songfilename)) loadsong();
+    if (strlen(songfilename))
+    {
+      loadsong();
+      if (!strncmp(statusmessage, "Could not", 9))
+      {
+        fprintf(stderr, "error: %s\n", statusmessage);
+        return EXIT_FAILURE;
+      }
+    }
     if (exportsids) setnumsids(exportsids);
     // Test helpers: duplicate SID 1's orderlists to all SIDs, set addresses
     if (getenv("GG_DUPSIDS"))
@@ -400,6 +435,13 @@ int main(int argc, char **argv)
         printf("\n");
       }
       return EXIT_SUCCESS;
+    }
+    if (savename[0])
+    {
+      strncpy(songfilename, savename, MAX_FILENAME - 1);
+      ok = savesong();
+      printf("%s\n", statusmessage);
+      return ok ? EXIT_SUCCESS : EXIT_FAILURE;
     }
     if (rendername[0])
       return renderwav(rendername, getenv("GG_SUBTUNE") ? atoi(getenv("GG_SUBTUNE")) : 0, renderseconds) ? EXIT_SUCCESS : EXIT_FAILURE;
@@ -727,7 +769,7 @@ static void handledrop(void)
       strncpy(instrfilename, name, MAX_FILENAME - 1);
       loadinstrument();
       getcwd(instrpath, MAX_PATHNAME);
-      sprintf(statusmessage, "Loaded instrument %s into slot %02X", instrfilename, editorInfo.einum);
+      snprintf(statusmessage, sizeof statusmessage, "Loaded instrument %s into slot %02X", instrfilename, editorInfo.einum);
     }
   }
   else
@@ -907,7 +949,7 @@ void changenumsids(int n)
   do_sound_init();
   undoInitAllAreas();
   validatechnview();
-  sprintf(statusmessage, "Now using %d SID%s (%d channels)%s", numsids, numsids > 1 ? "s" : "", numchannels,
+  snprintf(statusmessage, sizeof statusmessage, "Now using %d SID%s (%d channels)%s", numsids, numsids > 1 ? "s" : "", numchannels,
     numsids > 2 ? " - songs are saved in the C64 GrooveGoat .ggt format" : "");
 }
 
@@ -941,7 +983,7 @@ void newsong(void)
   }
   undoInitAllAreas();
   songmodified = 0;
-  sprintf(statusmessage, "New song with %d SID%s (%d channels)", numsids, numsids > 1 ? "s" : "", numchannels);
+  snprintf(statusmessage, sizeof statusmessage, "New song with %d SID%s (%d channels)", numsids, numsids > 1 ? "s" : "", numchannels);
 }
 
 void docommand(void)
@@ -1698,12 +1740,30 @@ void load(void)
       {
         loadinstrument();
         songmodified = 1;
-        sprintf(statusmessage, "Loaded instrument %s into slot %02X", instrfilename, editorInfo.einum);
+        snprintf(statusmessage, sizeof statusmessage, "Loaded instrument %s into slot %02X", instrfilename, editorInfo.einum);
       }
     }
   }
   key = 0;
   rawkey = 0;
+}
+
+// Is the path inside the bundled instrument library?
+static int insidelibrary(const char *path)
+{
+  char a[MAX_PATHNAME], b[MAX_PATHNAME];
+  int l;
+  if (!instrlibpath[0]) return 0;
+#ifdef __WIN32__
+  if (!_fullpath(a, path, MAX_PATHNAME)) strcpy(a, path);
+  if (!_fullpath(b, instrlibpath, MAX_PATHNAME)) strcpy(b, instrlibpath);
+#else
+  if (!realpath(path, a)) strcpy(a, path);
+  if (!realpath(instrlibpath, b)) strcpy(b, instrlibpath);
+#endif
+  l = strlen(b);
+  while ((l > 0) && ((b[l - 1] == '/') || (b[l - 1] == '\\'))) b[--l] = 0;
+  return (l > 0) && (!strncmp(a, b, l)) && ((a[l] == 0) || (a[l] == '/') || (a[l] == '\\'));
 }
 
 void save(void)
@@ -1747,10 +1807,15 @@ void save(void)
           strcpy(tempfilename, instrfilename);
         }
 
-        if (fileselector(instrfilename, instrpath, instrfilter, "SAVE INSTRUMENT", 3))
+        // Never save into the bundled instrument library (it may be read-only,
+        // and inside the macOS app bundle it would break the signature)
+        static char userinstrpath[MAX_PATHNAME];
+        if (!userinstrpath[0]) strcpy(userinstrpath, songpath);
+        if (!insidelibrary(instrpath)) strcpy(userinstrpath, instrpath);
+        if (fileselector(instrfilename, userinstrpath, instrfilter, "SAVE INSTRUMENT", 3))
         {
           done = saveinstrument();
-          if (done) sprintf(statusmessage, "Saved instrument %s", instrfilename);
+          if (done) snprintf(statusmessage, sizeof statusmessage, "Saved instrument %s", instrfilename);
         }
         else done = 1;
 

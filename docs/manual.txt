@@ -103,10 +103,13 @@ octave, subtune and so on).
 
 ## A first song in five minutes
 
-1. Press F7 to go to the instrument editor, or click the Library button and choose a ready-made
+0. To hear what several SIDs sound like, open examples/groovegoat_demo_4sid.ggt (Open or F10)
+   and press F1. F4 stops.
+1. Click New and choose the number of SIDs. Press F7 to go to the instrument editor, or click the Library button and choose a ready-made
    instrument (SPACE plays a preview, ENTER loads it).
 2. Press F5 (or click into a pattern). The cursor is on the note column of voice 1.1.
-3. Press SPACE to switch from jam mode to edit mode (the status bar shows EDIT MODE).
+3. Check that the status bar shows EDIT MODE (SPACE switches between edit and jam mode; in jam
+   mode notes are only played, not written).
 4. Type notes on the computer keyboard like on a piano: Z S X D C V G B H N J M for the lower
    octave and Q 2 W 3 E R 5 T 6 Y 7 U for the upper octave. "/" and "*" on the keypad change the
    octave.

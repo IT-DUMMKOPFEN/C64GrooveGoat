@@ -27,6 +27,8 @@ int plat_getscale(void);
 
 extern SDL_Window *plat_window;
 extern SDL_Renderer *plat_renderer;
+extern int plat_dstx, plat_dsty, plat_dstw, plat_dsth;
+extern int plat_fbw, plat_fbh;
 extern int win_quitted;
 extern int win_fullscreen;
 extern int win_redraw;

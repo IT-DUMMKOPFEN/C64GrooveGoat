@@ -750,6 +750,7 @@ int savescreenshot(const char *filename)
 void getkey(void)
 {
   int c;
+  autoscript_tick();
   win_asciikey = 0;
   win_symkey = 0;
   cursorflashdelay += win_getspeed(50);

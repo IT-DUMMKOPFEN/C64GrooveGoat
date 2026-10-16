@@ -2479,7 +2479,7 @@ static int doexport(int format)
     break;
   }
   fclose(songhandle);
-  sprintf(statusmessage, "Exported %s (%d bytes)", packedsongname, es.format == EXP_PRGPLAYER ? prgsize : res.size);
+  snprintf(statusmessage, sizeof statusmessage, "Exported %s (%d bytes)", packedsongname, es.format == EXP_PRGPLAYER ? prgsize : res.size);
   fileformat = es.format == EXP_SID ? FORMAT_SID : (es.format == EXP_BIN ? FORMAT_BIN : FORMAT_PRG);
   if (es.format == EXP_PRGPLAYER) prgfrontend = 1;
   if (es.format == EXP_PRG) prgfrontend = 0;

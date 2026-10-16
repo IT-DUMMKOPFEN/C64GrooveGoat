@@ -43,7 +43,7 @@ EDITOR_UNDO_INFO editorUndoInfo;
 
 unsigned char funktable[2];
 int psnum = 0;
-int songinit = 0;
+int songinit = PLAY_STOPPED;
 int lastsonginit = 0;
 int startpattpos = 0;
 int playframes = 0;
