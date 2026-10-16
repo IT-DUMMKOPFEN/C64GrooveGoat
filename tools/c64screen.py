@@ -12,7 +12,7 @@ img=Image.new('RGB',((320+64)*S,(200+64)*S),PAL[border])
 dr=ImageDraw.Draw(img)
 dr.rectangle([32*S,32*S,(32+320)*S-1,(32+200)*S-1],fill=PAL[bg])
 try:
-    font=ImageFont.truetype(sys.argv[3] if len(sys.argv)>3 else 'res/fonts/JetBrainsMono-Bold.ttf', 9*S)
+    font=ImageFont.truetype(sys.argv[3] if len(sys.argv)>3 else 'res/fonts/FiraCode-Bold.ttf', 9*S)
 except Exception:
     font=ImageFont.load_default()
 for i in range(1000):

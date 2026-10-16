@@ -55,8 +55,9 @@ Microtonal support
 SDL 2 (Simple DirectMedia Layer)
   Sam Lantinga and contributors - https://www.libsdl.org - zlib license
 
-JetBrains Mono font
-  JetBrains s.r.o. - https://www.jetbrains.com/lp/mono/
+Fira Code font
+  Nikita Prokopov and the Fira Code Project Authors
+  https://github.com/tonsky/FiraCode
   SIL Open Font License 1.1
 
 SIDGen instrument library ("SIDGen instruments for GoatTracker 2")

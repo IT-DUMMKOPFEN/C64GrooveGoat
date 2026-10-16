@@ -572,7 +572,7 @@ static const char *credits[] = {
   "                                     T. Lindeman, H. Paulini, Groepaz",
   "Microtonal support                   Birgit Jauernig",
   "SDL 2 (Simple DirectMedia Layer)     libsdl.org - zlib license",
-  "JetBrains Mono font                  JetBrains - SIL Open Font License 1.1",
+  "Fira Code font                       Nikita Prokopov - SIL Open Font License 1.1",
   "SIDGen instrument library            6581 & 8580 instrument sets",
   "SID file format (PSID v2/v3/v5)      High Voltage SID Collection",
   "",

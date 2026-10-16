@@ -4,7 +4,7 @@
 #
 # Produces src/gres.c with:
 #  - two bitmap font atlases (8x16 and 16x32 pixels per cell) rendered from
-#    JetBrains Mono (SIL Open Font License) plus procedurally drawn UI glyphs
+#    Fira Code (SIL Open Font License) plus procedurally drawn UI glyphs
 #  - the logo as RGBA images in several sizes
 #  - embedded text resources (6502 playroutines, PRG frontend, manual)
 #
@@ -16,7 +16,7 @@ FONTDIR = os.environ.get('GG_FONTDIR', os.path.join(ROOT, 'res', 'fonts'))
 sys.path.insert(0, os.path.join(ROOT, 'tools'))
 import mklogo
 
-SCALES = [(8, 16, 'JetBrainsMono-SemiBold.ttf', 13.6), (16, 32, 'JetBrainsMono-Medium.ttf', 27.0)]
+SCALES = [(8, 16, 'FiraCode-SemiBold.ttf', 12.5), (16, 32, 'FiraCode-Medium.ttf', 25.0)]
 
 # Custom glyph codes (keep in sync with gglyphs.h)
 G = {
@@ -165,7 +165,7 @@ def glyph_custom(code, cw, ch):
     elif name == 'HELP':
         r = W * 0.42
         d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=255)
-        f = ImageFont.truetype(os.path.join(FONTDIR, 'JetBrainsMono-ExtraBold.ttf'), int(H * 0.42))
+        f = ImageFont.truetype(os.path.join(FONTDIR, 'FiraCode-Bold.ttf'), int(H * 0.42))
         tw = f.getlength('?')
         asc, desc = f.getmetrics()
         d.text((cx - tw / 2, cy - (asc + desc) / 2 - H * 0.01), '?', font=f, fill=0)
@@ -229,7 +229,13 @@ def glyph_custom(code, cw, ch):
 
 def render_font(cw, ch, fontfile, size):
     f = ImageFont.truetype(os.path.join(FONTDIR, fontfile), size)
-    asc, desc = f.getmetrics()
+    # Vertical placement: centre the ink of letters, digits, brackets and
+    # descenders in the cell, so that nothing touches the top or the bottom
+    # of the cell (the screen may be scaled with linear filtering)
+    sample = 'ABCHbdfhklgjpqy0123456789()[]{}|$@'
+    inktop = min(f.getbbox(c, anchor='ls')[1] for c in sample)
+    inkbot = max(f.getbbox(c, anchor='ls')[3] for c in sample)
+    baseline = int(round((ch - (inkbot - inktop)) / 2.0 - inktop))
     glyphs = []
     for code in range(256):
         g = None
@@ -240,8 +246,7 @@ def render_font(cw, ch, fontfile, size):
             d = ImageDraw.Draw(g)
             adv = f.getlength(c)
             x = (cw - adv) / 2.0
-            y = (ch - (asc + desc)) / 2.0
-            d.text((x, y), c, font=f, fill=255)
+            d.text((x, baseline), c, font=f, fill=255, anchor='ls')
         else:
             g = glyph_custom(code, cw, ch)
         if g is None:
