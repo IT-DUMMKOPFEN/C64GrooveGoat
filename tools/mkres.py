@@ -25,7 +25,7 @@ G = {
     'LEFTH': 15, 'RIGHTH': 16, 'SHADE1': 17, 'SHADE2': 18, 'PLAY': 19, 'PLAYL': 20,
     'UP': 21, 'DOWN': 22, 'STOP': 23, 'DOT': 24, 'NOTE': 25, 'SUN': 26, 'MOON': 27,
     'CHECK': 28, 'BULLET': 29, 'PAUSE': 30, 'MENU': 31,
-    'RTL': 128, 'RTR': 129, 'RBL': 130, 'RBR': 131, 'BTNL': 132, 'BTNR': 133,
+    'SLIDERON': 128, 'SLIDEROFF': 129, 'SLIDERKNOB': 130, 'RBR': 131, 'BTNL': 132, 'BTNR': 133,
     'FOLDER': 134, 'DISK': 135, 'CHIP': 136, 'INFO': 137, 'HELP': 138, 'PLAYPOS': 139,
     'PLAYPAT': 140, 'NEWDOC': 141, 'LOADINS': 142, 'SAVEINS': 143, 'BAR1': 144,
     'BAR2': 145, 'BAR3': 146, 'BAR4': 147, 'BAR5': 148, 'BAR6': 149, 'BAR7': 150,
@@ -124,6 +124,13 @@ def glyph_custom(code, cw, ch):
         for k in (-1, 0, 1):
             y = cy + k * W * 0.28
             d.rectangle([W * 0.15, y - lw // 2, W * 0.85, y + lw // 2], fill=255)
+    elif name == 'SLIDERON':
+        # filled part of a slider: band in the middle of the cell
+        d.rectangle([0, H * 0.36, W, H * 0.64], fill=255)
+    elif name == 'SLIDEROFF':
+        d.rectangle([0, H * 0.44, W, H * 0.56], fill=255)
+    elif name == 'SLIDERKNOB':
+        d.rounded_rectangle([W * 0.12, H * 0.20, W * 0.88, H * 0.80], radius=W * 0.3, fill=255)
     elif name in ('RTL', 'RTR', 'RBL', 'RBR'):
         # rounded corners for panels: quarter circle arcs joining lines at the centre
         r = min(W, H) // 2

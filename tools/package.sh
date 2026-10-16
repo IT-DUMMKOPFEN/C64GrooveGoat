@@ -10,7 +10,7 @@
 set -e
 cd "$(dirname "$0")/.."
 
-VERSION=0.1b
+VERSION=0.2b
 NAME="C64-GrooveGoat-$VERSION"
 TOOLS=${TOOLS:-$(cd .. && pwd)/tools}
 INSTRUMENTS=${INSTRUMENTS:-$(cd .. && pwd)/ins_zip/Instrumente}
@@ -31,11 +31,12 @@ rm -rf $DIST
 mkdir -p $DIST/common/examples
 
 echo "== Demo song and examples"
-./build/linux/groovegoat --makedemo=$DIST/common/examples/groovegoat_demo_4sid.ggt > /dev/null
-./build/linux/groovegoat --export=$DIST/common/examples/groovegoat_demo_4sid.sid $DIST/common/examples/groovegoat_demo_4sid.ggt > /dev/null
-./build/linux/groovegoat --format=prg --export=$DIST/common/examples/groovegoat_demo_4sid.prg $DIST/common/examples/groovegoat_demo_4sid.ggt > /dev/null
+DEMO=solar_voyage_2sid
+cp examples/$DEMO.sng $DIST/common/examples/
+./build/linux/groovegoat --export=$DIST/common/examples/$DEMO.sid $DIST/common/examples/$DEMO.sng > /dev/null
+./build/linux/groovegoat --format=prg --export=$DIST/common/examples/$DEMO.prg $DIST/common/examples/$DEMO.sng > /dev/null
 mkdir -p $DIST/common/examples/goattracker2
-cp examples/*.sng examples/*.ins $DIST/common/examples/goattracker2/ 2>/dev/null || true
+for f in examples/*.sng examples/*.ins; do [ "$(basename $f)" = "$DEMO.sng" ] || cp $f $DIST/common/examples/goattracker2/; done 2>/dev/null || true
 cp examples/goatcompo.txt $DIST/common/examples/goattracker2/ 2>/dev/null || true
 
 # Instrument library (without macOS metadata)

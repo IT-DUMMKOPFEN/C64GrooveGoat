@@ -1,4 +1,4 @@
-# C64 GrooveGoat 0.1b - Manual
+# C64 GrooveGoat 0.2b - Manual
 
 C64 GrooveGoat is a tracker-style music editor for the SID sound chip of the Commodore 64. It is
 based on GoatTracker 2 by Lasse Oorni (Cadaver) and the "Silver Fork" of Joel Ricci, and adds
@@ -101,10 +101,26 @@ On high resolution ("Retina") screens a sharper font is used automatically.
 Left click on a value increases it, right click decreases it where this makes sense (speed,
 octave, subtune and so on).
 
+## Status bar and volume
+
+The bottom lines show the octave, edit/jam mode, autoadvance and key mode, the step size, the
+Undo button, the play state and time, the positions of the visible voices and the SID addresses.
+
+The volume slider at the bottom right sets the output volume of the editor from 0% to 100%
+(default 80%). Click or drag on the slider, or use the mouse wheel over it; a click on the
+speaker symbol mutes and unmutes. The volume only affects listening in the editor, not exported
+files. It is saved with the other settings.
+
+## Welcome window
+
+At startup a welcome window with the most important keys is shown. Close it with the Close
+button, ENTER, SPACE or ESC. Uncheck "Show at startup" (click it or press S) if you do not want
+to see it again.
+
 ## A first song in five minutes
 
-0. To hear what several SIDs sound like, open examples/groovegoat_demo_4sid.ggt (Open or F10)
-   and press F1. F4 stops.
+0. To hear what two SIDs sound like, open examples/solar_voyage_2sid.sng (Open or F10) and press
+   F1. F4 stops.
 1. Click New and choose the number of SIDs. Press F7 to go to the instrument editor, or click the Library button and choose a ready-made
    instrument (SPACE plays a preview, ENTER loads it).
 2. Press F5 (or click into a pattern). The cursor is on the note column of voice 1.1.
@@ -682,7 +698,7 @@ Export without opening a window:
 
 # Credits
 
-C64 GrooveGoat 0.1b by IT-Dummkopfen.
+C64 GrooveGoat 0.2b by IT-Dummkopfen.
 
 |  GoatTracker 2 editor & playroutine   Lasse Oorni (Cadaver), Covert Bitops
 |  GoatTracker 2 "Silver Fork"          Joel Ricci (github.com/joelricci/goattracker2)

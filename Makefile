@@ -8,14 +8,14 @@
 
 TARGET ?= linux
 TOOLS ?= $(abspath ../tools)
-VERSION = 0.1b
+VERSION = 0.2b
 
 BUILDDIR = build/$(TARGET)
 SRCDIR = src
 
 CSRC = goattrk2.c gsong.c gorder.c gpattern.c ginstr.c gtable.c gplay.c gdisplay.c \
        gfile.c greloc.c ghelp.c gsound.c gconsole.c gundo.c gplatform.c gaudio.c \
-       gfileio.c gdialog.c gres.c gsonglen.c gdemo.c gautotest.c
+       gfileio.c gdialog.c gres.c gsonglen.c gautotest.c
 CXXSRC = gsid.cpp
 RESIDSRC = resid/envelope.cpp resid/extfilt.cpp resid/filter.cpp resid/pot.cpp resid/sid.cpp \
        resid/wave.cpp resid/wave6581__ST.cpp resid/wave6581_P_T.cpp resid/wave6581_PS_.cpp \

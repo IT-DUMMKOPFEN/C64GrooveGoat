@@ -1678,7 +1678,8 @@ typedef struct
 
 static void c64text(C64SCREEN *s, int x, int y, int color, const char *text)
 {
-  while ((*text) && (x < 40))
+  // Keep the text inside the frame (columns 1-38)
+  while ((*text) && (x < 39))
   {
     if ((x >= 0) && (y >= 0) && (y < 25))
     {

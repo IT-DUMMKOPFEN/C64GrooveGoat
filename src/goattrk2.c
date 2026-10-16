@@ -1,5 +1,5 @@
 //
-// C64 GrooveGoat 0.1b
+// C64 GrooveGoat 0.2b
 // A multi-SID (1/2/4/8 SIDs) music editor for the Commodore 64,
 // based on GoatTracker v2.76 (Silver Fork) by Lasse Öörni and contributors.
 //
@@ -60,6 +60,8 @@ unsigned hardsidbufplayback = 400;
 unsigned stereomode = 1;
 unsigned themesetting = THEME_NIGHT;
 unsigned prgfrontend = 1;
+unsigned mastervolume = 80;
+unsigned showwelcome = 1;
 float basepitch = 0.0f;
 float equaldivisionsperoctave = 12.0f;
 int tuningcount = 0;
@@ -243,16 +245,6 @@ int main(int argc, char **argv)
           sscanf(argv[c] + 10, "%x", &exportbase);
           break;
         }
-        if (!strncmp(argv[c], "--makedemo=", 11))
-        {
-          int makedemo(const char *outname, const char *libdir);
-          char demoname[MAX_PATHNAME];
-          strncpy(demoname, argv[c] + 11, MAX_PATHNAME - 1);
-          demoname[MAX_PATHNAME - 1] = 0;
-          absolutepath(demoname);
-          initpaths();
-          return makedemo(demoname, instrlibpath) ? EXIT_SUCCESS : EXIT_FAILURE;
-        }
         if (!strncmp(argv[c], "--render=", 9))
         {
           strncpy(rendername, argv[c] + 9, MAX_PATHNAME - 1);
@@ -358,6 +350,9 @@ int main(int argc, char **argv)
   if (fileformat > FORMAT_BIN) fileformat = FORMAT_SID;
   themesetting &= 1;
   stereomode &= 1;
+  if (mastervolume > 100) mastervolume = 100;
+  showwelcome &= 1;
+  sid_setvolume(mastervolume);
 
   // Read Scala tuning file
   if ((scalatuningfilepath[0]) && (scalatuningfilepath[0] != '0') && (scalatuningfilepath[1] != '\0'))
@@ -488,6 +483,7 @@ int main(int argc, char **argv)
 
   // Start editor mainloop
   printmainscreen();
+  if ((showwelcome) && (!getenv("GG_SCRIPT"))) showwelcomewindow();
   while (!exitprogram)
   {
     waitkeymouse();
@@ -616,6 +612,8 @@ static void loadconfig(void)
   getparam(configfile, &themesetting);
   getparam(configfile, &stereomode);
   getparam(configfile, &prgfrontend);
+  getparam(configfile, &mastervolume);
+  getparam(configfile, &showwelcome);
   fclose(configfile);
   if (!strcmp(specialnotenames, "-")) specialnotenames[0] = 0;
   if (!strcmp(scalatuningfilepath, "-")) scalatuningfilepath[0] = 0;
@@ -672,7 +670,9 @@ static void saveconfig(void)
     ";Path to a Scala tuning file .scl (- = none)\n%s\n\n"
     ";Theme (0 = night, 1 = day)\n%d\n\n"
     ";Stereo output for multi-SID songs (0 = mono, 1 = stereo)\n%d\n\n"
-    ";PRG export includes the player frontend (0 = no, 1 = yes)\n%d\n\n",
+    ";PRG export includes the player frontend (0 = no, 1 = yes)\n%d\n\n"
+    ";Output volume in percent (0-100)\n%d\n\n"
+    ";Show the welcome window at startup (0 = no, 1 = yes)\n%d\n\n",
     b,
     mr,
     hardsid,
@@ -715,7 +715,9 @@ static void saveconfig(void)
     scalatuningfilepath[0] ? scalatuningfilepath : "-",
     themesetting,
     stereomode,
-    prgfrontend);
+    prgfrontend,
+    mastervolume,
+    showwelcome);
   fclose(configfile);
 }
 
@@ -809,6 +811,7 @@ static void runautotest(void)
     if (!strcmp(scr, "help")) onlinehelp(0, 0);
     if (!strcmp(scr, "manual")) showmanual();
     if (!strcmp(scr, "info")) showinfo();
+    if (!strcmp(scr, "welcome")) showwelcomewindow();
     if (!strcmp(scr, "sidinfo")) showsidinfo();
     if (!strcmp(scr, "exportsid")) exportsid();
     if (!strcmp(scr, "exportprg")) exportprg();
@@ -1242,7 +1245,41 @@ void mousecommands(void)
     }
   }
 
+  // Mouse wheel over the volume slider
+  if ((mousewheel) && (mousey == MESSAGE_Y) && (mousex >= VOL_LABEL_X))
+  {
+    int v = (int)mastervolume + (mousewheel > 0 ? 5 : -5);
+    if (v < 0) v = 0;
+    if (v > 100) v = 100;
+    mastervolume = v;
+    sid_setvolume(mastervolume);
+  }
+
   if (!mouseb) return;
+
+  // Volume slider: click or drag
+  if ((mousey == MESSAGE_Y) && (mousex >= VOL_X - 1) && (mousex < VOL_X + VOL_W + 5))
+  {
+    int v = (mousex - VOL_X + 1) * 5;
+    if (v < 0) v = 0;
+    if (v > 100) v = 100;
+    mastervolume = v;
+    sid_setvolume(mastervolume);
+    return;
+  }
+  if ((mousey == MESSAGE_Y) && (mousex >= VOL_LABEL_X) && (mousex < VOL_X - 1) && (click))
+  {
+    // Speaker symbol: mute / restore
+    static unsigned savedvolume = 80;
+    if (mastervolume)
+    {
+      savedvolume = mastervolume;
+      mastervolume = 0;
+    }
+    else mastervolume = savedvolume ? savedvolume : 80;
+    sid_setvolume(mastervolume);
+    return;
+  }
 
   // Buttons & clickable fields registered by the display code
   id = ui_hitbutton(mousex, mousey, &param);

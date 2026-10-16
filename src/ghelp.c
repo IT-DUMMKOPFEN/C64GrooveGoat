@@ -644,6 +644,80 @@ void showinfo(void)
 }
 
 // ---------------------------------------------------------------------------
+// Welcome window shown at startup
+// ---------------------------------------------------------------------------
+
+void showwelcomewindow(void)
+{
+  int w = 66;
+  int h = 31;
+  int x = (MAX_COLUMNS - w) / 2;
+  int y = (MAX_ROWS - h) / 2 - 1;
+  static const char *tips[] =
+  {
+    "Z-M, Q-P     enter notes (piano layout)",
+    "SPACE        toggle edit / jam mode",
+    "F1 / F4      play / stop",
+    "TAB          next editor panel",
+    "F12          keyboard help, Manual button: manual",
+    "CTRL/CMD+Z   undo",
+    "",
+    "Need more voices? Choose 2, 4 or 8 SIDs in the",
+    "toolbar (up to 24 voices).",
+    "",
+    "Instrument library: Load Ins or Library button",
+    "(6581 and 8580 instrument sets, SPACE = preview).",
+    "",
+    "Volume: slider at the bottom right.",
+    NULL
+  };
+
+  key = 0;
+  rawkey = 0;
+  for (;;)
+  {
+    int c, ly;
+    int bx = x + w - 13;
+    int by = y + h - 3;
+
+    printstatus();
+    dlg_drawframe(x, y, w, h, "Welcome");
+    drawimage(x + 3, y + 2, "logo", 12, 6);
+    printtext(x + 18, y + 3, MKCOL(15, C_PANEL), "C64 GrooveGoat " PROGRAMVERSION);
+    printtext(x + 18, y + 4, MKCOL(8, C_PANEL), "by " PROGRAMAUTHOR);
+    printtext(x + 18, y + 6, MKCOL(7, C_PANEL), "Multi-SID music editor for the C64");
+    for (c = 0; c < 5; c++)
+    {
+      printglyph(x + 18 + c * 2, y + 7, MKCOL(C_RB1 + c, C_PANEL), GL_FULL);
+      printglyph(x + 19 + c * 2, y + 7, MKCOL(C_RB1 + c, C_PANEL), GL_FULL);
+    }
+    ly = y + 10;
+    printtext(x + 3, ly++, MKCOL(14, C_PANEL), "Quick start");
+    ly++;
+    for (c = 0; tips[c]; c++)
+      printtext(x + 3, ly++, MKCOL(7, C_PANEL), tips[c]);
+
+    printtext(x + 3, by, MKCOL(showwelcome ? 15 : 8, C_PANEL), showwelcome ? "[x] Show at startup" : "[ ] Show at startup");
+    printtext(bx, by, MKCOL(C_BUTTONTEXT, C_BUTTONHI), "   Close   ");
+
+    fliptoscreen();
+    getkey();
+    if (win_quitted) break;
+    if ((rawkey == KEY_ESC) || (rawkey == KEY_ENTER) || (rawkey == KEY_SPACE)) break;
+    if ((rawkey == KEY_S) || (rawkey == KEY_X)) showwelcome ^= 1;
+    if ((mouseb) && (!prevmouseb))
+    {
+      if ((mousey == by) && (mousex >= bx) && (mousex < bx + 11)) break;
+      if ((mousey == by) && (mousex >= x + 3) && (mousex < x + 22)) showwelcome ^= 1;
+      if ((mousex < x) || (mousex >= x + w) || (mousey < y) || (mousey >= y + h)) break;
+    }
+  }
+  printmainscreen();
+  key = 0;
+  rawkey = 0;
+}
+
+// ---------------------------------------------------------------------------
 // SID settings: addresses used for export and listening
 // ---------------------------------------------------------------------------
 

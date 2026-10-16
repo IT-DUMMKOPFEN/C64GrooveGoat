@@ -51,12 +51,37 @@ FILTERPARAMS filterparams =
 
 extern unsigned residdelay;
 
+static float outputvolume = 0.8f;
+
+// Output volume of the editor in percent (0-100)
+void sid_setvolume(int percent)
+{
+  if (percent < 0) percent = 0;
+  if (percent > 100) percent = 100;
+  outputvolume = percent / 100.0f;
+}
+
+// Soft limiter: linear up to 75% of full scale, then a smooth knee instead
+// of hard clipping
+static inline short softclip(float v)
+{
+  const float knee = 24576.0f;
+  float a = v < 0 ? -v : v;
+  if (a > knee)
+  {
+    a = knee + (32767.0f - knee) * tanhf((a - knee) / (32767.0f - knee));
+    v = v < 0 ? -a : a;
+  }
+  if (v > 32767.0f) v = 32767.0f;
+  if (v < -32768.0f) v = -32768.0f;
+  return (short)v;
+}
+
 void sid_setpanning(int nsids, int stereo)
 {
   int c;
+  // Keep the sum of all SIDs below full scale: every SID gets 1/sqrt(n)
   float mastergain = 1.0f / sqrtf((float)(nsids > 0 ? nsids : 1));
-  if (nsids > 1) mastergain *= 1.25f;
-  if (mastergain > 1.0f) mastergain = 1.0f;
 
   for (c = 0; c < MAX_SIDS; c++)
   {
@@ -75,10 +100,13 @@ void sid_setpanning(int nsids, int stereo)
     {
       float a = (pan + 100) / 200.0f * 1.5707963f;
       // constant power panning, normalized so that centre = 1.0 on both sides
-      pangainl[c] = cosf(a) * 1.41421356f * mastergain;
-      pangainr[c] = sinf(a) * 1.41421356f * mastergain;
-      if (pangainl[c] > mastergain * 1.41421356f) pangainl[c] = mastergain * 1.41421356f;
-      if (pangainr[c] > mastergain * 1.41421356f) pangainr[c] = mastergain * 1.41421356f;
+      float l = cosf(a) * 1.41421356f;
+      float r = sinf(a) * 1.41421356f;
+      // never louder than a centred SID on one side
+      if (l > 1.0f) l = 1.0f;
+      if (r > 1.0f) r = 1.0f;
+      pangainl[c] = l * mastergain;
+      pangainr[c] = r * mastergain;
     }
   }
 }
@@ -276,12 +304,6 @@ int sid_fillbuffer(short *ptr, int samples, unsigned int adparam, int stereo)
 
   if (samples <= 0) return 0;
 
-  if ((sidcount == 1) && (!stereo))
-  {
-    if ((!sid[0]) && (!sidfp[0])) return 0;
-    return fillone(0, ptr, samples, adparam);
-  }
-
   if (sidbufsize < samples)
   {
     free(sidbuf);
@@ -310,25 +332,16 @@ int sid_fillbuffer(short *ptr, int samples, unsigned int adparam, int stereo)
         mix[c * 2 + 1] += v * pangainr[s];
       }
     }
+    float vol = outputvolume;
     if (stereo)
     {
       for (c = 0; c < samples * 2; c++)
-      {
-        float v = mix[c];
-        if (v > 32767.0f) v = 32767.0f;
-        if (v < -32768.0f) v = -32768.0f;
-        ptr[c] = (short)v;
-      }
+        ptr[c] = softclip(mix[c] * vol);
     }
     else
     {
       for (c = 0; c < samples; c++)
-      {
-        float v = (mix[c * 2] + mix[c * 2 + 1]) * 0.5f;
-        if (v > 32767.0f) v = 32767.0f;
-        if (v < -32768.0f) v = -32768.0f;
-        ptr[c] = (short)v;
-      }
+        ptr[c] = softclip((mix[c * 2] + mix[c * 2 + 1]) * 0.5f * vol);
     }
   }
   return samples;

@@ -28,6 +28,7 @@ void sid_init(int speed, unsigned m, unsigned ntsc, unsigned interpolate, unsign
 int sid_fillbuffer(short *ptr, int samples, unsigned int adparam, int stereo);
 unsigned char sid_getorder(unsigned char index, unsigned int adparam);
 int sid_getenv(int s, int v);
+void sid_setvolume(int percent);
 void sid_setpanning(int nsids, int stereo);
 
 #ifndef GSID_C

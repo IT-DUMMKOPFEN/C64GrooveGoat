@@ -1,11 +1,13 @@
 # C64 GrooveGoat
 
 A multi-SID music editor for the Commodore 64 SID chip, by **IT-Dummkopfen**.
-Version 0.1b. Based on [GoatTracker 2](https://sourceforge.net/projects/goattracker2/)
+Version 0.2b. Based on [GoatTracker 2](https://sourceforge.net/projects/goattracker2/)
 by Lasse Öörni (Cadaver) and the
 [GoatTracker 2 "Silver Fork"](https://github.com/joelricci/goattracker2) by Joel Ricci.
 
-![logo](res/logo1024.png)
+<img src="res/logo1024.png" width="160" alt="C64 GrooveGoat logo">
+
+![C64 GrooveGoat playing "Solar Voyage" with 2 SIDs](docs/screenshot.png)
 
 ## Features
 
@@ -26,7 +28,14 @@ by Lasse Öörni (Cadaver) and the
   - music-only PRG and BIN
 - Multi-SID 6502 playroutine (`src/mplayer.s`) that produces exactly the same SID register
   values per SID as the GoatTracker 2 playroutine
-- Built-in manual and keyboard reference, info dialog with all credits
+- Built-in manual and keyboard reference, welcome window, info dialog with all credits
+- Output volume slider (0-100%, default 80%) with a soft limiter against clipping
+- Example song "Solar Voyage" (2 SIDs) in `examples/`
+
+## Downloads
+
+Ready-to-run packages for Windows (x64), macOS (Apple Silicon) and Linux (x86-64) are on the
+[Releases](https://github.com/IT-DUMMKOPFEN/C64GrooveGoat/releases) page.
 
 ## Building
 

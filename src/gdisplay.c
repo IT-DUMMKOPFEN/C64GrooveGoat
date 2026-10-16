@@ -429,33 +429,6 @@ static void drawpatterns(void)
       }
     }
   }
-
-  // Empty space when only one SID is used: logo & quick tips
-  if (vis == 3)
-  {
-    int x = CHN_X(3) + 2;
-    int y = PATT_ROWS_Y + 3;
-    drawimage(x + 10, y, "logo", 12, 6);
-    printtext(x + 6, y + 7, MKCOL(15, C_PANEL), "C64 GrooveGoat " PROGRAMVERSION);
-    printtext(x + 6, y + 8, MKCOL(7, C_PANEL), "by " PROGRAMAUTHOR);
-    for (c = 0; c < 5; c++)
-      printglyph(x + 11 + c * 2, y + 10, MKCOL(C_RB1 + c, C_PANEL), GL_FULL),
-      printglyph(x + 12 + c * 2, y + 10, MKCOL(C_RB1 + c, C_PANEL), GL_FULL);
-    y += 12;
-    printtext(x, y++, MKCOL(14, C_PANEL), "Quick start");
-    printtext(x, y++, MKCOL(7, C_PANEL), "Z-M, Q-P   enter notes (piano layout)");
-    printtext(x, y++, MKCOL(7, C_PANEL), "SPACE      toggle edit/jam mode");
-    printtext(x, y++, MKCOL(7, C_PANEL), "F1 / F4    play / stop");
-    printtext(x, y++, MKCOL(7, C_PANEL), "TAB        next editor panel");
-    printtext(x, y++, MKCOL(7, C_PANEL), "F12        keyboard help");
-    printtext(x, y++, MKCOL(7, C_PANEL), "CTRL/CMD+Z undo");
-    y++;
-    printtext(x, y++, MKCOL(7, C_PANEL), "Need more voices? Choose 2, 4 or 8");
-    printtext(x, y++, MKCOL(7, C_PANEL), "SIDs in the toolbar above.");
-    y++;
-    printtext(x, y++, MKCOL(7, C_PANEL), "Instrument library: Load Ins button");
-    printtext(x, y++, MKCOL(7, C_PANEL), "(6581 and 8580 instrument sets).");
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -796,7 +769,7 @@ static void drawstatusarea(void)
   {
     messagetimer--;
     printglyph(1, MESSAGE_Y, MKCOL(C_RB3, C_HEADER), GL_BULLET);
-    sprintf(buf, "%.*s", MAX_COLUMNS - 4, shownmessage);
+    sprintf(buf, "%.*s", VOL_LABEL_X - 5, shownmessage);
     printtext(3, MESSAGE_Y, MKCOL(C_HEADERTEXT, C_HEADER), buf);
   }
   else
@@ -806,8 +779,28 @@ static void drawstatusarea(void)
     else
       sprintf(buf, "Untitled song");
     printtext(1, MESSAGE_Y, MKCOL(C_HEADERTEXT, C_HEADER), buf);
-    printtext(MAX_COLUMNS - 73, MESSAGE_Y, MKCOL(C_BUTTONHI == C_HEADER ? 7 : C_RB5, C_HEADER),
+    printtext(VOL_LABEL_X - 75, MESSAGE_Y, MKCOL(C_BUTTONHI == C_HEADER ? 7 : C_RB5, C_HEADER),
       "F1 Play  F4 Stop  F5-F8 Editors  F9 Export  F10 Load  F11 Save  F12 Help");
+  }
+
+  // Output volume slider
+  {
+    int filled = (mastervolume + 2) / 5;
+    printglyph(VOL_LABEL_X, MESSAGE_Y, MKCOL(C_HEADERTEXT, C_HEADER), mastervolume ? GL_SPEAKER : GL_MUTE);
+    printtext(VOL_LABEL_X + 1, MESSAGE_Y, MKCOL(C_HEADERTEXT, C_HEADER), " Vol");
+    for (c = 0; c < VOL_W; c++)
+    {
+      int col = c < 12 ? C_RB4 : (c < 17 ? C_RB3 : C_RB1);
+      if ((c == filled - 1) || ((!filled) && (!c)))
+        printglyph(VOL_X + c, MESSAGE_Y, MKCOL(C_HEADERTEXT, C_HEADER), GL_SLIDERKNOB);
+      else if (c < filled)
+        printglyph(VOL_X + c, MESSAGE_Y, MKCOL(col, C_HEADER), GL_SLIDERON);
+      else
+        printglyph(VOL_X + c, MESSAGE_Y, MKCOL(C_PANEL, C_HEADER), GL_SLIDEROFF);
+    }
+    sprintf(buf, "%3d%%", mastervolume);
+    printtext(VOL_X + VOL_W + 1, MESSAGE_Y, MKCOL(C_HEADERTEXT, C_HEADER), buf);
+    ui_addbutton(VOL_LABEL_X, MESSAGE_Y, VOL_W + 6 + 5, BTN_VOLUME, 0);
   }
 }
 

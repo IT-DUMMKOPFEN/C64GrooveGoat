@@ -1,4 +1,4 @@
-C64 GrooveGoat 0.1b
+C64 GrooveGoat 0.2b
 ===================
 
 A multi-SID music editor for the Commodore 64 by IT-Dummkopfen,
@@ -48,8 +48,8 @@ Linux (x86-64)
 First steps
 -----------
 
-1. Open examples/groovegoat_demo_4sid.ggt (Open button or F10) and press F1
-   to hear four SIDs (12 voices) playing together. F4 stops.
+1. Open examples/solar_voyage_2sid.sng (Open button or F10) and press F1
+   to hear two SIDs (6 voices) playing together. F4 stops.
 2. Click "New" and choose the number of SIDs for your own song.
 3. Click "Library" in the instrument panel to pick instruments; SPACE plays a
    preview, ENTER loads.
@@ -66,7 +66,7 @@ Files in this package
 
   instruments/   instrument library ("SIDGen instruments for GoatTracker 2"),
                  6581/ for the old and 8580/ for the new SID chip
-  examples/      example songs: the C64 GrooveGoat demo song (4 SIDs, also as
+  examples/      example songs: "Solar Voyage" by IT-Dummkopfen (2 SIDs, also as
                  .sid and runnable .prg) and the GoatTracker 2 example songs
   Manual.txt     the manual (also built into the program)
   CREDITS.txt    credits and licenses of the used software

@@ -2,7 +2,7 @@
 #define GOATTRK2_H
 
 #define PROGRAMNAME "C64 GrooveGoat"
-#define PROGRAMVERSION "0.1b"
+#define PROGRAMVERSION "0.2b"
 #define PROGRAMAUTHOR "IT-Dummkopfen"
 #define PATCHNAME "based on GoatTracker v2.76 (Silver Fork)"
 
@@ -112,6 +112,8 @@ extern unsigned themesetting;
 #endif
 
 extern char statusmessage[256];
+extern unsigned mastervolume;
+extern unsigned showwelcome;
 extern int chnview;
 extern int ordchnview;
 
@@ -145,6 +147,7 @@ void exportsid(void);
 void exportprg(void);
 void showinfo(void);
 void showmanual(void);
+void showwelcomewindow(void);
 void showsidinfo(void);
 void helpscreenshot(const char *filename);
 int calcsonglength(int subtune);

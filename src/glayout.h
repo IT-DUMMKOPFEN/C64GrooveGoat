@@ -17,7 +17,9 @@
 #define PATT_W 94
 #define VISIBLECHANNELS 6
 #define CHN_W 15                      // width of one channel column
-#define CHN_X(i) (PATT_X + 2 + (i) * CHN_W)
+// With one SID the three channels are centred in the pattern area
+#define CHN_OFS ((numchannels <= 3) ? (PATT_W - 3 * CHN_W) / 2 - 1 : 0)
+#define CHN_X(i) (PATT_X + 2 + CHN_OFS + (i) * CHN_W)
 
 // Right panel
 #define RP_X 95
@@ -48,5 +50,10 @@
 #define STATUS_Y 47
 #define POSITIONS_Y 48
 #define MESSAGE_Y 49
+
+// Output volume slider at the bottom right (20 steps of 5%)
+#define VOL_W 20
+#define VOL_X (MAX_COLUMNS - 1 - 5 - VOL_W)
+#define VOL_LABEL_X (VOL_X - 6)
 
 #endif
