@@ -145,9 +145,12 @@ def glyph_custom(code, cw, ch):
         d.rectangle([W * 0.08, H * 0.36, W * 0.92, H * 0.74], fill=255)
         d.rectangle([W * 0.08, H * 0.30, W * 0.45, H * 0.38], fill=255)
     elif name == 'DISK':
-        d.rectangle([W * 0.1, H * 0.3, W * 0.9, H * 0.76], fill=255)
-        d.rectangle([W * 0.28, H * 0.3, W * 0.72, H * 0.44], fill=0)
-        d.rectangle([W * 0.30, H * 0.56, W * 0.70, H * 0.76], fill=0)
+        # floppy disk: body with a cut corner, shutter notch at the top and
+        # a label window that does not reach the bottom edge
+        d.polygon([(W * 0.06, H * 0.28), (W * 0.74, H * 0.28), (W * 0.94, H * 0.38),
+                   (W * 0.94, H * 0.76), (W * 0.06, H * 0.76)], fill=255)
+        d.rectangle([W * 0.26, H * 0.28, W * 0.62, H * 0.40], fill=0)
+        d.rectangle([W * 0.24, H * 0.53, W * 0.76, H * 0.69], fill=0)
     elif name == 'CHIP':
         d.rectangle([W * 0.22, H * 0.28, W * 0.78, H * 0.72], fill=255)
         for k in range(4):

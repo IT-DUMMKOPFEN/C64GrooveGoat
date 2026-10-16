@@ -33,6 +33,7 @@ char win_dropfile[1024] = {0};
 // maintained by the renderer in gconsole.c
 int plat_dstx = 0, plat_dsty = 0, plat_dstw = 1, plat_dsth = 1;
 int plat_fbw = 1, plat_fbh = 1;
+static int plat_basew = 1, plat_baseh = 1;
 
 static Uint32 lasttime = 0;
 static int framecounter = 0;
@@ -132,6 +133,8 @@ int plat_init(const char *title, int fbwidth, int fbheight)
 
   plat_fbw = fbwidth;
   plat_fbh = fbheight;
+  plat_basew = fbwidth;
+  plat_baseh = fbheight;
 
   // Fit the initial window into the usable desktop area
   if (SDL_GetDisplayUsableBounds(0, &usable) == 0)
@@ -233,9 +236,12 @@ void plat_mapmouse(int wx, int wy, int *fx, int *fy)
 int plat_getscale(void)
 {
   int outw = 0, outh = 0;
+  if (getenv("GG_SCALE")) return atoi(getenv("GG_SCALE")) >= 2 ? 2 : 1;
   if (!plat_renderer) return 1;
   SDL_GetRendererOutputSize(plat_renderer, &outw, &outh);
-  if ((outw >= plat_fbw * 3 / 2) && (outh >= plat_fbh * 3 / 2)) return 2;
+  // Use the sharp double size font when the output has at least 1.5 times
+  // the pixels of the normal size screen (Retina / HiDPI or big windows)
+  if ((outw >= plat_basew * 3 / 2) && (outh >= plat_baseh * 3 / 2)) return 2;
   return 1;
 }
 
