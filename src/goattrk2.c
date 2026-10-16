@@ -1,5 +1,7 @@
 //
-// GOATTRACKER v2.76
+// C64 GrooveGoat 0.1b
+// A multi-SID (1/2/4/8 SIDs) music editor for the Commodore 64,
+// based on GoatTracker v2.76 (Silver Fork) by Lasse Öörni and contributors.
 //
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -20,13 +22,13 @@
 
 #ifdef __WIN32__
 #include <windows.h>
+#include <shlobj.h>
 #endif
 
 #include "goattrk2.h"
-#include "bme.h"
+#include "gres.h"
 
 int menu = 0;
-//int editorInfo.editmode = EDIT_PATTERN;
 int recordmode = 1;
 int followplay = 0;
 int hexnybble = -1;
@@ -36,25 +38,16 @@ int defaultpatternlength = 64;
 int cursorflash = 0;
 int cursorcolortable[] = { 1,2,7,2 };
 int exitprogram = 0;
-//int eacolumn = 0;
 int eamode = 0;
 
 unsigned keypreset = KEY_TRACKER;
 unsigned playerversion = 0;
-int fileformat = FORMAT_PRG;
+int fileformat = FORMAT_SID;
 int zeropageadr = 0xfc;
 int playeradr = 0x1000;
-//unsigned editorInfo.sidmodel = 0;
-//unsigned multiplier = 1;
-//unsigned adparam = 0x0f00;
-//unsigned ntsc = 0;
 unsigned patterndispmode = 0;
 unsigned sidaddress = 0xd400;
-//unsigned finevibrato = 1;
-//unsigned optimizepulse = 1;
-//unsigned optimizerealtime = 1;
 unsigned customclockrate = 0;
-//unsigned usefinevib = 0;
 unsigned b = DEFAULTBUF;
 unsigned mr = DEFAULTMIXRATE;
 unsigned writer = 0;
@@ -64,13 +57,16 @@ unsigned interpolate = 3;
 unsigned residdelay = 0;
 unsigned hardsidbufinteractive = 20;
 unsigned hardsidbufplayback = 400;
+unsigned stereomode = 1;
+unsigned themesetting = THEME_NIGHT;
+unsigned prgfrontend = 1;
 float basepitch = 0.0f;
 float equaldivisionsperoctave = 12.0f;
 int tuningcount = 0;
 double tuning[96];
-extern unsigned bigwindow;
 
 char configbuf[MAX_PATHNAME];
+char configfilename[MAX_PATHNAME];
 char loadedsongfilename[MAX_FILENAME];
 char songfilename[MAX_FILENAME];
 char songfilter[MAX_FILENAME];
@@ -79,8 +75,9 @@ char instrfilename[MAX_FILENAME];
 char instrfilter[MAX_FILENAME];
 char instrpath[MAX_PATHNAME];
 char packedpath[MAX_PATHNAME];
+char appdir[MAX_PATHNAME];
+char instrlibpath[MAX_PATHNAME];
 
-extern char *notename[];
 char *programname = PROGRAMNAME;
 char *patchname = PATCHNAME;
 char specialnotenames[186];
@@ -92,1663 +89,2012 @@ char textbuffer[MAX_PATHNAME];
 unsigned char hexkeytbl[] = { '0', '1', '2', '3', '4', '5', '6', '7',
   '8', '9', 'a', 'b', 'c', 'd', 'e', 'f' };
 
-extern unsigned char datafile[];
-
-char* usage[] = {
-	"Usage: goattrk2 [songname] [options]",
-	"Options:",
-	"-Axx Set ADSR parameter for hardrestart in hex. DEFAULT=0F00",
-	"-Bxx Set sound buffer length in milliseconds DEFAULT=100",
-	"-Cxx Use CatWeasel MK3 PCI SID (0 = off, 1 = on)",
-	"-Dxx Pattern row display (0 = decimal, 1 = hex, 2 = decimal w/dots, 3 = hex w/dots)",
-	"-Exx Set emulated SID model (0 = 6581 1 = 8580) DEFAULT=8580",
-	"-Fxx Set custom SID clock cycles per second (0 = use PAL/NTSC default)",
-	"-Gxx Set pitch of A-4 in Hz (0 = use default frequencytable, close to 440Hz)",
-	"-Hxx Use HardSID (0 = off, 1 = HardSID ID0 2 = HardSID ID1 etc.)",
-	"-Ixx Set reSID interpolation (0 = off, 1 = on, 2 = distortion, 3 = distortion & on) DEFAULT=3",
-	"-Jxx Set special note names (2 chars for every note in an octave/cycle, e.g. C-DbD-EbE-F-GbG-AbA-BbB-)",
-	"-Kxx Note-entry mode (0 = Protracker, 1 = DMC, 2 = Janko) DEFAULT=Protracker",
-	"-Lxx SID memory location in hex. DEFAULT=D400",
-	"-Mxx Set sound mixing rate DEFAULT=44100",
-	"-Oxx Set pulseoptimization/skipping (0 = off, 1 = on) DEFAULT=on",
-	"-Qxx Set equal divisions per octave (12 = default, 8.2019143 = Bohlen-Pierce)",
-	"-Rxx Set realtime-effect optimization/skipping (0 = off, 1 = on) DEFAULT=on",
-	"-Sxx Set speed multiplier (0 for 25Hz, 1 for 1x, 2 for 2x etc.)",
-	"-Txx Set HardSID interactive mode sound buffer length in milliseconds DEFAULT=20, max.buffering=0",
-	"-Uxx Set HardSID playback mode sound buffer length in milliseconds DEFAULT=400, max.buffering=0",
-	"-Vxx Set finevibrato conversion (0 = off, 1 = on) DEFAULT=on",
-	"-Xxx Set window type (0 = window, 1 = fullscreen) DEFAULT=window",
-	"-Yxx Path to a Scala tuning file .scl",
-	"-Zxx Set random reSID write delay in cycles (0 = off) DEFAULT=off",
-	"-wxx Set window scale factor (1 = no scaling, 2 to 4 = 2 to 4 times bigger window) DEFAULT=1",
-	"-N   Use NTSC timing",
-	"-P   Use PAL timing (DEFAULT)",
-	"-W   Write sound output to a file SIDAUDIO.RAW",
-	"-?   Show this info again",
-	"-??  Standalone online help window",
+static char *usage[] = {
+  "Usage: groovegoat [songname] [options]",
+  "Options:",
+  "-Axx Set ADSR parameter for hardrestart in hex. DEFAULT=0F00",
+  "-Bxx Set sound buffer length in milliseconds DEFAULT=100",
+  "-Cxx Use CatWeasel MK3 PCI SID (0 = off, 1 = on)",
+  "-Dxx Pattern row display (0 = decimal, 1 = hex, 2 = decimal w/dots, 3 = hex w/dots)",
+  "-Exx Set emulated SID model (0 = 6581 1 = 8580) DEFAULT=8580",
+  "-Fxx Set custom SID clock cycles per second (0 = use PAL/NTSC default)",
+  "-Gxx Set pitch of A-4 in Hz (0 = use default frequencytable, close to 440Hz)",
+  "-Hxx Use HardSID (0 = off, 1 = HardSID ID0 2 = HardSID ID1 etc.)",
+  "-Ixx Set reSID interpolation (0 = off, 1 = on, 2 = distortion, 3 = distortion & on) DEFAULT=3",
+  "-Jxx Set special note names (2 chars for every note in an octave/cycle, e.g. C-DbD-EbE-F-GbG-AbA-BbB-)",
+  "-Kxx Note-entry mode (0 = Protracker, 1 = DMC, 2 = Janko) DEFAULT=Protracker",
+  "-Lxx SID memory location in hex. DEFAULT=D400",
+  "-Mxx Set sound mixing rate DEFAULT=44100",
+  "-Oxx Set pulseoptimization/skipping (0 = off, 1 = on) DEFAULT=on",
+  "-Qxx Set equal divisions per octave (12 = default, 8.2019143 = Bohlen-Pierce)",
+  "-Rxx Set realtime-effect optimization/skipping (0 = off, 1 = on) DEFAULT=on",
+  "-Sxx Set speed multiplier (0 for 25Hz, 1 for 1x, 2 for 2x etc.)",
+  "-Vxx Set finevibrato conversion (0 = off, 1 = on) DEFAULT=on",
+  "-Xxx Set window type (0 = window, 1 = fullscreen) DEFAULT=window",
+  "-Yxx Path to a Scala tuning file .scl",
+  "-Zxx Set random reSID write delay in cycles (0 = off) DEFAULT=off",
+  "-Txx Set theme (0 = night, 1 = day)",
+  "-N   Use NTSC timing",
+  "-P   Use PAL timing (DEFAULT)",
+  "-W   Write sound output to a file SIDAUDIO.RAW",
+  "-?   Show this info again",
+  "--export=FILE      Export the song given on the command line and exit",
+  "--format=FMT       Export format: sid (default), prg (runnable), prgmusic, bin",
+  "--address=XXXX     Player address for the export (hex)",
+  NULL
 };
 
-int usagelen = (sizeof usage / sizeof usage[0]);
+static void initdirectories(void);
+static void loadconfig(void);
+static void saveconfig(void);
+static void handledrop(void);
+static void updatetitle(void);
+static void runautotest(void);
+
+static char exportname[MAX_PATHNAME];
+static int exportformat = EXP_SID;
+static unsigned exportbase = 0;
+static int exportsids = 0;
 
 int main(int argc, char **argv)
 {
-	char filename[MAX_PATHNAME];
-	FILE *configfile;
-	int c, d;
+  int c, d;
 
-	// DEFAULT SETTINGS
-	editorInfo.adparam = 0x0f00;
-	editorInfo.editmode = EDIT_PATTERN;
-	editorInfo.esmarkchn = -1;
-	editorInfo.epoctave = 2;
-	editorInfo.epmarkchn = -1;
-	editorInfo.etmarknum = -1;
-	editorInfo.etlock = 1;
-	editorInfo.ntsc = 0;
-	editorInfo.multiplier = 1;
-	editorInfo.sidmodel = 1;
-	editorInfo.finevibrato = 1;
-	editorInfo.optimizepulse = 1;
-	editorInfo.optimizerealtime = 1;
+  // DEFAULT SETTINGS
+  editorInfo.adparam = 0x0f00;
+  editorInfo.editmode = EDIT_PATTERN;
+  editorInfo.esmarkchn = -1;
+  editorInfo.epoctave = 2;
+  editorInfo.epmarkchn = -1;
+  editorInfo.etmarknum = -1;
+  editorInfo.etlock = 1;
+  editorInfo.ntsc = 0;
+  editorInfo.multiplier = 1;
+  editorInfo.sidmodel = 1;
+  editorInfo.finevibrato = 1;
+  editorInfo.optimizepulse = 1;
+  editorInfo.optimizerealtime = 1;
 
-	programname += sizeof "$VER:";
-	// Open datafile
-	io_openlinkeddatafile(datafile);
+  specialnotenames[0] = 0;
+  scalatuningfilepath[0] = 0;
 
-	// Load configuration
+  initdirectories();
+  loadconfig();
+
+  // Init pathnames
+  initpaths();
+
+  // Scan command line
+  for (c = 1; c < argc; c++)
+  {
 #ifdef __WIN32__
-	GetModuleFileName(NULL, filename, MAX_PATHNAME);
-	filename[strlen(filename) - 3] = 'c';
-	filename[strlen(filename) - 2] = 'f';
-	filename[strlen(filename) - 1] = 'g';
-#elif __amigaos__
-	strcpy(filename, "PROGDIR:goattrk2.cfg");
+    if ((argv[c][0] == '-') || (argv[c][0] == '/'))
 #else
-	strcpy(filename, getenv("HOME"));
-	strcat(filename, "/.goattrk/goattrk2.cfg");
+    if (argv[c][0] == '-')
 #endif
-	specialnotenames[0] = 0;
-	scalatuningfilepath[0] = 0;
-	configfile = fopen(filename, "rt");
-	if (configfile)
-	{
-		getparam(configfile, &b);
-		getparam(configfile, &mr);
-		getparam(configfile, &hardsid);
-		getparam(configfile, &editorInfo.sidmodel);
-		getparam(configfile, &editorInfo.ntsc);
-		getparam(configfile, (unsigned *)&fileformat);
-		getparam(configfile, (unsigned *)&playeradr);
-		getparam(configfile, (unsigned *)&zeropageadr);
-		getparam(configfile, &playerversion);
-		getparam(configfile, &keypreset);
-		getparam(configfile, (unsigned *)&stepsize);
-		getparam(configfile, &editorInfo.multiplier);
-		getparam(configfile, &catweasel);
-		getparam(configfile, &editorInfo.adparam);
-		getparam(configfile, &interpolate);
-		getparam(configfile, &patterndispmode);
-		getparam(configfile, &sidaddress);
-		getparam(configfile, &editorInfo.finevibrato);
-		getparam(configfile, &editorInfo.optimizepulse);
-		getparam(configfile, &editorInfo.optimizerealtime);
-		getparam(configfile, &residdelay);
-		getparam(configfile, &customclockrate);
-		getparam(configfile, &hardsidbufinteractive);
-		getparam(configfile, &hardsidbufplayback);
-		getfloatparam(configfile, &filterparams.distortionrate);
-		getfloatparam(configfile, &filterparams.distortionpoint);
-		getfloatparam(configfile, &filterparams.distortioncfthreshold);
-		getfloatparam(configfile, &filterparams.type3baseresistance);
-		getfloatparam(configfile, &filterparams.type3offset);
-		getfloatparam(configfile, &filterparams.type3steepness);
-		getfloatparam(configfile, &filterparams.type3minimumfetresistance);
-		getfloatparam(configfile, &filterparams.type4k);
-		getfloatparam(configfile, &filterparams.type4b);
-		getfloatparam(configfile, &filterparams.voicenonlinearity);
-		getparam(configfile, (unsigned*)&win_fullscreen);
-		getparam(configfile, &bigwindow);
-		getfloatparam(configfile, &basepitch);
-		getfloatparam(configfile, &equaldivisionsperoctave);
-		getstringparam(configfile, specialnotenames);
-		getstringparam(configfile, scalatuningfilepath);
-		fclose(configfile);
-	}
+    {
+      int y;
+      switch (argv[c][1])
+      {
+      case '-':
+        if (!strncmp(argv[c], "--export=", 9))
+        {
+          strncpy(exportname, argv[c] + 9, MAX_PATHNAME - 1);
+          break;
+        }
+        if (!strncmp(argv[c], "--format=", 9))
+        {
+          const char *f = argv[c] + 9;
+          if (!strcmp(f, "sid")) exportformat = EXP_SID;
+          else if (!strcmp(f, "prg")) exportformat = EXP_PRGPLAYER;
+          else if (!strcmp(f, "prgmusic")) exportformat = EXP_PRG;
+          else if (!strcmp(f, "bin")) exportformat = EXP_BIN;
+          break;
+        }
+        if (!strncmp(argv[c], "--address=", 10))
+        {
+          sscanf(argv[c] + 10, "%x", &exportbase);
+          break;
+        }
+        if (!strncmp(argv[c], "--sids=", 7))
+        {
+          exportsids = atoi(argv[c] + 7);
+          break;
+        }
+        if (!strncmp(argv[c], "--options=", 10))
+        {
+          sscanf(argv[c] + 10, "%u", &playerversion);
+          break;
+        }
+        if (strcmp(argv[c], "--help"))
+          break;
+        // fallthrough
+      case '?':
+        for (y = 0; usage[y]; ++y)
+          printf("%s\n", usage[y]);
+        return EXIT_SUCCESS;
 
-	// Init pathnames
-	initpaths();
+      case 'Z': sscanf(&argv[c][2], "%u", &residdelay); break;
+      case 'A': sscanf(&argv[c][2], "%x", &editorInfo.adparam); break;
+      case 'S': sscanf(&argv[c][2], "%u", &editorInfo.multiplier); break;
+      case 'B': sscanf(&argv[c][2], "%u", &b); break;
+      case 'D': sscanf(&argv[c][2], "%u", &patterndispmode); break;
+      case 'E': sscanf(&argv[c][2], "%u", &editorInfo.sidmodel); break;
+      case 'I': sscanf(&argv[c][2], "%u", &interpolate); break;
+      case 'K': sscanf(&argv[c][2], "%u", &keypreset); break;
+      case 'L': sscanf(&argv[c][2], "%x", &sidaddress); break;
+      case 'N': editorInfo.ntsc = 1; customclockrate = 0; break;
+      case 'P': editorInfo.ntsc = 0; customclockrate = 0; break;
+      case 'F': sscanf(&argv[c][2], "%u", &customclockrate); break;
+      case 'M': sscanf(&argv[c][2], "%u", &mr); break;
+      case 'O': sscanf(&argv[c][2], "%u", &editorInfo.optimizepulse); break;
+      case 'R': sscanf(&argv[c][2], "%u", &editorInfo.optimizerealtime); break;
+      case 'H': sscanf(&argv[c][2], "%u", &hardsid); break;
+      case 'V': sscanf(&argv[c][2], "%u", &editorInfo.finevibrato); break;
+      case 'W': writer = 1; break;
+      case 'X': sscanf(&argv[c][2], "%d", &win_fullscreen); break;
+      case 'C': sscanf(&argv[c][2], "%u", &catweasel); break;
+      case 'G': sscanf(&argv[c][2], "%f", &basepitch); break;
+      case 'Q': sscanf(&argv[c][2], "%f", &equaldivisionsperoctave); break;
+      case 'J': sscanf(&argv[c][2], "%185s", specialnotenames); break;
+      case 'Y': sscanf(&argv[c][2], "%255s", scalatuningfilepath); break;
+      case 'T': sscanf(&argv[c][2], "%u", &themesetting); break;
+      }
+    }
+    else
+    {
+      // macOS passes -psn_ arguments when started from Finder; ignore others too
+      char startpath[MAX_PATHNAME];
 
-	// Scan command line
-	for (c = 1; c < argc; c++)
-	{
-#ifdef __WIN32__
-		if ((argv[c][0] == '-') || (argv[c][0] == '/'))
-#else
-		if (argv[c][0] == '-')
-#endif
-		{
-			int y;
-			switch (argv[c][1]) //switch (toupper(argv[c][1]))
-			{
-			case '-':
-				if (strcmp(argv[c], "--help"))
-					break;
-			case '?':
-				if (argv[c][2] == '?')
-				{
-					if (!initscreen())
-						return EXIT_FAILURE;
-					onlinehelp(1, 0);
-					return EXIT_SUCCESS;
-				}
-#ifdef __WIN32__
-				if (!initscreen())
-					return EXIT_FAILURE;
-				for (y = 0; y < usagelen; ++y)
-					printtext(0, y, 15, usage[y]);
-				waitkeynoupdate();
-#else
-				for (y = 0; y < usagelen; ++y)
-					printf("%s\n", usage[y]);
-#endif
-				return EXIT_SUCCESS;
+      if (strlen(argv[c]) >= MAX_PATHNAME) continue;
+      strncpy(songfilename, argv[c], MAX_FILENAME - 1);
+      songfilename[MAX_FILENAME - 1] = 0;
+      for (d = strlen(argv[c]) - 1; d >= 0; d--)
+      {
+        if ((argv[c][d] == '/') || (argv[c][d] == '\\'))
+        {
+          strcpy(startpath, argv[c]);
+          startpath[d + 1] = 0;
+          if (!chdir(startpath))
+          {
+            getcwd(songpath, MAX_PATHNAME);
+            strcpy(packedpath, songpath);
+          }
+          strncpy(songfilename, &argv[c][d + 1], MAX_FILENAME - 1);
+          break;
+        }
+      }
+    }
+  }
 
-			case 'Z':
-				sscanf(&argv[c][2], "%u", &residdelay);
-				break;
+  // Validate parameters
+  editorInfo.sidmodel &= 1;
+  editorInfo.adparam &= 0xffff;
+  zeropageadr &= 0xff;
+  playeradr &= 0xff00;
+  sidaddress &= 0xffff;
+  if (!stepsize) stepsize = 4;
+  if (editorInfo.multiplier > 16) editorInfo.multiplier = 16;
+  if (keypreset > 2) keypreset = 0;
+  if (editorInfo.finevibrato > 1) editorInfo.finevibrato = 1;
+  if (editorInfo.optimizepulse > 1) editorInfo.optimizepulse = 1;
+  if (editorInfo.optimizerealtime > 1) editorInfo.optimizerealtime = 1;
+  if (residdelay > 63) residdelay = 63;
+  if (customclockrate < 100) customclockrate = 0;
+  if (fileformat > FORMAT_BIN) fileformat = FORMAT_SID;
+  themesetting &= 1;
+  stereomode &= 1;
 
-			case 'A':
-				sscanf(&argv[c][2], "%x", &editorInfo.adparam);
-				break;
+  // Read Scala tuning file
+  if ((scalatuningfilepath[0]) && (scalatuningfilepath[0] != '0') && (scalatuningfilepath[1] != '\0'))
+    readscalatuningfile();
 
-			case 'S':
-				sscanf(&argv[c][2], "%u", &editorInfo.multiplier);
-				break;
+  // Calculate frequencytable if necessary
+  if (basepitch < 0.0f)
+    basepitch = 0.0f;
+  if (basepitch > 0.0f)
+    calculatefreqtable();
 
-			case 'B':
-				sscanf(&argv[c][2], "%u", &b);
-				break;
+  // Set special note names
+  if (specialnotenames[1] != '\0')
+    setspecialnotenames();
 
-			case 'D':
-				sscanf(&argv[c][2], "%u", &patterndispmode);
-				break;
+  // Command line export without a window
+  if (exportname[0])
+  {
+    int ok;
+    initchannels();
+    clearsong(1, 1, 1, 1, 1);
+    if (strlen(songfilename)) loadsong();
+    if (exportsids) setnumsids(exportsids);
+    // Test helpers: duplicate SID 1's orderlists to all SIDs, set addresses
+    if (getenv("GG_DUPSIDS"))
+    {
+      int sn, ch;
+      for (sn = 0; sn < MAX_SONGS; sn++)
+      {
+        if (!songlen[sn][0]) continue;
+        for (ch = 3; ch < numchannels; ch++)
+        {
+          memcpy(songorder[sn][ch], songorder[sn][ch % 3], MAX_SONGLEN + 2);
+          songlen[sn][ch] = songlen[sn][ch % 3];
+        }
+      }
+      countpatternlengths();
+    }
+    if (getenv("GG_SIDADDR"))
+    {
+      const char *sa = getenv("GG_SIDADDR");
+      int k = 0;
+      while ((*sa) && (k < MAX_SIDS))
+      {
+        sidaddr[k++] = strtoul(sa, (char **)&sa, 16);
+        if (*sa == ',') sa++;
+      }
+    }
+    if (getenv("GG_TRACE"))
+    {
+      // Test helper: print the editor playroutine's SID registers per frame
+      int frames = atoi(getenv("GG_TRACE"));
+      int f, sn, r;
+      initsong(getenv("GG_SUBTUNE") ? atoi(getenv("GG_SUBTUNE")) : 0, PLAY_BEGINNING);
+      for (f = 0; f < frames; f++)
+      {
+        playroutine();
+        printf("%04d:", f);
+        for (sn = 0; sn < numsids; sn++)
+        {
+          printf(" ");
+          for (r = 0; r < 25; r++) printf("%02x", sidreg[sn][r]);
+        }
+        printf("\n");
+      }
+      return EXIT_SUCCESS;
+    }
+    ok = commandlineexport(exportname, exportformat, exportbase ? (int)(exportbase & 0xff00) : playeradr);
+    return ok ? EXIT_SUCCESS : EXIT_FAILURE;
+  }
 
-			case 'E':
-				sscanf(&argv[c][2], "%u", &editorInfo.sidmodel);
-				break;
+  // Set screenmode
+  theme = themesetting;
+  if (!initscreen())
+  {
+    fprintf(stderr, "Could not open the program window.\n");
+    return EXIT_FAILURE;
+  }
 
-			case 'I':
-				sscanf(&argv[c][2], "%u", &interpolate);
-				break;
+  // Reset channels/song
+  initchannels();
+  clearsong(1, 1, 1, 1, 1);
 
-			case 'K':
-				sscanf(&argv[c][2], "%u", &keypreset);
-				break;
+  undoInitAllAreas();
 
-			case 'L':
-				sscanf(&argv[c][2], "%x", &sidaddress);
-				break;
+  // Init sound
+  if (!sound_init(b, mr, writer, hardsid, editorInfo.sidmodel, editorInfo.ntsc, editorInfo.multiplier, catweasel, interpolate, customclockrate))
+  {
+    const char *lines[2] = {"Sound initialization failed.", "The editor works, but you will not hear anything."};
+    dlg_message("Sound", lines, 2);
+  }
 
-			case 'N':
-				editorInfo.ntsc = 1;
-				customclockrate = 0;
-				break;
+  // Load song if applicable
+  if (strlen(songfilename))
+  {
+    loadsong();
+    do_sound_init();
+    undoInitAllAreas();
+  }
+  else
+    setstatusmessage("Welcome to C64 GrooveGoat " PROGRAMVERSION " - press F12 or click Help for the keyboard reference");
 
-			case 'P':
-				editorInfo.ntsc = 0;
-				customclockrate = 0;
-				break;
+  if (getenv("GG_AUTOTEST"))
+  {
+    runautotest();
+    return EXIT_SUCCESS;
+  }
 
-			case 'F':
-				sscanf(&argv[c][2], "%u", &customclockrate);
-				break;
+  // Start editor mainloop
+  printmainscreen();
+  while (!exitprogram)
+  {
+    waitkeymouse();
+    handledrop();
+    docommand();
+    updatetitle();
+  }
 
-			case 'M':
-				sscanf(&argv[c][2], "%u", &mr);
-				break;
+  // Shutdown sound output now
+  sound_uninit();
+  themesetting = theme;
+  saveconfig();
 
-			case 'O':
-				sscanf(&argv[c][2], "%u", &editorInfo.optimizepulse);
-				break;
-
-			case 'R':
-				sscanf(&argv[c][2], "%u", &editorInfo.optimizerealtime);
-				break;
-
-			case 'H':
-				sscanf(&argv[c][2], "%u", &hardsid);
-				break;
-
-			case 'V':
-				sscanf(&argv[c][2], "%u", &editorInfo.finevibrato);
-				break;
-
-			case 'T':
-				sscanf(&argv[c][2], "%u", &hardsidbufinteractive);
-				break;
-
-			case 'U':
-				sscanf(&argv[c][2], "%u", &hardsidbufplayback);
-				break;
-
-			case 'W':
-				writer = 1;
-				break;
-
-			case 'X':
-				sscanf(&argv[c][2], "%u", &win_fullscreen);
-				break;
-
-			case 'C':
-				sscanf(&argv[c][2], "%u", &catweasel);
-				break;
-
-			case 'G':
-				sscanf(&argv[c][2], "%f", &basepitch);
-				break;
-
-			case 'Q':
-				sscanf(&argv[c][2], "%f", &equaldivisionsperoctave);
-				break;
-
-			case 'J':
-				sscanf(&argv[c][2], "%s", specialnotenames);
-				break;
-
-			case 'Y':
-				sscanf(&argv[c][2], "%s", scalatuningfilepath);
-				break;
-
-			case 'w':
-				sscanf(&argv[c][2], "%u", &bigwindow);
-				break;
-			}
-		}
-		else
-		{
-			char startpath[MAX_PATHNAME];
-
-			strcpy(songfilename, argv[c]);
-			for (d = strlen(argv[c]) - 1; d >= 0; d--)
-			{
-				if ((argv[c][d] == '/') || (argv[c][d] == '\\'))
-				{
-					strcpy(startpath, argv[c]);
-					startpath[d + 1] = 0;
-					chdir(startpath);
-					initpaths();
-					strcpy(songfilename, &argv[c][d + 1]);
-					break;
-				}
-			}
-		}
-	}
-
-	// Validate parameters
-	editorInfo.sidmodel &= 1;
-	editorInfo.adparam &= 0xffff;
-	zeropageadr &= 0xff;
-	playeradr &= 0xff00;
-	sidaddress &= 0xffff;
-	if (!stepsize) stepsize = 4;
-	if (editorInfo.multiplier > 16) editorInfo.multiplier = 16;
-	if (keypreset > 2) keypreset = 0;
-
-	// removing 'usefinevib' since it's not actually being used and is
-	// not being saved. Code suggests FV not to be used for multi-speed. 
-	// Unfinished implementation?  /RaveGuru
-	// if ((editorInfo.finevibrato == 1) && (editorInfo.multiplier < 2)) editorInfo.usefinevib = 1;
-	
-	if (editorInfo.finevibrato > 1) editorInfo.finevibrato = 1;
-	if (editorInfo.optimizepulse > 1) editorInfo.optimizepulse = 1;
-	if (editorInfo.optimizerealtime > 1) editorInfo.optimizerealtime = 1;
-	if (residdelay > 63) residdelay = 63;
-	if (customclockrate < 100) customclockrate = 0;
-	if (bigwindow < 1) bigwindow = 1;
-	if (bigwindow > 4) bigwindow = 4;
-
-	// Read Scala tuning file
-	if (scalatuningfilepath[0] != '0' && scalatuningfilepath[1] != '\0')
-	{
-		readscalatuningfile();
-	}
-
-	// Calculate frequencytable if necessary
-	if (basepitch < 0.0f)
-		basepitch = 0.0f;
-	if (basepitch > 0.0f)
-		calculatefreqtable();
-
-	// Set special note names
-	if (specialnotenames[1] != '\0')
-	{
-		setspecialnotenames();
-	}
-
-	// Set screenmode
-	if (!initscreen())
-		return EXIT_FAILURE;
-
-	// Reset channels/song
-	initchannels();
-	clearsong(1, 1, 1, 1, 1);
-
-	undoInitAllAreas();	// Must be called after clearSong. Creates undo buffers, containing duplicates of each GT area.
-
-	// Init sound
-	if (!sound_init(b, mr, writer, hardsid, editorInfo.sidmodel, editorInfo.ntsc, editorInfo.multiplier, catweasel, interpolate, customclockrate))
-	{
-		printtextc(MAX_ROWS / 2 - 1, 15, "Sound init failed. Press any key to run without sound (notice that song timer won't start)");
-		waitkeynoupdate();
-	}
-
-	// Load song if applicable
-	if (strlen(songfilename))
-	{
-		loadsong();
-		undoInitAllAreas();	// recreate undo buffers, using the loaded song as the original info
-	}
-
-	// Start editor mainloop
-	printmainscreen();
-	while (!exitprogram)
-	{
-		waitkeymouse();
-		docommand();
-	}
-
-	// Shutdown sound output now
-	sound_uninit();
-
-	// Save configuration
-#ifndef __WIN32__
-#ifdef __amigaos__
-	strcpy(filename, "PROGDIR:goattrk2.cfg");
-#else
-	strcpy(filename, getenv("HOME"));
-	strcat(filename, "/.goattrk");
-	mkdir(filename, S_IRUSR | S_IWUSR | S_IXUSR);
-	strcat(filename, "/goattrk2.cfg");
-#endif
-#endif
-	configfile = fopen(filename, "wt");
-	if (configfile)
-	{
-		fprintf(configfile, ";------------------------------------------------------------------------------\n"
-			";GT2 config file. Rows starting with ; are comments. Hexadecimal parameters are\n"
-			";to be preceded with $ and decimal parameters with nothing.                    \n"
-			";------------------------------------------------------------------------------\n"
-			"\n"
-			";reSID buffer length (in milliseconds)\n%d\n\n"
-			";reSID mixing rate (in Hz)\n%d\n\n"
-			";Hardsid device number (0 = off)\n%d\n\n"
-			";reSID model (0 = 6581, 1 = 8580)\n%d\n\n"
-			";Timing mode (0 = PAL, 1 = NTSC)\n%d\n\n"
-			";Packer/relocator fileformat (0 = SID, 1 = PRG, 2 = BIN)\n%d\n\n"
-			";Packer/relocator player address\n$%04x\n\n"
-			";Packer/relocator zeropage baseaddress\n$%02x\n\n"
-			";Packer/relocator player type (0 = standard ... 3 = minimal)\n%d\n\n"
-			";Key entry mode (0 = Protracker, 1 = DMC, 2 = Janko)\n%d\n\n"
-			";Pattern highlight step size\n%d\n\n"
-			";Speed multiplier (0 = 25Hz, 1 = 1X, 2 = 2X etc.)\n%d\n\n"
-			";Use CatWeasel SID (0 = off, 1 = on)\n%d\n\n"
-			";Hardrestart ADSR parameter\n$%04x\n\n"
-			";reSID interpolation (0 = off, 1 = on, 2 = distortion, 3 = distortion & on)\n%d\n\n"
-			";Pattern display mode (0 = decimal, 1 = hex, 2 = decimal w/dots, 3 = hex w/dots)\n%d\n\n"
-			";SID baseaddress\n$%04x\n\n"
-			";Finevibrato mode (0 = off, 1 = on)\n%d\n\n"
-			";Pulseskipping (0 = off, 1 = on)\n%d\n\n"
-			";Realtime effect skipping (0 = off, 1 = on)\n%d\n\n"
-			";Random reSID write delay in cycles (0 = off)\n%d\n\n"
-			";Custom SID clock cycles per second (0 = use PAL/NTSC default)\n%d\n\n"
-			";HardSID interactive mode buffer size (in milliseconds, 0 = maximum/no flush)\n%d\n\n"
-			";HardSID playback mode buffer size (in milliseconds, 0 = maximum/no flush)\n%d\n\n"
-			";reSID-fp distortion rate\n%f\n\n"
-			";reSID-fp distortion point\n%f\n\n"
-			";reSID-fp distortion CF threshold\n%f\n\n"
-			";reSID-fp type 3 base resistance\n%f\n\n"
-			";reSID-fp type 3 base offset\n%f\n\n"
-			";reSID-fp type 3 base steepness\n%f\n\n"
-			";reSID-fp type 3 minimum FET resistance\n%f\n\n"
-			";reSID-fp type 4 k\n%f\n\n"
-			";reSID-fp type 4 b\n%f\n\n"
-			";reSID-fp voice nonlinearity\n%f\n\n"
-			";Window type (0 = window, 1 = fullscreen)\n%d\n\n"
-			";window scale factor (1 = no scaling, 2 to 4 = 2 to 4 times bigger window)\n%d\n\n"
-			";Base pitch of A-4 in Hz (0 = use default frequencytable)\n%f\n\n"
-			";Equal divisions per octave (12 = default, 8.2019143 = Bohlen-Pierce)\n%f\n\n"
-			";Special note names (2 chars for every note in an octave/cycle)\n%s\n\n"
-			";Path to a Scala tuning file .scl\n%s\n\n",
-			b,
-			mr,
-			hardsid,
-			editorInfo.sidmodel,
-			editorInfo.ntsc,
-			fileformat,
-			playeradr,
-			zeropageadr,
-			playerversion,
-			keypreset,
-			stepsize,
-			editorInfo.multiplier,
-			catweasel,
-			editorInfo.adparam,
-			interpolate,
-			patterndispmode,
-			sidaddress,
-			editorInfo.finevibrato,
-			editorInfo.optimizepulse,
-			editorInfo.optimizerealtime,
-			residdelay,
-			customclockrate,
-			hardsidbufinteractive,
-			hardsidbufplayback,
-			filterparams.distortionrate,
-			filterparams.distortionpoint,
-			filterparams.distortioncfthreshold,
-			filterparams.type3baseresistance,
-			filterparams.type3offset,
-			filterparams.type3steepness,
-			filterparams.type3minimumfetresistance,
-			filterparams.type4k,
-			filterparams.type4b,
-			filterparams.voicenonlinearity,
-			win_fullscreen,
-			bigwindow,
-			basepitch,
-			equaldivisionsperoctave,
-			specialnotenames,
-			scalatuningfilepath);
-		fclose(configfile);
-	}
-
-	// Exit
-	return EXIT_SUCCESS;
+  return EXIT_SUCCESS;
 }
+
+// ---------------------------------------------------------------------------
+// Directories & configuration
+// ---------------------------------------------------------------------------
+
+static void initdirectories(void)
+{
+  char *base = SDL_GetBasePath();
+  char *home;
+
+  appdir[0] = 0;
+  if (base)
+  {
+    strncpy(appdir, base, MAX_PATHNAME - 1);
+    appdir[MAX_PATHNAME - 1] = 0;
+    SDL_free(base);
+  }
+  // Instrument library: next to the program, or in the app bundle resources
+  snprintf(instrlibpath, MAX_PATHNAME, "%sinstruments", appdir);
+
+#ifdef __WIN32__
+  {
+    char path[MAX_PATH];
+    if (SUCCEEDED(SHGetFolderPathA(NULL, CSIDL_APPDATA, NULL, 0, path)))
+    {
+      snprintf(configfilename, MAX_PATHNAME, "%s\\C64 GrooveGoat", path);
+      mkdir(configfilename);
+      strncat(configfilename, "\\groovegoat.cfg", MAX_PATHNAME - strlen(configfilename) - 1);
+    }
+    else
+      snprintf(configfilename, MAX_PATHNAME, "%sgroovegoat.cfg", appdir);
+  }
+  home = getenv("USERPROFILE");
+#else
+  home = getenv("HOME");
+  if (home)
+  {
+    snprintf(configfilename, MAX_PATHNAME, "%s/.groovegoat", home);
+    mkdir(configfilename, S_IRUSR | S_IWUSR | S_IXUSR);
+    strncat(configfilename, "/groovegoat.cfg", MAX_PATHNAME - strlen(configfilename) - 1);
+  }
+  else
+    strcpy(configfilename, "groovegoat.cfg");
+#endif
+
+  // When started from a desktop launcher the working directory is often
+  // "/" or the program folder; start in the user's home folder instead.
+  {
+    char cwd[MAX_PATHNAME];
+    if ((!getcwd(cwd, MAX_PATHNAME)) || (!strcmp(cwd, "/")) || (strstr(cwd, ".app/Contents")))
+    {
+      if (home)
+      {
+        char docs[MAX_PATHNAME];
+#ifdef __WIN32__
+        snprintf(docs, MAX_PATHNAME, "%s\\Documents", home);
+#else
+        snprintf(docs, MAX_PATHNAME, "%s/Documents", home);
+#endif
+        if (chdir(docs)) chdir(home);
+      }
+    }
+  }
+}
+
+static void loadconfig(void)
+{
+  FILE *configfile = fopen(configfilename, "rt");
+  if (!configfile) return;
+
+  getparam(configfile, &b);
+  getparam(configfile, &mr);
+  getparam(configfile, &hardsid);
+  getparam(configfile, &editorInfo.sidmodel);
+  getparam(configfile, &editorInfo.ntsc);
+  getparam(configfile, (unsigned *)&fileformat);
+  getparam(configfile, (unsigned *)&playeradr);
+  getparam(configfile, (unsigned *)&zeropageadr);
+  getparam(configfile, &playerversion);
+  getparam(configfile, &keypreset);
+  getparam(configfile, (unsigned *)&stepsize);
+  getparam(configfile, &editorInfo.multiplier);
+  getparam(configfile, &catweasel);
+  getparam(configfile, &editorInfo.adparam);
+  getparam(configfile, &interpolate);
+  getparam(configfile, &patterndispmode);
+  getparam(configfile, &sidaddress);
+  getparam(configfile, &editorInfo.finevibrato);
+  getparam(configfile, &editorInfo.optimizepulse);
+  getparam(configfile, &editorInfo.optimizerealtime);
+  getparam(configfile, &residdelay);
+  getparam(configfile, &customclockrate);
+  getparam(configfile, &hardsidbufinteractive);
+  getparam(configfile, &hardsidbufplayback);
+  getfloatparam(configfile, &filterparams.distortionrate);
+  getfloatparam(configfile, &filterparams.distortionpoint);
+  getfloatparam(configfile, &filterparams.distortioncfthreshold);
+  getfloatparam(configfile, &filterparams.type3baseresistance);
+  getfloatparam(configfile, &filterparams.type3offset);
+  getfloatparam(configfile, &filterparams.type3steepness);
+  getfloatparam(configfile, &filterparams.type3minimumfetresistance);
+  getfloatparam(configfile, &filterparams.type4k);
+  getfloatparam(configfile, &filterparams.type4b);
+  getfloatparam(configfile, &filterparams.voicenonlinearity);
+  getparam(configfile, (unsigned*)&win_fullscreen);
+  getparam(configfile, &bigwindow);
+  getfloatparam(configfile, &basepitch);
+  getfloatparam(configfile, &equaldivisionsperoctave);
+  getstringparam(configfile, specialnotenames);
+  getstringparam(configfile, scalatuningfilepath);
+  getparam(configfile, &themesetting);
+  getparam(configfile, &stereomode);
+  getparam(configfile, &prgfrontend);
+  fclose(configfile);
+  if (!strcmp(specialnotenames, "-")) specialnotenames[0] = 0;
+  if (!strcmp(scalatuningfilepath, "-")) scalatuningfilepath[0] = 0;
+}
+
+static void saveconfig(void)
+{
+  FILE *configfile = fopen(configfilename, "wt");
+  if (!configfile) return;
+  fprintf(configfile, ";------------------------------------------------------------------------------\n"
+    ";C64 GrooveGoat config file. Rows starting with ; are comments. Hexadecimal     \n"
+    ";parameters are to be preceded with $ and decimal parameters with nothing.     \n"
+    ";------------------------------------------------------------------------------\n"
+    "\n"
+    ";reSID buffer length (in milliseconds)\n%d\n\n"
+    ";reSID mixing rate (in Hz)\n%d\n\n"
+    ";Hardsid device number (0 = off)\n%d\n\n"
+    ";reSID model (0 = 6581, 1 = 8580)\n%d\n\n"
+    ";Timing mode (0 = PAL, 1 = NTSC)\n%d\n\n"
+    ";Packer/relocator fileformat (0 = SID, 1 = PRG, 2 = BIN)\n%d\n\n"
+    ";Packer/relocator player address\n$%04x\n\n"
+    ";Packer/relocator zeropage baseaddress\n$%02x\n\n"
+    ";Packer/relocator player options\n%d\n\n"
+    ";Key entry mode (0 = Protracker, 1 = DMC, 2 = Janko)\n%d\n\n"
+    ";Pattern highlight step size\n%d\n\n"
+    ";Speed multiplier (0 = 25Hz, 1 = 1X, 2 = 2X etc.)\n%d\n\n"
+    ";Use CatWeasel SID (0 = off, 1 = on)\n%d\n\n"
+    ";Hardrestart ADSR parameter\n$%04x\n\n"
+    ";reSID interpolation (0 = off, 1 = on, 2 = distortion, 3 = distortion & on)\n%d\n\n"
+    ";Pattern display mode (0 = decimal, 1 = hex, 2 = decimal w/dots, 3 = hex w/dots)\n%d\n\n"
+    ";SID baseaddress\n$%04x\n\n"
+    ";Finevibrato mode (0 = off, 1 = on)\n%d\n\n"
+    ";Pulseskipping (0 = off, 1 = on)\n%d\n\n"
+    ";Realtime effect skipping (0 = off, 1 = on)\n%d\n\n"
+    ";Random reSID write delay in cycles (0 = off)\n%d\n\n"
+    ";Custom SID clock cycles per second (0 = use PAL/NTSC default)\n%d\n\n"
+    ";HardSID interactive mode buffer size (in milliseconds, 0 = maximum/no flush)\n%d\n\n"
+    ";HardSID playback mode buffer size (in milliseconds, 0 = maximum/no flush)\n%d\n\n"
+    ";reSID-fp distortion rate\n%f\n\n"
+    ";reSID-fp distortion point\n%f\n\n"
+    ";reSID-fp distortion CF threshold\n%f\n\n"
+    ";reSID-fp type 3 base resistance\n%f\n\n"
+    ";reSID-fp type 3 base offset\n%f\n\n"
+    ";reSID-fp type 3 base steepness\n%f\n\n"
+    ";reSID-fp type 3 minimum FET resistance\n%f\n\n"
+    ";reSID-fp type 4 k\n%f\n\n"
+    ";reSID-fp type 4 b\n%f\n\n"
+    ";reSID-fp voice nonlinearity\n%f\n\n"
+    ";Window type (0 = window, 1 = fullscreen)\n%d\n\n"
+    ";window scale factor (unused, the window can be resized freely)\n%d\n\n"
+    ";Base pitch of A-4 in Hz (0 = use default frequencytable)\n%f\n\n"
+    ";Equal divisions per octave (12 = default, 8.2019143 = Bohlen-Pierce)\n%f\n\n"
+    ";Special note names (2 chars for every note in an octave/cycle, - = none)\n%s\n\n"
+    ";Path to a Scala tuning file .scl (- = none)\n%s\n\n"
+    ";Theme (0 = night, 1 = day)\n%d\n\n"
+    ";Stereo output for multi-SID songs (0 = mono, 1 = stereo)\n%d\n\n"
+    ";PRG export includes the player frontend (0 = no, 1 = yes)\n%d\n\n",
+    b,
+    mr,
+    hardsid,
+    editorInfo.sidmodel,
+    editorInfo.ntsc,
+    fileformat,
+    playeradr,
+    zeropageadr,
+    playerversion,
+    keypreset,
+    stepsize,
+    editorInfo.multiplier,
+    catweasel,
+    editorInfo.adparam,
+    interpolate,
+    patterndispmode,
+    sidaddress,
+    editorInfo.finevibrato,
+    editorInfo.optimizepulse,
+    editorInfo.optimizerealtime,
+    residdelay,
+    customclockrate,
+    hardsidbufinteractive,
+    hardsidbufplayback,
+    filterparams.distortionrate,
+    filterparams.distortionpoint,
+    filterparams.distortioncfthreshold,
+    filterparams.type3baseresistance,
+    filterparams.type3offset,
+    filterparams.type3steepness,
+    filterparams.type3minimumfetresistance,
+    filterparams.type4k,
+    filterparams.type4b,
+    filterparams.voicenonlinearity,
+    win_fullscreen,
+    bigwindow,
+    basepitch,
+    equaldivisionsperoctave,
+    specialnotenames[0] ? specialnotenames : "-",
+    scalatuningfilepath[0] ? scalatuningfilepath : "-",
+    themesetting,
+    stereomode,
+    prgfrontend);
+  fclose(configfile);
+}
+
+static void updatetitle(void)
+{
+  static char lasttitle[MAX_PATHNAME] = {0};
+  char title[MAX_PATHNAME];
+  if (strlen(loadedsongfilename))
+    snprintf(title, MAX_PATHNAME, "C64 GrooveGoat %s - %s%s", PROGRAMVERSION, loadedsongfilename, songmodified ? " *" : "");
+  else
+    snprintf(title, MAX_PATHNAME, "C64 GrooveGoat %s%s", PROGRAMVERSION, songmodified ? " *" : "");
+  if (strcmp(title, lasttitle))
+  {
+    strcpy(lasttitle, title);
+    plat_settitle(title);
+  }
+}
+
+// Files dropped onto the window: songs are loaded, instruments go into the
+// current instrument slot
+static void handledrop(void)
+{
+  char *name;
+  char *slash;
+  char dir[MAX_PATHNAME];
+  int len;
+
+  if (!win_dropfile[0]) return;
+  name = win_dropfile;
+  len = strlen(name);
+  strcpy(dir, name);
+  slash = strrchr(dir, '/');
+#ifdef __WIN32__
+  {
+    char *bs = strrchr(dir, '\\');
+    if ((!slash) || (bs > slash)) slash = bs;
+  }
+#endif
+  if (slash)
+  {
+    slash[1] = 0;
+    name = win_dropfile + (slash - dir) + 1;
+  }
+  else dir[0] = 0;
+
+  if ((len > 4) && ((!cmpname(win_dropfile + len - 4, ".ins"))))
+  {
+    if (editorInfo.einum)
+    {
+      if (dir[0]) chdir(dir);
+      strncpy(instrfilename, name, MAX_FILENAME - 1);
+      loadinstrument();
+      getcwd(instrpath, MAX_PATHNAME);
+      sprintf(statusmessage, "Loaded instrument %s into slot %02X", instrfilename, editorInfo.einum);
+    }
+  }
+  else
+  {
+    if ((!songmodified) || (dlg_confirm("Load song", "Discard the changes of the current song?")))
+    {
+      if (dir[0]) chdir(dir);
+      strncpy(songfilename, name, MAX_FILENAME - 1);
+      loadsong();
+      getcwd(songpath, MAX_PATHNAME);
+      do_sound_init();
+      undoInitAllAreas();
+    }
+  }
+  win_dropfile[0] = 0;
+  printmainscreen();
+}
+
+// Headless self test used by the build: renders screens and exits
+static void runautotest(void)
+{
+  const char *shot = getenv("GG_AUTOTEST");
+  const char *sids = getenv("GG_SIDS");
+  const char *th = getenv("GG_THEME");
+  int frames = 10;
+  char name[MAX_PATHNAME];
+
+  if (sids) changenumsids(atoi(sids));
+  if (th) settheme(atoi(th));
+  if (getenv("GG_PLAY")) initsong(0, PLAY_BEGINNING);
+  while (frames--)
+  {
+    printstatus();
+    fliptoscreen();
+    getkey();
+  }
+  snprintf(name, MAX_PATHNAME, "%s", shot);
+  savescreenshot(name);
+  if (getenv("GG_HELPSHOT"))
+  {
+    snprintf(name, MAX_PATHNAME, "%s", getenv("GG_HELPSHOT"));
+    helpscreenshot(name);
+  }
+  sound_uninit();
+}
+
+// ---------------------------------------------------------------------------
+// Main loop helpers
+// ---------------------------------------------------------------------------
 
 void waitkey(void)
 {
-	for (;;)
-	{
-		displayupdate();
-		getkey();
-		if ((rawkey) || (key)) break;
-		if (win_quitted) break;
-	}
+  for (;;)
+  {
+    displayupdate();
+    getkey();
+    if ((rawkey) || (key)) break;
+    if (win_quitted) break;
+  }
 
-	converthex();
+  converthex();
 }
 
 void waitkeymouse(void)
 {
-	for (;;)
-	{
-		displayupdate();
-		getkey();
-		if ((rawkey) || (key)) break;
-		if (win_quitted) break;
-		if (mouseb) break;
-	}
+  for (;;)
+  {
+    displayupdate();
+    getkey();
+    if ((rawkey) || (key)) break;
+    if (win_quitted) break;
+    if (mouseb) break;
+    if (mousewheel) break;
+    if (win_dropfile[0]) break;
+  }
 
-	converthex();
+  converthex();
 }
 
 void waitkeymousenoupdate(void)
 {
-	for (;;)
-	{
-		fliptoscreen();
-		getkey();
-		if ((rawkey) || (key)) break;
-		if (win_quitted) break;
-		if (mouseb) break;
-	}
+  for (;;)
+  {
+    fliptoscreen();
+    getkey();
+    if ((rawkey) || (key)) break;
+    if (win_quitted) break;
+    if (mouseb) break;
+  }
 
-	converthex();
+  converthex();
 }
 
 void waitkeynoupdate(void)
 {
-	for (;;)
-	{
-		fliptoscreen();
-		getkey();
-		if ((rawkey) || (key)) break;
-		if ((mouseb) && (!prevmouseb)) break;
-		if (win_quitted) break;
-	}
+  for (;;)
+  {
+    fliptoscreen();
+    getkey();
+    if ((rawkey) || (key)) break;
+    if ((mouseb) && (!prevmouseb)) break;
+    if (win_quitted) break;
+  }
 }
 
 void converthex()
 {
-	int c;
+  int c;
 
-	hexnybble = -1;
-	for (c = 0; c < 16; c++)
-	{
-		if (tolower(key) == hexkeytbl[c])
-		{
-			if (c >= 10)
-			{
-				if (!shiftpressed) hexnybble = c;
-			}
-			else
-			{
-				hexnybble = c;
-			}
-		}
-	}
+  hexnybble = -1;
+  for (c = 0; c < 16; c++)
+  {
+    if (tolower(key) == hexkeytbl[c])
+    {
+      if (c >= 10)
+      {
+        if (!shiftpressed) hexnybble = c;
+      }
+      else
+      {
+        hexnybble = c;
+      }
+    }
+  }
 }
 
-void do_sound_init() {
-	sound_init(b, mr, writer, hardsid, editorInfo.sidmodel, editorInfo.ntsc, editorInfo.multiplier, catweasel, interpolate, customclockrate);
+void do_sound_init(void)
+{
+  sound_init(b, mr, writer, hardsid, editorInfo.sidmodel, editorInfo.ntsc, editorInfo.multiplier, catweasel, interpolate, customclockrate);
 }
 
-void toggle_interpolation_mode() {
-	interpolate++;
-	if (interpolate == 2)  // skip FP only mode
-		interpolate++;
-	interpolate &= 3;
-	stopsong();
-	do_sound_init();
+void toggle_interpolation_mode(void)
+{
+  interpolate++;
+  if (interpolate == 2)  // skip FP only mode
+    interpolate++;
+  interpolate &= 3;
+  stopsong();
+  do_sound_init();
+}
+
+void changenumsids(int n)
+{
+  int c;
+  if (n == numsids) return;
+  if (n < numsids)
+  {
+    int lost = 0;
+    for (c = n * 3; c < numchannels; c++)
+      if (channelhasdata(c)) lost = 1;
+    if (lost)
+    {
+      char buf[128];
+      sprintf(buf, "Channels of SID %d-%d contain music. Remove them?", n + 1, numsids);
+      if (!dlg_confirm("Change SID count", buf)) return;
+    }
+  }
+  undoInitAllAreas();
+  setnumsids(n);
+  do_sound_init();
+  undoInitAllAreas();
+  validatechnview();
+  sprintf(statusmessage, "Now using %d SID%s (%d channels)%s", numsids, numsids > 1 ? "s" : "", numchannels,
+    numsids > 2 ? " - songs are saved in the C64 GrooveGoat .ggt format" : "");
+}
+
+void togglethemekey(void)
+{
+  settheme(theme ^ 1);
+  themesetting = theme;
+  printmainscreen();
+}
+
+void newsong(void)
+{
+  if ((songmodified) && (!dlg_confirm("New song", "Discard the current song and start a new one?")))
+    return;
+  memset(songfilename, 0, sizeof songfilename);
+  clearsong(1, 1, 1, 1, 1);
+  clearinactivechannels();
+  undoInitAllAreas();
+  setstatusmessage("New song created");
 }
 
 void docommand(void)
 {
-	// "GUI" operation :)
-	mousecommands();
+  // "GUI" operation :)
+  mousecommands();
 
-	GTUNDO_OBJECT *ed = undoCreateEditorInfo();
+  GTUNDO_OBJECT *ed = undoCreateEditorInfo();
+  int oldundo = undoCounter;
 
-	// Mode-specific commands
-	switch (editorInfo.editmode)
-	{
-	case EDIT_ORDERLIST:
+  // Mode-specific commands
+  switch (editorInfo.editmode)
+  {
+  case EDIT_ORDERLIST:
+    for (int i = 0;i < numchannels;i++)
+      undoAreaSetCheckForChange(UNDO_AREA_ORDERLIST, i + (editorInfo.esnum*MAX_CHN), UNDO_AREA_DIRTY_CHECK);
+    undoAreaSetCheckForChange(UNDO_AREA_ORDERLIST_LEN, 0, UNDO_AREA_DIRTY_CHECK);
+    orderlistcommands();
+    break;
 
-		for (int i = 0;i < MAX_CHN;i++)
-		{
-			undoAreaSetCheckForChange(UNDO_AREA_ORDERLIST, i + (editorInfo.esnum*MAX_CHN), UNDO_AREA_DIRTY_CHECK);
-		}
-		undoAreaSetCheckForChange(UNDO_AREA_ORDERLIST_LEN, 0, UNDO_AREA_DIRTY_CHECK);
+  case EDIT_INSTRUMENT:
+    undoAreaSetCheckForChange(UNDO_AREA_INSTRUMENTS, editorInfo.einum, UNDO_AREA_DIRTY_CHECK);
+    instrumentcommands();
+    break;
 
-		orderlistcommands();
-		break;
+  case EDIT_TABLES:
+    undoAreaSetCheckForChange(UNDO_AREA_INSTRUMENTS, editorInfo.einum, UNDO_AREA_DIRTY_CHECK);
+    undoAreaSetCheckForChange(UNDO_AREA_TABLES + editorInfo.etnum, 0, UNDO_AREA_DIRTY_CHECK);
+    undoAreaSetCheckForChange(UNDO_AREA_TABLES + editorInfo.etnum, 1, UNDO_AREA_DIRTY_CHECK);
+    tablecommands();
+    break;
 
-	case EDIT_INSTRUMENT:
-		undoAreaSetCheckForChange(UNDO_AREA_INSTRUMENTS, editorInfo.einum, UNDO_AREA_DIRTY_CHECK);
-		instrumentcommands();
-		break;
+  case EDIT_PATTERN:
+    undoAreaSetCheckForChange(UNDO_AREA_PATTERN, editorUndoInfo.editorInfo[editorInfo.epchn].epnum, UNDO_AREA_DIRTY_CHECK);
+    undoAreaSetCheckForChange(UNDO_AREA_PATTERN_LEN, 0, UNDO_AREA_DIRTY_CHECK);
+    for (int i = 0;i < numchannels;i++)
+      undoAreaSetCheckForChange(UNDO_AREA_ORDERLIST, i + (editorInfo.esnum*MAX_CHN), UNDO_AREA_DIRTY_CHECK);
+    undoAreaSetCheckForChange(UNDO_AREA_ORDERLIST_LEN, 0, UNDO_AREA_DIRTY_CHECK);
+    patterncommands();
+    break;
 
-	case EDIT_TABLES:
-		undoAreaSetCheckForChange(UNDO_AREA_INSTRUMENTS, editorInfo.einum, UNDO_AREA_DIRTY_CHECK);
-		undoAreaSetCheckForChange(UNDO_AREA_TABLES + editorInfo.etnum, 0, UNDO_AREA_DIRTY_CHECK);	// left table
-		undoAreaSetCheckForChange(UNDO_AREA_TABLES + editorInfo.etnum, 1, UNDO_AREA_DIRTY_CHECK);	// right table
-		tablecommands();
-		break;
+  case EDIT_NAMES:
+    {
+      char oldnames[3][MAX_STR];
+      memcpy(oldnames[0], songname, MAX_STR);
+      memcpy(oldnames[1], authorname, MAX_STR);
+      memcpy(oldnames[2], copyrightname, MAX_STR);
+      namecommands();
+      if (memcmp(oldnames[0], songname, MAX_STR) || memcmp(oldnames[1], authorname, MAX_STR) || memcmp(oldnames[2], copyrightname, MAX_STR))
+        songmodified = 1;
+    }
+    break;
+  }
 
-	case EDIT_PATTERN:
-		undoAreaSetCheckForChange(UNDO_AREA_PATTERN, editorUndoInfo.editorInfo[editorInfo.epchn].epnum, UNDO_AREA_DIRTY_CHECK);
-		undoAreaSetCheckForChange(UNDO_AREA_PATTERN_LEN, 0, UNDO_AREA_DIRTY_CHECK);
-		for (int i = 0;i < MAX_CHN;i++)
-		{
-			undoAreaSetCheckForChange(UNDO_AREA_ORDERLIST, i + (editorInfo.esnum*MAX_CHN), UNDO_AREA_DIRTY_CHECK);
-		}
-		undoAreaSetCheckForChange(UNDO_AREA_ORDERLIST_LEN, 0, UNDO_AREA_DIRTY_CHECK);
+  if (undoValidateUndoAreas(ed) == 0)
+    undoFreeUndoObject((GTUNDO_OBJECT*)ed);
+  if (undoCounter != oldundo) songmodified = 1;
 
-		patterncommands();
-		break;
+  // General commands
+  generalcommands();
+  validatechnview();
+}
 
-	case EDIT_NAMES:
-		namecommands();
-		break;
-	}
+static int lastclickx = -1, lastclicky = -1, lastclicktime = 0;
 
-	if (undoValidateUndoAreas(ed) == 0)
-	{
-		undoFreeUndoObject((GTUNDO_OBJECT*)ed);
-	}
-	// General commands
-	generalcommands();
+static void buttoncommand(int id, int param)
+{
+  switch (id)
+  {
+    case BTN_NEW: newsong(); break;
+    case BTN_OPEN:
+    {
+      int oldmode = editorInfo.editmode;
+      if (editorInfo.editmode == EDIT_INSTRUMENT || editorInfo.editmode == EDIT_TABLES) editorInfo.editmode = EDIT_PATTERN;
+      shiftpressed = 0;
+      load();
+      if (editorInfo.editmode == EDIT_PATTERN) editorInfo.editmode = oldmode;
+    }
+    break;
+    case BTN_SAVE:
+    case BTN_SAVEAS:
+    {
+      int oldmode = editorInfo.editmode;
+      if (editorInfo.editmode == EDIT_INSTRUMENT || editorInfo.editmode == EDIT_TABLES) editorInfo.editmode = EDIT_PATTERN;
+      save();
+      editorInfo.editmode = oldmode;
+    }
+    break;
+    case BTN_INSLOAD:
+    case BTN_LIBRARY:
+    {
+      int oldmode = editorInfo.editmode;
+      editorInfo.editmode = EDIT_INSTRUMENT;
+      if (!editorInfo.einum) editorInfo.einum = 1;
+      if (id == BTN_LIBRARY) strcpy(instrpath, instrlibpath);
+      load();
+      if ((oldmode != EDIT_INSTRUMENT) && (oldmode != EDIT_TABLES)) editorInfo.editmode = EDIT_INSTRUMENT;
+    }
+    break;
+    case BTN_INSSAVE:
+    {
+      editorInfo.editmode = EDIT_INSTRUMENT;
+      if (!editorInfo.einum) editorInfo.einum = 1;
+      save();
+    }
+    break;
+    case BTN_EXPORTSID: exportsid(); break;
+    case BTN_EXPORTPRG: exportprg(); break;
+    case BTN_THEME: togglethemekey(); break;
+    case BTN_HELP: onlinehelp(0, 0); break;
+    case BTN_MANUAL: showmanual(); break;
+    case BTN_INFO: showinfo(); break;
+    case BTN_PLAY: initsong(editorInfo.esnum, PLAY_BEGINNING); followplay = shiftpressed; break;
+    case BTN_PLAYPOS: initsong(editorInfo.esnum, PLAY_POS); followplay = shiftpressed; break;
+    case BTN_PLAYPATT: initsong(editorInfo.esnum, PLAY_PATTERN); followplay = shiftpressed; break;
+    case BTN_STOP: stopsong(); break;
+    case BTN_FOLLOW: followplay ^= 1; break;
+    case BTN_SIDS1: case BTN_SIDS2: case BTN_SIDS4: case BTN_SIDS8:
+      changenumsids(param);
+      break;
+    case BTN_MODEL:
+      undoCreateEditorInfoBackup();
+      editorInfo.sidmodel ^= 1;
+      undoAddEditorSettingsToList();
+      do_sound_init();
+      break;
+    case BTN_NTSC:
+      undoCreateEditorInfoBackup();
+      editorInfo.ntsc ^= 1;
+      undoAddEditorSettingsToList();
+      do_sound_init();
+      break;
+    case BTN_SPEED:
+      undoCreateEditorInfoBackup();
+      if ((mouseb & MOUSEB_RIGHT) || (mousex < uibuttons[0].x)) prevmultiplier();
+      else nextmultiplier();
+      undoAddEditorSettingsToList();
+      break;
+    case BTN_HR: editadsr(); break;
+    case BTN_FV:
+      undoCreateEditorInfoBackup();
+      editorInfo.finevibrato ^= 1;
+      undoAddEditorSettingsToList();
+      break;
+    case BTN_PO:
+      undoCreateEditorInfoBackup();
+      editorInfo.optimizepulse ^= 1;
+      undoAddEditorSettingsToList();
+      break;
+    case BTN_RO:
+      undoCreateEditorInfoBackup();
+      editorInfo.optimizerealtime ^= 1;
+      undoAddEditorSettingsToList();
+      break;
+    case BTN_INT:
+      interpolate ^= 1;
+      interpolate &= 1 + (interpolate << 1);  // turn off FP if INT is 0
+      stopsong();
+      do_sound_init();
+      break;
+    case BTN_FP:
+      interpolate ^= 2;
+      interpolate |= interpolate >> 1;  // turn on INT if FP is 1
+      stopsong();
+      do_sound_init();
+      break;
+    case BTN_STEREO:
+      stereomode ^= 1;
+      sid_setpanning(numsids, stereomode);
+      setstatusmessage(stereomode ? "Stereo output: SIDs are spread between left and right" : "Mono output: all SIDs centered");
+      break;
+    case BTN_OCTAVE:
+      if (mouseb & MOUSEB_RIGHT)
+      {
+        if (editorInfo.epoctave > 0) editorInfo.epoctave--;
+      }
+      else
+      {
+        if (editorInfo.epoctave < 7) editorInfo.epoctave++;
+      }
+      break;
+    case BTN_RECORD: recordmode ^= 1; break;
+    case BTN_AUTOADV:
+      autoadvance++;
+      if (autoadvance > 2) autoadvance = 0;
+      break;
+    case BTN_KEYMODE:
+      keypreset++;
+      if (keypreset > 2) keypreset = 0;
+      break;
+    case BTN_UNDO: undoPerform(); break;
+    case BTN_CHNVIEW:
+      chnview = param;
+      editorInfo.epchn = param;
+      if (editorInfo.eppos > pattlen[editorUndoInfo.editorInfo[editorInfo.epchn].epnum])
+        editorInfo.eppos = pattlen[editorUndoInfo.editorInfo[editorInfo.epchn].epnum];
+      break;
+    case BTN_ORDVIEW:
+      editorInfo.eschn += param;
+      if (editorInfo.eschn < 0) editorInfo.eschn = 0;
+      if (editorInfo.eschn >= numchannels) editorInfo.eschn = numchannels - 1;
+      break;
+    case BTN_MUTE: mutechannel(param); break;
+    case BTN_SOLO: solochannel(param); break;
+    case BTN_SIDADDR: showsidinfo(); break;
+    case BTN_QUIT: quit(); break;
+  }
 }
 
 void mousecommands(void)
 {
-	int c;
+  int c;
+  int param = 0;
+  int id;
+  int click = (mouseb) && (!prevmouseb);
 
-	if (!mouseb) return;
+  // Mouse wheel scrolls the panel below the pointer
+  if (mousewheel)
+  {
+    int steps = mousewheel > 0 ? mousewheel : -mousewheel;
+    int dir = mousewheel > 0 ? -1 : 1;
+    while (steps--)
+    {
+      if ((mousex < PATT_W) && (mousey >= PATT_ROWS_Y) && (mousey < PATT_ROWS_Y + VISIBLEPATTROWS))
+      {
+        int len = pattlen[editorUndoInfo.editorInfo[editorInfo.epchn].epnum];
+        editorInfo.eppos += dir;
+        if (editorInfo.eppos < 0) editorInfo.eppos = 0;
+        if (editorInfo.eppos > len) editorInfo.eppos = len;
+        editorInfo.epview = editorInfo.eppos - VISIBLEPATTROWS/2;
+      }
+      else if ((mousex >= RP_X) && (mousey >= ORD_ROWS_Y) && (mousey < ORD_ROWS_Y + VISIBLEORDERCHNS))
+      {
+        editorInfo.esview += dir;
+        if (editorInfo.esview < 0) editorInfo.esview = 0;
+        if (editorInfo.esview > MAX_SONGLEN) editorInfo.esview = MAX_SONGLEN;
+      }
+      else if ((mousex >= RP_X) && (mousey >= TBL_ROWS_Y) && (mousey < TBL_ROWS_Y + VISIBLETABLEROWS))
+      {
+        int t = (mousex - TBL_X(0)) / 11;
+        if (t < 0) t = 0;
+        if (t >= MAX_TABLES) t = MAX_TABLES - 1;
+        editorInfo.etview[t] += dir;
+        if (editorInfo.etview[t] < 0) editorInfo.etview[t] = 0;
+        if (editorInfo.etview[t] > MAX_TABLELEN - VISIBLETABLEROWS) editorInfo.etview[t] = MAX_TABLELEN - VISIBLETABLEROWS;
+        if (t == editorInfo.etnum)
+        {
+          if (editorInfo.etpos < editorInfo.etview[t]) editorInfo.etpos = editorInfo.etview[t];
+          if (editorInfo.etpos >= editorInfo.etview[t] + VISIBLETABLEROWS) editorInfo.etpos = editorInfo.etview[t] + VISIBLETABLEROWS - 1;
+        }
+      }
+      else if ((mousex >= RP_X) && (mousey == INS_Y))
+      {
+        if (dir < 0) nextinstr(); else previnstr();
+      }
+    }
+  }
 
-	// Pattern editpos & pattern number selection
-	for (c = 0; c < MAX_CHN; c++)
-	{
-		if ((mousey == 2) && (mousex >= 13 + c * 15) && (mousex <= 14 + c * 15))
-		{
-			if ((!prevmouseb) || (mouseheld > HOLDDELAY))
-			{
-				if (mouseb & MOUSEB_LEFT)
-				{
-					editorInfo.epchn = c;
-					nextpattern();
-				}
-				if (mouseb & MOUSEB_RIGHT)
-				{
-					editorInfo.epchn = c;
-					prevpattern();
-				}
-			}
-		}
-		else
-		{
-			if ((mousey >= 2) && (mousey <= 34) && (mousex >= 6 + c * 15) && (mousex <= 14 + c * 15))
-			{
-				int x = mousex - 6 - c * 15;
-				int newpos = mousey - 3 + editorInfo.epview;
-				if (newpos < 0) newpos = 0;
-				if (newpos > pattlen[editorUndoInfo.editorInfo[editorInfo.epchn].epnum]) newpos = pattlen[editorUndoInfo.editorInfo[editorInfo.epchn].epnum];
+  if (!mouseb) return;
 
-				editorInfo.editmode = EDIT_PATTERN;
+  // Buttons & clickable fields registered by the display code
+  id = ui_hitbutton(mousex, mousey, &param);
+  if (id != BTN_NONE)
+  {
+    int repeat = (id == BTN_PATTNUM) || (id == BTN_SUBTUNE) || (id == BTN_INSTRNUM) || (id == BTN_OCTAVE);
+    if ((click) || ((repeat) && (mouseheld > HOLDDELAY)))
+    {
+      switch (id)
+      {
+        case BTN_PATTNUM:
+        editorInfo.epchn = param;
+        if (mouseb & MOUSEB_LEFT) nextpattern();
+        if (mouseb & MOUSEB_RIGHT) prevpattern();
+        break;
 
-				if ((mouseb & (MOUSEB_RIGHT | MOUSEB_MIDDLE)) && (!prevmouseb))
-				{
-					if ((editorInfo.epmarkchn != c) || (newpos != editorInfo.epmarkend))
-					{
-						editorInfo.epmarkchn = c;
-						editorInfo.epmarkstart = editorInfo.epmarkend = newpos;
-					}
-				}
+        case BTN_SUBTUNE:
+        if (mouseb & MOUSEB_LEFT) nextsong();
+        if (mouseb & MOUSEB_RIGHT) prevsong();
+        break;
 
-				if (mouseb & MOUSEB_LEFT)
-				{
-					editorInfo.epchn = c;
-					if (x < 4) editorInfo.epcolumn = 0;
-					if (x >= 4) editorInfo.epcolumn = x - 3;
-				}
+        case BTN_INSTRNUM:
+        if (mouseb & MOUSEB_LEFT) nextinstr();
+        if (mouseb & MOUSEB_RIGHT) previnstr();
+        break;
 
-				if (!prevmouseb)
-				{
-					if (mouseb & MOUSEB_LEFT)
-						editorInfo.eppos = newpos;
-				}
-				else
-				{
-					if (mouseb & MOUSEB_LEFT)
-					{
-						if (mousey == 2) editorInfo.eppos--;
-						if (mousey == 34) editorInfo.eppos++;
-					}
-				}
-				if (editorInfo.eppos < 0) editorInfo.eppos = 0;
-				if (editorInfo.eppos > pattlen[editorUndoInfo.editorInfo[editorInfo.epchn].epnum]) editorInfo.eppos = pattlen[editorUndoInfo.editorInfo[editorInfo.epchn].epnum];
+        case BTN_SPEED:
+        {
+          // left half = slower, right half = faster
+          int c2;
+          for (c2 = 0; c2 < numuibuttons; c2++)
+          {
+            if (uibuttons[c2].id == BTN_SPEED)
+            {
+              undoCreateEditorInfoBackup();
+              if ((mousex < uibuttons[c2].x + uibuttons[c2].w / 2) || (mouseb & MOUSEB_RIGHT)) prevmultiplier();
+              else nextmultiplier();
+              undoAddEditorSettingsToList();
+              break;
+            }
+          }
+        }
+        break;
 
-				if (mouseb & (MOUSEB_RIGHT | MOUSEB_MIDDLE)) editorInfo.epmarkend = newpos;
-			}
-		}
-	}
+        default:
+        buttoncommand(id, param);
+        break;
+      }
+    }
+    return;
+  }
 
-	// Song editpos & songnumber selection
-	if ((mousey >= 3) && (mousey <= 8) && (mousex >= 40 + 10))
-	{
-		int newpos = editorInfo.esview + (mousex - 44 - 10) / 3;
-		int newcolumn = (mousex - 44 - 10) % 3;
-		int newchn = mousey - 3;
-		if (newcolumn < 0) newcolumn = 0;
-		if (newcolumn > 1) newcolumn = 1;
-		if (newpos < 0)
-		{
-			newpos = 0;
-			newcolumn = 0;
-		}
-		if (newpos == songlen[editorInfo.esnum][editorInfo.eschn])
-		{
-			newpos++;
-			newcolumn = 0;
-		}
-		if (newpos > songlen[editorInfo.esnum][editorInfo.eschn] + 1)
-		{
-			newpos = songlen[editorInfo.esnum][editorInfo.eschn] + 1;
-			newcolumn = 1;
-		}
+  // Pattern editpos
+  if ((mousex < PATT_W) && (mousey >= PATT_ROWS_Y) && (mousey < PATT_ROWS_Y + VISIBLEPATTROWS))
+  {
+    for (c = 0; c < VISIBLECHANNELS; c++)
+    {
+      int ch = chnview + c;
+      int x0 = CHN_X(c) - 1;
+      if (ch >= numchannels) break;
+      if ((mousex >= x0) && (mousex < x0 + CHN_W - 1))
+      {
+        int x = mousex - x0;
+        int newpos = mousey - PATT_ROWS_Y + editorInfo.epview;
+        int len = pattlen[editorUndoInfo.editorInfo[ch].epnum];
+        if (newpos < 0) newpos = 0;
+        if (newpos > len) newpos = len;
 
-		editorInfo.editmode = EDIT_ORDERLIST;
+        editorInfo.editmode = EDIT_PATTERN;
 
-		if ((mouseb & (MOUSEB_RIGHT | MOUSEB_MIDDLE)) && (!prevmouseb) && (newpos < songlen[editorInfo.esnum][editorInfo.eschn]))
-		{
-			if ((editorInfo.esmarkchn != newchn) || (newpos != editorInfo.esmarkend))
-			{
-				editorInfo.esmarkchn = newchn;
-				editorInfo.esmarkstart = editorInfo.esmarkend = newpos;
-			}
-		}
+        if ((mouseb & (MOUSEB_RIGHT | MOUSEB_MIDDLE)) && (!prevmouseb))
+        {
+          if ((editorInfo.epmarkchn != ch) || (newpos != editorInfo.epmarkend))
+          {
+            editorInfo.epmarkchn = ch;
+            editorInfo.epmarkstart = editorInfo.epmarkend = newpos;
+          }
+        }
 
-		if (mouseb & MOUSEB_LEFT)
-		{
-			editorInfo.eschn = newchn;
-			editorInfo.eseditpos = newpos;
-			editorInfo.escolumn = newcolumn;
-		}
+        if (mouseb & MOUSEB_LEFT)
+        {
+          editorInfo.epchn = ch;
+          if (x < 7) editorInfo.epcolumn = 0;
+          else
+          {
+            editorInfo.epcolumn = x - 7;
+            if (editorInfo.epcolumn > 5) editorInfo.epcolumn = 5;
+            if (editorInfo.epcolumn < 1) editorInfo.epcolumn = 1;
+          }
+        }
 
-		if ((mouseb & (MOUSEB_RIGHT | MOUSEB_MIDDLE)) && (newpos < songlen[editorInfo.esnum][editorInfo.eschn])) editorInfo.esmarkend = newpos;
-	}
-	if (((!prevmouseb) || (mouseheld > HOLDDELAY)) && (mousey == 2) && (mousex >= 63 + 10) && (mousex <= 64 + 10))
-	{
-		if (mouseb & MOUSEB_LEFT) nextsong();
-		if (mouseb & MOUSEB_RIGHT) prevsong();
-	}
+        if (!prevmouseb)
+        {
+          if (mouseb & MOUSEB_LEFT)
+          {
+            // Double click on a row starts playback from there
+            if ((lastclickx == mousex) && (lastclicky == mousey) && (SDL_GetTicks() - lastclicktime < 400))
+              initsongpos(editorInfo.esnum, PLAY_PATTERN, newpos);
+            editorInfo.eppos = newpos;
+            lastclickx = mousex;
+            lastclicky = mousey;
+            lastclicktime = SDL_GetTicks();
+          }
+        }
+        else
+        {
+          if (mouseb & MOUSEB_LEFT)
+          {
+            if (mousey == PATT_ROWS_Y) editorInfo.eppos--;
+            if (mousey == PATT_ROWS_Y + VISIBLEPATTROWS - 1) editorInfo.eppos++;
+          }
+        }
+        if (editorInfo.eppos < 0) editorInfo.eppos = 0;
+        if (editorInfo.eppos > pattlen[editorUndoInfo.editorInfo[editorInfo.epchn].epnum]) editorInfo.eppos = pattlen[editorUndoInfo.editorInfo[editorInfo.epchn].epnum];
 
-	// Instrument editpos & instrument number selection
-	if ((mousey >= 8) && (mousey <= 12) && (mousex >= 56 + 10) && (mousex <= 57 + 10))
-	{
-		editorInfo.editmode = EDIT_INSTRUMENT;
-		editorInfo.eipos = mousey - 8;
-		editorInfo.eicolumn = mousex - 56 - 10;
-	}
-	if ((mousey >= 8) && (mousey <= 11) && (mousex >= 76 + 10) && (mousex <= 77 + 10))
-	{
-		editorInfo.editmode = EDIT_INSTRUMENT;
-		editorInfo.eipos = mousey - 8 + 5;
-		editorInfo.eicolumn = mousex - 76 - 10;
-	}
-	if ((mousey == 7) && (mousex >= 60 + 10))
-	{
-		editorInfo.editmode = EDIT_INSTRUMENT;
-		editorInfo.eipos = 9;
-	}
-	if (((!prevmouseb) || (mouseheld > HOLDDELAY)) && (mousey == 7) && (mousex >= 56 + 10) && (mousex <= 57 + 10))
-	{
-		if (mouseb & MOUSEB_LEFT) nextinstr();
-		if (mouseb & MOUSEB_RIGHT) previnstr();
-	}
+        if (mouseb & (MOUSEB_RIGHT | MOUSEB_MIDDLE)) editorInfo.epmarkend = newpos;
+        return;
+      }
+    }
+    return;
+  }
 
+  // Orderlist editpos
+  if ((mousex >= ORD_X) && (mousey >= ORD_ROWS_Y) && (mousey < ORD_ROWS_Y + VISIBLEORDERCHNS))
+  {
+    int newchn = mousey - ORD_ROWS_Y + ordchnview;
+    int newpos = editorInfo.esview + (mousex - ORD_X) / 3;
+    int newcolumn = (mousex - ORD_X) % 3;
+    if (newchn >= numchannels) return;
+    if (newcolumn > 1) newcolumn = 1;
+    if (newpos < 0)
+    {
+      newpos = 0;
+      newcolumn = 0;
+    }
+    if (newpos == songlen[editorInfo.esnum][newchn])
+    {
+      newpos++;
+      newcolumn = 0;
+    }
+    if (newpos > songlen[editorInfo.esnum][newchn] + 1)
+    {
+      newpos = songlen[editorInfo.esnum][newchn] + 1;
+      newcolumn = 1;
+    }
 
-	// Table editpos
-	for (c = 0; c < MAX_TABLES; c++)
-	{
-		if ((mousey >= 14) && (mousey <= 30) && (mousex >= 43 + 10 + c * 10) && (mousex <= 47 + 10 + c * 10))
-		{
-			int newpos = mousey - 15 + editorInfo.etview[editorInfo.etnum];
-			if (newpos < 0) newpos = 0;
-			if (newpos >= MAX_TABLELEN) newpos = MAX_TABLELEN - 1;
+    editorInfo.editmode = EDIT_ORDERLIST;
 
-			editorInfo.editmode = EDIT_TABLES;
+    if ((mouseb & (MOUSEB_RIGHT | MOUSEB_MIDDLE)) && (!prevmouseb) && (newpos < songlen[editorInfo.esnum][newchn]))
+    {
+      if ((editorInfo.esmarkchn != newchn) || (newpos != editorInfo.esmarkend))
+      {
+        editorInfo.esmarkchn = newchn;
+        editorInfo.esmarkstart = editorInfo.esmarkend = newpos;
+      }
+    }
 
-			if ((mouseb & (MOUSEB_RIGHT | MOUSEB_MIDDLE)) && (!prevmouseb))
-			{
-				if ((editorInfo.etmarknum != editorInfo.etnum) || (newpos != editorInfo.etmarkend))
-				{
-					editorInfo.etmarknum = c;
-					editorInfo.etmarkstart = editorInfo.etmarkend = newpos;
-				}
-			}
-			if (mouseb & MOUSEB_LEFT)
-			{
-				editorInfo.etnum = c;
-				editorInfo.etpos = mousey - 15 + editorInfo.etview[editorInfo.etnum];
-				editorInfo.etcolumn = mousex - 43 - 10 - c * 10;
-			}
-			if (editorInfo.etcolumn >= 2) editorInfo.etcolumn--;
-			if (editorInfo.etpos < 0) editorInfo.etpos = 0;
-			if (editorInfo.etpos > MAX_TABLELEN - 1) editorInfo.etpos = MAX_TABLELEN - 1;
+    if (mouseb & MOUSEB_LEFT)
+    {
+      editorInfo.eschn = newchn;
+      editorInfo.eseditpos = newpos;
+      editorInfo.escolumn = newcolumn;
+    }
 
-			if (mouseb & (MOUSEB_RIGHT | MOUSEB_MIDDLE)) editorInfo.etmarkend = newpos;
-		}
-	}
+    if ((mouseb & (MOUSEB_RIGHT | MOUSEB_MIDDLE)) && (newpos < songlen[editorInfo.esnum][newchn])) editorInfo.esmarkend = newpos;
+    return;
+  }
 
-	// Name editpos
-	if ((mousey >= 31) && (mousey <= 33) && (mousex >= 47 + 10))
-	{
-		editorInfo.editmode = EDIT_NAMES;
-		editorInfo.enpos = mousey - 31;
-	}
+  // Instrument editpos
+  if ((mousey >= INS_ROWS_Y) && (mousey < INS_ROWS_Y + 5))
+  {
+    if ((mousex >= INS_COL1_X) && (mousex < INS_COL1_X + INS_VAL_OFS + 2))
+    {
+      editorInfo.editmode = EDIT_INSTRUMENT;
+      editorInfo.eipos = mousey - INS_ROWS_Y;
+      editorInfo.eicolumn = mousex - INS_COL1_X - INS_VAL_OFS;
+      if (editorInfo.eicolumn < 0) editorInfo.eicolumn = 0;
+      return;
+    }
+    if ((mousex >= INS_COL2_X) && (mousex < INS_COL2_X + INS_VAL_OFS + 2) && (mousey < INS_ROWS_Y + 4))
+    {
+      editorInfo.editmode = EDIT_INSTRUMENT;
+      editorInfo.eipos = mousey - INS_ROWS_Y + 5;
+      editorInfo.eicolumn = mousex - INS_COL2_X - INS_VAL_OFS;
+      if (editorInfo.eicolumn < 0) editorInfo.eicolumn = 0;
+      return;
+    }
+  }
+  if ((mousey == INS_Y) && (mousex >= RP_X + 17) && (mousex < RP_X + 34))
+  {
+    editorInfo.editmode = EDIT_INSTRUMENT;
+    editorInfo.eipos = 9;
+    return;
+  }
 
-	// Status panel
-	if ((!prevmouseb) && (mousex == 7) && (mousey == 23 + 3 + 9))
-	{
-		if (mouseb & (MOUSEB_LEFT))
-			if (editorInfo.epoctave < 7) editorInfo.epoctave++;
-		if (mouseb & (MOUSEB_RIGHT))
-			if (editorInfo.epoctave > 0) editorInfo.epoctave--;
-	}
-	if ((!prevmouseb) && (mousex <= 7) && (mousey == 24 + 3 + 9))
-	{
-		recordmode ^= 1;
-	}
-	for (c = 0; c < MAX_CHN; c++)
-	{
-		if ((!prevmouseb) && (mousey >= 23 + 3 + 9) && (mousex >= 80 + 7 * c) && (mousex <= 85 + 7 * c))
-			mutechannel(c);
-	}
+  // Table editpos
+  for (c = 0; c < MAX_TABLES; c++)
+  {
+    if ((mousey >= TBL_ROWS_Y) && (mousey < TBL_ROWS_Y + VISIBLETABLEROWS) && (mousex >= TBL_X(c) + 3) && (mousex <= TBL_X(c) + 7))
+    {
+      int newpos = mousey - TBL_ROWS_Y + editorInfo.etview[c];
+      if (newpos < 0) newpos = 0;
+      if (newpos >= MAX_TABLELEN) newpos = MAX_TABLELEN - 1;
 
-	// Titlebar actions
-	if (!menu)
-	{
-		if ((mousey == 0) && (!prevmouseb) && (mouseb == MOUSEB_LEFT))
-		{
-			if ((mousex >= 40 + 10) && (mousex <= 41 + 10))
-			{
-				undoCreateEditorInfoBackup();
-				editorInfo.finevibrato ^= 1;
-				undoAddEditorSettingsToList();
-			}
-			if ((mousex >= 43 + 10) && (mousex <= 44 + 10))
-			{
-				undoCreateEditorInfoBackup();
-				editorInfo.optimizepulse ^= 1;
-				undoAddEditorSettingsToList();
-			}
-			if ((mousex >= 46 + 10) && (mousex <= 47 + 10))
-			{
-				undoCreateEditorInfoBackup();
-				editorInfo.optimizerealtime ^= 1;
-				undoAddEditorSettingsToList();
-			}
-			if ((mousex >= 49 + 10) && (mousex <= 52 + 10))
-			{
-				undoCreateEditorInfoBackup();
-				editorInfo.ntsc ^= 1;
-				undoAddEditorSettingsToList();
-				do_sound_init();
-			}
-			if ((mousex >= 54 + 10) && (mousex <= 57 + 10))
-			{
-				undoCreateEditorInfoBackup();
-				editorInfo.sidmodel ^= 1;
-				undoAddEditorSettingsToList();
-				do_sound_init();
-			}
-			if ((mousex >= 62 + 10) && (mousex <= 65 + 10)) editadsr();
-			if ((mousex >= 67 + 10) && (mousex <= 68 + 10))
-			{
-				undoCreateEditorInfoBackup();
-				prevmultiplier();
-				undoAddEditorSettingsToList();
-			}
-			if ((mousex >= 69 + 10) && (mousex <= 70 + 10))
-			{
-				undoCreateEditorInfoBackup();
-				nextmultiplier();
-				undoAddEditorSettingsToList();
-			}
-			if ((mousex >= 72 + 10) && (mousex <= 74 + 10))
-			{
-				interpolate ^= 1;
-				interpolate &= 1 + (interpolate << 1);  // turn off FP if INT is 0
-				stopsong();
-				do_sound_init();
-		}
-			if ((mousex >= 76 + 10) && (mousex <= 77 + 10))
-			{
-				interpolate ^= 2;
-				interpolate |= interpolate >> 1;  // turn on INT if FP is 1
-				stopsong();
-				do_sound_init();
-			}
-		}
-	}
-	else
-	{
-		if ((!mousey) && (mouseb & MOUSEB_LEFT) && (!(prevmouseb & MOUSEB_LEFT)))
-		{
-			if ((mousex >= 0) && (mousex <= 5))
-			{
-				initsong(editorInfo.esnum, PLAY_BEGINNING);
-				followplay = shiftpressed;
-			}
-			if ((mousex >= 7) && (mousex <= 15))
-			{
-				initsong(editorInfo.esnum, PLAY_POS);
-				followplay = shiftpressed;
-			}
-			if ((mousex >= 17) && (mousex <= 26))
-			{
-				initsong(editorInfo.esnum, PLAY_PATTERN);
-				followplay = shiftpressed;
-			}
-			if ((mousex >= 28) && (mousex <= 33))
-				stopsong();
-			if ((mousex >= 35) && (mousex <= 40))
-				load();
-			if ((mousex >= 42) && (mousex <= 47))
-				save();
-			if ((mousex >= 49) && (mousex <= 57))
-				relocator();
-			if ((mousex >= 59) && (mousex <= 64))
-				onlinehelp(0, 0);
-			if ((mousex >= 66) && (mousex <= 72))
-				clear();
-			if ((mousex >= 74) && (mousex <= 79))
-				quit();
-		}
-	}
+      editorInfo.editmode = EDIT_TABLES;
+
+      if ((mouseb & (MOUSEB_RIGHT | MOUSEB_MIDDLE)) && (!prevmouseb))
+      {
+        if ((editorInfo.etmarknum != c) || (newpos != editorInfo.etmarkend))
+        {
+          editorInfo.etmarknum = c;
+          editorInfo.etmarkstart = editorInfo.etmarkend = newpos;
+        }
+      }
+      if (mouseb & MOUSEB_LEFT)
+      {
+        editorInfo.etnum = c;
+        editorInfo.etpos = newpos;
+        editorInfo.etcolumn = mousex - TBL_X(c) - 3;
+      }
+      if (editorInfo.etcolumn >= 2) editorInfo.etcolumn--;
+      if (editorInfo.etcolumn > 3) editorInfo.etcolumn = 3;
+      if (editorInfo.etpos < 0) editorInfo.etpos = 0;
+      if (editorInfo.etpos > MAX_TABLELEN - 1) editorInfo.etpos = MAX_TABLELEN - 1;
+
+      if (mouseb & (MOUSEB_RIGHT | MOUSEB_MIDDLE)) editorInfo.etmarkend = newpos;
+      return;
+    }
+  }
+
+  // Name editpos
+  if ((mousey >= NAMES_ROWS_Y) && (mousey < NAMES_ROWS_Y + 3) && (mousex >= RP_X))
+  {
+    editorInfo.editmode = EDIT_NAMES;
+    editorInfo.enpos = mousey - NAMES_ROWS_Y;
+    return;
+  }
+
+  // Panel headers switch editing mode
+  if (click)
+  {
+    if ((mousey == PATT_Y) && (mousex < PATT_W)) editorInfo.editmode = EDIT_PATTERN;
+    if ((mousey == ORD_Y) && (mousex >= RP_X)) editorInfo.editmode = EDIT_ORDERLIST;
+    if ((mousey == INS_Y) && (mousex >= RP_X)) editorInfo.editmode = EDIT_INSTRUMENT;
+    if ((mousey == TBL_Y) && (mousex >= RP_X)) editorInfo.editmode = EDIT_TABLES;
+    if ((mousey == NAMES_Y) && (mousex >= RP_X)) editorInfo.editmode = EDIT_NAMES;
+  }
 }
 
 void generalcommands(void)
 {
-	int c;
+  int c;
 
-	switch (key)
-	{
-	case '?':
-	case '-':
-		if ((editorInfo.editmode != EDIT_NAMES) && (editorInfo.editmode != EDIT_ORDERLIST))
-		{
-			if (!((editorInfo.editmode == EDIT_INSTRUMENT) && (editorInfo.eipos == 9))) previnstr();
-		}
-		break;
+  switch (key)
+  {
+  case '?':
+  case '-':
+    if ((editorInfo.editmode != EDIT_NAMES) && (editorInfo.editmode != EDIT_ORDERLIST))
+    {
+      if (!((editorInfo.editmode == EDIT_INSTRUMENT) && (editorInfo.eipos == 9))) previnstr();
+    }
+    break;
 
-	case '+':
-	case '_':
-		if ((editorInfo.editmode != EDIT_NAMES) && (editorInfo.editmode != EDIT_ORDERLIST))
-		{
-			if (!((editorInfo.editmode == EDIT_INSTRUMENT) && (editorInfo.eipos >= 9))) nextinstr();
+  case '+':
+  case '_':
+    if ((editorInfo.editmode != EDIT_NAMES) && (editorInfo.editmode != EDIT_ORDERLIST))
+    {
+      if (!((editorInfo.editmode == EDIT_INSTRUMENT) && (editorInfo.eipos >= 9))) nextinstr();
+    }
+    break;
 
-		}
-		break;
+  case '*':
+    if (editorInfo.editmode != EDIT_NAMES)
+    {
+      if (!((editorInfo.editmode == EDIT_INSTRUMENT) && (editorInfo.eipos >= 9)))
+      {
+        if (editorInfo.epoctave < 7) editorInfo.epoctave++;
+      }
+    }
+    break;
 
-	case '*':
-		if (editorInfo.editmode != EDIT_NAMES)
-		{
-			if (!((editorInfo.editmode == EDIT_INSTRUMENT) && (editorInfo.eipos >= 9)))
-			{
-				if (editorInfo.epoctave < 7) editorInfo.epoctave++;
-			}
-		}
-		break;
+  case '/':
+  case '\'':
+    if (editorInfo.editmode != EDIT_NAMES)
+    {
+      if (!((editorInfo.editmode == EDIT_INSTRUMENT) && (editorInfo.eipos >= 9)))
+      {
+        if (editorInfo.epoctave > 0) editorInfo.epoctave--;
+      }
+    }
+    break;
 
-	case '/':
-	case '\'':
-		if (editorInfo.editmode != EDIT_NAMES)
-		{
-			if (!((editorInfo.editmode == EDIT_INSTRUMENT) && (editorInfo.eipos >= 9)))
-			{
-				if (editorInfo.epoctave > 0) editorInfo.epoctave--;
-			}
-		}
-		break;
+  case '<':
+    if (((editorInfo.editmode == EDIT_INSTRUMENT) && (editorInfo.eipos != 9)) || (editorInfo.editmode == EDIT_TABLES))
+      previnstr();
+    break;
 
-	case '<':
-		if (((editorInfo.editmode == EDIT_INSTRUMENT) && (editorInfo.eipos != 9)) || (editorInfo.editmode == EDIT_TABLES))
-			previnstr();
-		break;
+  case '>':
+    if (((editorInfo.editmode == EDIT_INSTRUMENT) && (editorInfo.eipos != 9)) || (editorInfo.editmode == EDIT_TABLES))
+      nextinstr();
+    break;
 
-	case '>':
-		if (((editorInfo.editmode == EDIT_INSTRUMENT) && (editorInfo.eipos != 9)) || (editorInfo.editmode == EDIT_TABLES))
-			nextinstr();
-		break;
+  case ';':
+    for (c = 0; c < numchannels; c++)
+    {
+      if (editorUndoInfo.editorInfo[c].espos) editorUndoInfo.editorInfo[c].espos--;
+      if (editorUndoInfo.editorInfo[c].espos < editorInfo.esview)
+      {
+        editorInfo.esview = editorUndoInfo.editorInfo[c].espos;
+        editorInfo.eseditpos = editorUndoInfo.editorInfo[c].espos;
+      }
+    }
+    updateviewtopos();
+    rewindsong();
+    break;
 
-	case ';':
-		for (c = 0; c < MAX_CHN; c++)
-		{
-			if (editorUndoInfo.editorInfo[c].espos) editorUndoInfo.editorInfo[c].espos--;
-			if (editorUndoInfo.editorInfo[c].espos < editorInfo.esview)
-			{
-				editorInfo.esview = editorUndoInfo.editorInfo[c].espos;
-				editorInfo.eseditpos = editorUndoInfo.editorInfo[c].espos;
-			}
-		}
-		updateviewtopos();
-		rewindsong();
-		break;
+  case ':':
+    for (c = 0; c < numchannels; c++)
+    {
+      if (editorUndoInfo.editorInfo[c].espos < songlen[editorInfo.esnum][c] - 1)
+        editorUndoInfo.editorInfo[c].espos++;
+      if (editorUndoInfo.editorInfo[c].espos - editorInfo.esview >= VISIBLEORDERLIST)
+      {
+        editorInfo.esview = editorUndoInfo.editorInfo[c].espos - VISIBLEORDERLIST + 1;
+        editorInfo.eseditpos = editorUndoInfo.editorInfo[c].espos;
+      }
+    }
+    updateviewtopos();
+    rewindsong();
+    break;
+  }
+  if (win_quitted)
+  {
+    win_quitted = 0;
+    shiftpressed = 0;
+    mouseb = 1;
+    quit();
+    mouseb = 0;
+  }
+  switch (rawkey)
+  {
+  case KEY_ESC:
+    if (!shiftpressed)
+      quit();
+    else
+      clear();
+    break;
 
-	case ':':
-		for (c = 0; c < MAX_CHN; c++)
-		{
-			if (editorUndoInfo.editorInfo[c].espos < songlen[editorInfo.esnum][c] - 1)
-				editorUndoInfo.editorInfo[c].espos++;
-			if (editorUndoInfo.editorInfo[c].espos - editorInfo.esview >= VISIBLEORDERLIST)
-			{
-				editorInfo.esview = editorUndoInfo.editorInfo[c].espos - VISIBLEORDERLIST + 1;
-				editorInfo.eseditpos = editorUndoInfo.editorInfo[c].espos;
-			}
-		}
-		updateviewtopos();
-		rewindsong();
-		break;
+  case KEY_KPMULTIPLY:
+    if ((editorInfo.editmode != EDIT_NAMES) && (!key))
+    {
+      if (!((editorInfo.editmode == EDIT_INSTRUMENT) && (editorInfo.eipos >= 9)))
+      {
+        if (editorInfo.epoctave < 7) editorInfo.epoctave++;
+      }
+    }
+    break;
 
-	}
-	if (win_quitted) exitprogram = 1;
-	switch (rawkey)
-	{
-	case KEY_ESC:
-		if (!shiftpressed)
-			quit();
-		else
-			clear();
-		break;
+  case KEY_KPDIVIDE:
+    if ((editorInfo.editmode != EDIT_NAMES) && (!key))
+    {
+      if (!((editorInfo.editmode == EDIT_INSTRUMENT) && (editorInfo.eipos >= 9)))
+      {
+        if (editorInfo.epoctave > 0) editorInfo.epoctave--;
+      }
+    }
+    break;
 
-	case KEY_KPMULTIPLY:
-		if ((editorInfo.editmode != EDIT_NAMES) && (!key))
-		{
-			if (!((editorInfo.editmode == EDIT_INSTRUMENT) && (editorInfo.eipos >= 9)))
-			{
-				if (editorInfo.epoctave < 7) editorInfo.epoctave++;
-			}
-		}
-		break;
+  case KEY_Z:
+    if (ctrlpressed || metapressed)
+      undoPerform();
+    break;
 
-	case KEY_KPDIVIDE:
-		if ((editorInfo.editmode != EDIT_NAMES) && (!key))
-		{
-			if (!((editorInfo.editmode == EDIT_INSTRUMENT) && (editorInfo.eipos >= 9)))
-			{
-				if (editorInfo.epoctave > 0) editorInfo.epoctave--;
-			}
-		}
-		break;
+  case KEY_F12:
+    onlinehelp(0, shiftpressed);
+    break;
 
-	case KEY_Z:
-		if (ctrlpressed || metapressed)
-			undoPerform();
-		break;
+  case KEY_TAB:
+    if ((ctrlpressed) || (metapressed)) break;
+    if (!shiftpressed) editorInfo.editmode++;
+    else editorInfo.editmode--;
+    if (editorInfo.editmode > EDIT_NAMES) editorInfo.editmode = EDIT_PATTERN;
+    if (editorInfo.editmode < EDIT_PATTERN) editorInfo.editmode = EDIT_NAMES;
+    break;
 
-	case KEY_F12:
-		onlinehelp(0, shiftpressed);
-		break;
+  case KEY_F1:
+    initsong(editorInfo.esnum, PLAY_BEGINNING);
+    followplay = shiftpressed;
+    break;
 
-	case KEY_TAB:
-		if (!shiftpressed) editorInfo.editmode++;
-		else editorInfo.editmode--;
-		if (editorInfo.editmode > EDIT_NAMES) editorInfo.editmode = EDIT_PATTERN;
-		if (editorInfo.editmode < EDIT_PATTERN) editorInfo.editmode = EDIT_NAMES;
-		break;
+  case KEY_F2:
+    initsong(editorInfo.esnum, PLAY_POS);
+    followplay = shiftpressed;
+    break;
 
-	case KEY_F1:
-		initsong(editorInfo.esnum, PLAY_BEGINNING);
-		followplay = shiftpressed;
-		break;
+  case KEY_F3:
+    initsong(editorInfo.esnum, PLAY_PATTERN);
+    followplay = shiftpressed;
+    break;
 
-	case KEY_F2:
-		initsong(editorInfo.esnum, PLAY_POS);
-		followplay = shiftpressed;
-		break;
+  case KEY_F4:
+    if (shiftpressed)
+      mutechannel(editorInfo.epchn);
+    else
+      stopsong();
+    break;
 
-	case KEY_F3:
-		initsong(editorInfo.esnum, PLAY_PATTERN);
-		followplay = shiftpressed;
-		break;
+  case KEY_F5:
+    if (!shiftpressed)
+      editorInfo.editmode = EDIT_PATTERN;
+    else prevmultiplier();
+    break;
 
-	case KEY_F4:
-		if (shiftpressed)
-			mutechannel(editorInfo.epchn);
-		else
-			stopsong();
-		break;
+  case KEY_F6:
+    if (!shiftpressed)
+      editorInfo.editmode = EDIT_ORDERLIST;
+    else nextmultiplier();
+    break;
 
-	case KEY_F5:
-		if (!shiftpressed)
-			editorInfo.editmode = EDIT_PATTERN;
-		else prevmultiplier();
-		break;
+  case KEY_F7:
+    if (!shiftpressed)
+    {
+      if (editorInfo.editmode == EDIT_INSTRUMENT)
+        editorInfo.editmode = EDIT_TABLES;
+      else
+        editorInfo.editmode = EDIT_INSTRUMENT;
+    }
+    else editadsr();
+    break;
 
-	case KEY_F6:
-		if (!shiftpressed)
-			editorInfo.editmode = EDIT_ORDERLIST;
-		else nextmultiplier();
-		break;
+  case KEY_F8:
+    if (!shiftpressed)
+      editorInfo.editmode = EDIT_NAMES;
+    else
+    {
+      editorInfo.sidmodel ^= 1;
+      do_sound_init();
+    }
+    break;
 
-	case KEY_F7:
-		if (!shiftpressed)
-		{
-			if (editorInfo.editmode == EDIT_INSTRUMENT)
-				editorInfo.editmode = EDIT_TABLES;
-			else
-				editorInfo.editmode = EDIT_INSTRUMENT;
-		}
-		else editadsr();
-		break;
+  case KEY_F9:
+    if (!shiftpressed)
+      relocator();
+    else
+      toggle_interpolation_mode();
+    break;
 
-	case KEY_F8:
-		if (!shiftpressed)
-			editorInfo.editmode = EDIT_NAMES;
-		else
-		{
-			editorInfo.sidmodel ^= 1;
-			do_sound_init();
-		}
-		break;
+  case KEY_F10:
+    load();
+    break;
 
-	case KEY_F9:
-		if (!shiftpressed) {
-		relocator();
-		}
-		else
-		{
-			toggle_interpolation_mode();
-		}
-		break;
-
-	case KEY_F10:
-		load();
-		break;
-
-	case KEY_F11:
-		save();
-		break;
-	}
+  case KEY_F11:
+    save();
+    break;
+  }
 }
 
 void load(void)
 {
-	if ((editorInfo.editmode != EDIT_INSTRUMENT) && (editorInfo.editmode != EDIT_TABLES))
-	{
-		if (!shiftpressed)
-		{
-			if (fileselector(songfilename, songpath, songfilter, "LOAD SONG", 0))
-			{
-				loadsong();
-				undoInitAllAreas();
-			}
-		}
-		else
-		{
-			if (fileselector(songfilename, songpath, songfilter, "MERGE SONG", 0))
-			{
-				mergesong();
-				undoInitAllAreas();
-			}
-		}
-	}
-	else
-	{
-		if (editorInfo.einum)
-		{
-			if (fileselector(instrfilename, instrpath, instrfilter, "LOAD INSTRUMENT", 0))
-				loadinstrument();
-		}
-	}
-	key = 0;
-	rawkey = 0;
+  if ((editorInfo.editmode != EDIT_INSTRUMENT) && (editorInfo.editmode != EDIT_TABLES))
+  {
+    if (!shiftpressed)
+    {
+      if ((songmodified) && (!dlg_confirm("Load song", "Discard the changes of the current song?")))
+      {
+        key = 0;
+        rawkey = 0;
+        return;
+      }
+      if (fileselector(songfilename, songpath, songfilter, "LOAD SONG  (.sng = GoatTracker 1/2 SIDs, .ggt = GrooveGoat 4/8 SIDs)", 0))
+      {
+        stopsong();
+        loadsong();
+        do_sound_init();
+        undoInitAllAreas();
+      }
+    }
+    else
+    {
+      if (fileselector(songfilename, songpath, songfilter, "MERGE SONG", 0))
+      {
+        mergesong();
+        undoInitAllAreas();
+        songmodified = 1;
+      }
+    }
+  }
+  else
+  {
+    if (editorInfo.einum)
+    {
+      char title[80];
+      sprintf(title, "LOAD INSTRUMENT INTO SLOT %02X  (SPACE = preview)", editorInfo.einum);
+      if (fileselector(instrfilename, instrpath, instrfilter, title, FILESEL_INSTRUMENT))
+      {
+        loadinstrument();
+        songmodified = 1;
+        sprintf(statusmessage, "Loaded instrument %s into slot %02X", instrfilename, editorInfo.einum);
+      }
+    }
+  }
+  key = 0;
+  rawkey = 0;
 }
 
 void save(void)
 {
-	if ((editorInfo.editmode != EDIT_INSTRUMENT) && (editorInfo.editmode != EDIT_TABLES))
-	{
-		int done = 0;
+  if ((editorInfo.editmode != EDIT_INSTRUMENT) && (editorInfo.editmode != EDIT_TABLES))
+  {
+    int done = 0;
 
-		// Repeat until quit or save successful
-		while (!done)
-		{
-			if (strlen(loadedsongfilename)) strcpy(songfilename, loadedsongfilename);
-			if (fileselector(songfilename, songpath, songfilter, "SAVE SONG", 3))
-				done = savesong();
-			else done = 1;
-		}
-	}
-	else
-	{
-		if (editorInfo.einum)
-		{
-			int done = 0;
-			int useinstrname = 0;
-			char tempfilename[MAX_FILENAME];
+    // Repeat until quit or save successful
+    while (!done)
+    {
+      char title[100];
+      if (strlen(loadedsongfilename)) strcpy(songfilename, loadedsongfilename);
+      if (numsids > 2)
+        sprintf(title, "SAVE SONG (%d SIDs: C64 GrooveGoat .ggt format)", numsids);
+      else if (numsids == 2)
+        strcpy(title, "SAVE SONG (2 SIDs: GoatTracker Stereo compatible .sng)");
+      else
+        strcpy(title, "SAVE SONG (GoatTracker 2 compatible .sng)");
+      if (fileselector(songfilename, songpath, songfilter, title, 3))
+        done = savesong();
+      else done = 1;
+    }
+  }
+  else
+  {
+    if (editorInfo.einum)
+    {
+      int done = 0;
+      int useinstrname = 0;
+      char tempfilename[MAX_FILENAME];
 
-			// Repeat until quit or save successful
-			while (!done)
-			{
-				if ((!strlen(instrfilename)) && (strlen(instr[editorInfo.einum].name)))
-				{
-					useinstrname = 1;
-					strcpy(instrfilename, instr[editorInfo.einum].name);
-					strcat(instrfilename, ".ins");
-					strcpy(tempfilename, instrfilename);
-				}
+      // Repeat until quit or save successful
+      while (!done)
+      {
+        if ((!strlen(instrfilename)) && (strlen(instr[editorInfo.einum].name)))
+        {
+          useinstrname = 1;
+          strcpy(instrfilename, instr[editorInfo.einum].name);
+          strcat(instrfilename, ".ins");
+          strcpy(tempfilename, instrfilename);
+        }
 
-				if (fileselector(instrfilename, instrpath, instrfilter, "SAVE INSTRUMENT", 3))
-					done = saveinstrument();
-				else done = 1;
+        if (fileselector(instrfilename, instrpath, instrfilter, "SAVE INSTRUMENT", 3))
+        {
+          done = saveinstrument();
+          if (done) sprintf(statusmessage, "Saved instrument %s", instrfilename);
+        }
+        else done = 1;
 
-				if (useinstrname)
-				{
-					if (!strcmp(tempfilename, instrfilename))
-						memset(instrfilename, 0, sizeof instrfilename);
-				}
-			}
-		}
-	}
-	key = 0;
-	rawkey = 0;
+        if (useinstrname)
+        {
+          if (!strcmp(tempfilename, instrfilename))
+            memset(instrfilename, 0, sizeof instrfilename);
+        }
+      }
+    }
+  }
+  key = 0;
+  rawkey = 0;
 }
 
 void quit(void)
 {
-	if ((!shiftpressed) || (mouseb))
-	{
-		printblank(20, 35, 58);
-		printtextcp(49, 36, 15, "Really Quit (y/n)?");
-		waitkey();
-		printblank(20, 36, 58);
-		if ((key == 'y') || (key == 'Y')) exitprogram = 1;
-	}
-	key = 0;
-	rawkey = 0;
+  if ((!shiftpressed) || (mouseb))
+  {
+    const char *lines[2];
+    const char *opts[3] = {"Quit", "Cancel", "Save"};
+    int n = 1;
+    int r;
+    lines[0] = "Really quit C64 GrooveGoat?";
+    if (songmodified)
+    {
+      lines[1] = "The song has unsaved changes.";
+      n = 2;
+    }
+    r = dlg_choose("Quit", lines, n, opts, songmodified ? 3 : 2, 1);
+    if (r == 0) exitprogram = 1;
+    if (r == 2)
+    {
+      int oldmode = editorInfo.editmode;
+      editorInfo.editmode = EDIT_PATTERN;
+      save();
+      editorInfo.editmode = oldmode;
+      if (!songmodified) exitprogram = 1;
+    }
+  }
+  key = 0;
+  rawkey = 0;
 }
 
 void clear(void)
 {
-	int cs = 0;
-	int cp = 0;
-	int ci = 0;
-	int ct = 0;
-	int cn = 0;
+  int cs = 0;
+  int cp = 0;
+  int ci = 0;
+  int ct = 0;
+  int cn = 0;
 
-	printblank(20, 35, 58);
-	printtextcp(49, 36, 15, "Optimize everything (y/n)?");
-	waitkey();
-	printblank(20, 36, 58);
-	if ((key == 'y') || (key == 'Y'))
-	{
-		optimizeeverything(1, 1);
-		key = 0;
-		rawkey = 0;
-		return;
-	}
+  if (dlg_confirm("Optimize", "Optimize everything (remove unused patterns, instruments, table data)?"))
+  {
+    optimizeeverything(1, 1);
+    songmodified = 1;
+    key = 0;
+    rawkey = 0;
+    return;
+  }
 
-	printtextcp(49, 36, 15, "Clear orderlists (y/n)?");
-	waitkey();
-	printblank(20, 36, 58);
-	if ((key == 'y') || (key == 'Y')) cs = 1;
+  cs = dlg_confirm("Clear", "Clear orderlists?");
+  cp = dlg_confirm("Clear", "Clear patterns?");
+  ci = dlg_confirm("Clear", "Clear instruments?");
+  ct = dlg_confirm("Clear", "Clear tables?");
+  cn = dlg_confirm("Clear", "Clear song name, author and release info?");
 
-	printtextcp(49, 36, 15, "Clear patterns (y/n)?");
-	waitkey();
-	printblank(20, 36, 58);
-	if ((key == 'y') || (key == 'Y')) cp = 1;
+  if (cp == 1)
+  {
+    unsigned len = defaultpatternlength;
+    // Ask for the pattern length (decimal shown as hex input for simplicity)
+    if (dlg_edithex("Clear patterns", "Default pattern length (hex):", &len, 2))
+    {
+      if (len < 1) len = 1;
+      if (len > MAX_PATTROWS) len = MAX_PATTROWS;
+      defaultpatternlength = len;
+    }
+  }
 
-	printtextcp(49, 36, 15, "Clear instruments (y/n)?");
-	waitkey();
-	printblank(20, 36, 58);
-	if ((key == 'y') || (key == 'Y')) ci = 1;
+  if (cs | cp | ci | ct | cn)
+  {
+    memset(songfilename, 0, sizeof songfilename);
+    songmodified = 1;
+  }
+  clearsong(cs, cp, ci, ct, cn);
+  if (cs) clearinactivechannels();
 
-	printtextcp(49, 36, 15, "Clear tables (y/n)?");
-	waitkey();
-	printblank(20, 36, 58);
-	if ((key == 'y') || (key == 'Y')) ct = 1;
-
-	printtextcp(49, 36, 15, "Clear songname (y/n)?");
-	waitkey();
-	printblank(20, 36, 58);
-	if ((key == 'y') || (key == 'Y')) cn = 1;
-
-	if (cp == 1)
-	{
-		int selectdone = 0;
-		int olddpl = defaultpatternlength;
-
-		printtext(40, 36, 15, "Pattern length:");
-		while (!selectdone)
-		{
-			sprintf(textbuffer, "%02d ", defaultpatternlength);
-			printtext(55, 36, 15, textbuffer);
-			waitkey();
-			switch (rawkey)
-			{
-			case KEY_LEFT:
-				defaultpatternlength -= 7;
-			case KEY_DOWN:
-				defaultpatternlength--;
-				if (defaultpatternlength < 1) defaultpatternlength = 1;
-				break;
-
-			case KEY_RIGHT:
-				defaultpatternlength += 7;
-			case KEY_UP:
-				defaultpatternlength++;
-				if (defaultpatternlength > MAX_PATTROWS) defaultpatternlength = MAX_PATTROWS;
-				break;
-
-			case KEY_ESC:
-				defaultpatternlength = olddpl;
-				selectdone = 1;
-				break;
-
-			case KEY_ENTER:
-				selectdone = 1;
-				break;
-			}
-		}
-		printblank(20, 36, 58);
-	}
-
-	if (cs | cp | ci | ct | cn)
-		memset(songfilename, 0, sizeof songfilename);
-	clearsong(cs, cp, ci, ct, cn);
-
-	key = 0;
-	rawkey = 0;
+  key = 0;
+  rawkey = 0;
 }
 
 void editadsr(void)
 {
-	eamode = 1;
-	editorInfo.eacolumn = 0;
+  eamode = 1;
+  editorInfo.eacolumn = 0;
 
-	for (;;)
-	{
-		waitkeymouse();
+  for (;;)
+  {
+    waitkeymouse();
 
-		if (win_quitted)
-		{
-			exitprogram = 1;
-			key = 0;
-			rawkey = 0;
-			return;
-		}
+    if (win_quitted)
+    {
+      exitprogram = 1;
+      key = 0;
+      rawkey = 0;
+      eamode = 0;
+      return;
+    }
 
-		if (hexnybble >= 0)
-		{
-			undoCreateEditorInfoBackup();
+    if (hexnybble >= 0)
+    {
+      undoCreateEditorInfoBackup();
 
-			switch (editorInfo.eacolumn)
-			{
-			case 0:
-				editorInfo.adparam &= 0x0fff;
-				editorInfo.adparam |= hexnybble << 12;
-				break;
+      switch (editorInfo.eacolumn)
+      {
+      case 0:
+        editorInfo.adparam &= 0x0fff;
+        editorInfo.adparam |= hexnybble << 12;
+        break;
 
-			case 1:
-				editorInfo.adparam &= 0xf0ff;
-				editorInfo.adparam |= hexnybble << 8;
-				break;
+      case 1:
+        editorInfo.adparam &= 0xf0ff;
+        editorInfo.adparam |= hexnybble << 8;
+        break;
 
-			case 2:
-				editorInfo.adparam &= 0xff0f;
-				editorInfo.adparam |= hexnybble << 4;
-				break;
+      case 2:
+        editorInfo.adparam &= 0xff0f;
+        editorInfo.adparam |= hexnybble << 4;
+        break;
 
-			case 3:
-				editorInfo.adparam &= 0xfff0;
-				editorInfo.adparam |= hexnybble;
-				break;
-			}
-			editorInfo.eacolumn++;
-			undoAddEditorSettingsToList();
-		}
+      case 3:
+        editorInfo.adparam &= 0xfff0;
+        editorInfo.adparam |= hexnybble;
+        break;
+      }
+      editorInfo.eacolumn++;
+      undoAddEditorSettingsToList();
+    }
 
-		switch (rawkey)
-		{
-		case KEY_F7:
-			if (!shiftpressed) break;
+    switch (rawkey)
+    {
+    case KEY_F7:
+      if (!shiftpressed) break;
+      // fallthrough
+    case KEY_ESC:
+    case KEY_ENTER:
+    case KEY_TAB:
+      eamode = 0;
+      key = 0;
+      rawkey = 0;
+      return;
 
-		case KEY_ESC:
-		case KEY_ENTER:
-		case KEY_TAB:
-			eamode = 0;
-			key = 0;
-			rawkey = 0;
-			return;
+    case KEY_BACKSPACE:
+      if (!editorInfo.eacolumn) break;
+      // fallthrough
+    case KEY_LEFT:
+      editorInfo.eacolumn--;
+      break;
 
-		case KEY_BACKSPACE:
-			if (!editorInfo.eacolumn) break;
-		case KEY_LEFT:
-			editorInfo.eacolumn--;
-			break;
+    case KEY_RIGHT:
+      editorInfo.eacolumn++;
+    }
+    editorInfo.eacolumn &= 3;
 
-		case KEY_RIGHT:
-			editorInfo.eacolumn++;
-		}
-		editorInfo.eacolumn &= 3;
-
-		if ((mouseb) && (!prevmouseb))
-		{
-			eamode = 0;
-			return;
-		}
-	}
+    if ((mouseb) && (!prevmouseb))
+    {
+      eamode = 0;
+      return;
+    }
+  }
 }
 
 void getparam(FILE *handle, unsigned *value)
 {
-	char *configptr;
+  char *configptr;
 
-	for (;;)
-	{
-		if (feof(handle)) return;
-		fgets(configbuf, MAX_PATHNAME, handle);
-		if ((configbuf[0]) && (configbuf[0] != ';') && (configbuf[0] != ' ') && (configbuf[0] != 13) && (configbuf[0] != 10)) break;
-	}
+  for (;;)
+  {
+    if (feof(handle)) return;
+    if (!fgets(configbuf, MAX_PATHNAME, handle)) return;
+    if ((configbuf[0]) && (configbuf[0] != ';') && (configbuf[0] != ' ') && (configbuf[0] != 13) && (configbuf[0] != 10)) break;
+  }
 
-	configptr = configbuf;
-	if (*configptr == '$')
-	{
-		*value = 0;
-		configptr++;
-		for (;;)
-		{
-			char c = tolower(*configptr++);
-			int h = -1;
+  configptr = configbuf;
+  if (*configptr == '$')
+  {
+    *value = 0;
+    configptr++;
+    for (;;)
+    {
+      char c = tolower(*configptr++);
+      int h = -1;
 
-			if ((c >= 'a') && (c <= 'f')) h = c - 'a' + 10;
-			if ((c >= '0') && (c <= '9')) h = c - '0';
+      if ((c >= 'a') && (c <= 'f')) h = c - 'a' + 10;
+      if ((c >= '0') && (c <= '9')) h = c - '0';
 
-			if (h >= 0)
-			{
-				*value *= 16;
-				*value += h;
-			}
-			else break;
-		}
-	}
-	else
-	{
-		*value = 0;
-		for (;;)
-		{
-			char c = tolower(*configptr++);
-			int d = -1;
+      if (h >= 0)
+      {
+        *value *= 16;
+        *value += h;
+      }
+      else break;
+    }
+  }
+  else
+  {
+    *value = 0;
+    for (;;)
+    {
+      char c = tolower(*configptr++);
+      int d = -1;
 
-			if ((c >= '0') && (c <= '9')) d = c - '0';
+      if ((c >= '0') && (c <= '9')) d = c - '0';
 
-			if (d >= 0)
-			{
-				*value *= 10;
-				*value += d;
-			}
-			else break;
-		}
-	}
+      if (d >= 0)
+      {
+        *value *= 10;
+        *value += d;
+      }
+      else break;
+    }
+  }
 }
 
 void getfloatparam(FILE *handle, float *value)
 {
-	char *configptr;
+  char *configptr;
 
-	for (;;)
-	{
-		if (feof(handle)) return;
-		fgets(configbuf, MAX_PATHNAME, handle);
-		if ((configbuf[0]) && (configbuf[0] != ';') && (configbuf[0] != ' ') && (configbuf[0] != 13) && (configbuf[0] != 10)) break;
-	}
+  for (;;)
+  {
+    if (feof(handle)) return;
+    if (!fgets(configbuf, MAX_PATHNAME, handle)) return;
+    if ((configbuf[0]) && (configbuf[0] != ';') && (configbuf[0] != ' ') && (configbuf[0] != 13) && (configbuf[0] != 10)) break;
+  }
 
-	configptr = configbuf;
-	*value = 0.0f;
-	sscanf(configptr, "%f", value);
+  configptr = configbuf;
+  *value = 0.0f;
+  sscanf(configptr, "%f", value);
 }
 
 void getstringparam(FILE *handle, char *value)
 {
-	char *configptr;
+  char *configptr;
 
-	for (;;)
-	{
-		if (feof(handle)) return;
-		fgets(configbuf, MAX_PATHNAME, handle);
-		if ((configbuf[0]) && (configbuf[0] != ';') && (configbuf[0] != ' ') && (configbuf[0] != 13) && (configbuf[0] != 10)) break;
-	}
+  for (;;)
+  {
+    if (feof(handle)) return;
+    if (!fgets(configbuf, MAX_PATHNAME, handle)) return;
+    if ((configbuf[0]) && (configbuf[0] != ';') && (configbuf[0] != ' ') && (configbuf[0] != 13) && (configbuf[0] != 10)) break;
+  }
 
-	configptr = configbuf;
+  configptr = configbuf;
 
-	sscanf(configptr, "%s", value);
+  sscanf(configptr, "%s", value);
 }
 
 void prevmultiplier(void)
 {
-	if (editorInfo.multiplier > 0)
-	{
-		editorInfo.multiplier--;
-		do_sound_init();
-	}
+  if (editorInfo.multiplier > 0)
+  {
+    editorInfo.multiplier--;
+    do_sound_init();
+  }
 }
 
 void nextmultiplier(void)
 {
-	if (editorInfo.multiplier < 16)
-	{
-		editorInfo.multiplier++;
-		do_sound_init();
-	}
+  if (editorInfo.multiplier < 16)
+  {
+    editorInfo.multiplier++;
+    do_sound_init();
+  }
 }
 
 void calculatefreqtable()
 {
-	double basefreq = (double)basepitch * (16777216.0 / 985248.0) * pow(2.0, 0.25) / 32.0;
-	double cyclebasefreq = basefreq;
-	double freq = basefreq;
-	int c;
-	int i;
+  double basefreq = (double)basepitch * (16777216.0 / 985248.0) * pow(2.0, 0.25) / 32.0;
+  double cyclebasefreq = basefreq;
+  double freq = basefreq;
+  int c;
+  int i;
 
-	if (tuningcount)
-	{
-		c = 0;
-		while (c < 96)
-		{
-			for (i = 0; i < tuningcount; i++)
-			{
-				if (c < 96)
-				{
-					int intfreq = freq + 0.5;
-					if (intfreq > 0xffff)
-						intfreq = 0xffff;
-					freqtbllo[c] = intfreq & 0xff;
-					freqtblhi[c] = intfreq >> 8;
-					freq = cyclebasefreq * tuning[i];
-					c++;
-				}
-			}
-			cyclebasefreq = freq;
-		}
-	}
-	else
-	{
-		for (c = 0; c < 8 * 12; c++)
-		{
-			double note = c;
-			double freq = basefreq * pow(2.0, note / (double)equaldivisionsperoctave);
-			int intfreq = freq + 0.5;
-			if (intfreq > 0xffff)
-				intfreq = 0xffff;
-			freqtbllo[c] = intfreq & 0xff;
-			freqtblhi[c] = intfreq >> 8;
-		}
-	}
+  if (tuningcount)
+  {
+    c = 0;
+    while (c < 96)
+    {
+      for (i = 0; i < tuningcount; i++)
+      {
+        if (c < 96)
+        {
+          int intfreq = freq + 0.5;
+          if (intfreq > 0xffff)
+            intfreq = 0xffff;
+          freqtbllo[c] = intfreq & 0xff;
+          freqtblhi[c] = intfreq >> 8;
+          freq = cyclebasefreq * tuning[i];
+          c++;
+        }
+      }
+      cyclebasefreq = freq;
+    }
+  }
+  else
+  {
+    for (c = 0; c < 8 * 12; c++)
+    {
+      double note = c;
+      double freq = basefreq * pow(2.0, note / (double)equaldivisionsperoctave);
+      int intfreq = freq + 0.5;
+      if (intfreq > 0xffff)
+        intfreq = 0xffff;
+      freqtbllo[c] = intfreq & 0xff;
+      freqtblhi[c] = intfreq >> 8;
+    }
+  }
 }
 
 void setspecialnotenames()
 {
-	int i;
-	int j;
-	int oct;
-	char *name;
-	char octave[11];
+  int i;
+  int j;
+  int oct;
+  char *name;
+  char octave[11];
 
-	i = 0;
-	oct = 0;
-	while (i < 93)
-	{
-		for (j = 0; j < 186; j += 2)
-		{
-			if (specialnotenames[j] == '\0')
-				break;
-			if (i < 93)
-			{
-				name = malloc(4);
-				strncpy(name, specialnotenames + j, 2);
-				sprintf(octave, "%d", oct);
-				strcpy(name + 2, octave);
-				notename[i] = name;
-				i++;
-			}
-		}
-		oct++;
-	}
+  i = 0;
+  oct = 0;
+  while (i < 93)
+  {
+    for (j = 0; j < 186; j += 2)
+    {
+      if (specialnotenames[j] == '\0')
+        break;
+      if (i < 93)
+      {
+        name = malloc(4);
+        strncpy(name, specialnotenames + j, 2);
+        sprintf(octave, "%d", oct);
+        strcpy(name + 2, octave);
+        notename[i] = name;
+        i++;
+      }
+    }
+    oct++;
+  }
 }
 
 void readscalatuningfile()
 {
-	FILE *scalatuningfile;
-	char *configptr;
-	char strbuf[64];
-	char name[3];
-	int i;
-	double numerator;
-	double denominator;
-	double centvalue;
+  FILE *scalatuningfile;
+  char *configptr;
+  char strbuf[64];
+  char name[3];
+  int i;
+  double numerator;
+  double denominator;
+  double centvalue;
 
-	scalatuningfile = fopen(scalatuningfilepath, "rt");
-	if (scalatuningfile)
-	{
-		// Tuning name
-		for (;;)
-		{
-			if (feof(scalatuningfile)) return;
-			fgets(configbuf, MAX_PATHNAME, scalatuningfile);
-			if ((configbuf[0]) && (configbuf[0] != '!') && (configbuf[0] != 13) && (configbuf[0] != 10)) break;
-		}
-		configptr = configbuf;
-		sscanf(configptr, "%63[^\t\n]", tuningname);
+  scalatuningfile = fopen(scalatuningfilepath, "rt");
+  if (scalatuningfile)
+  {
+    // Tuning name
+    for (;;)
+    {
+      if (feof(scalatuningfile)) return;
+      if (!fgets(configbuf, MAX_PATHNAME, scalatuningfile)) return;
+      if ((configbuf[0]) && (configbuf[0] != '!') && (configbuf[0] != 13) && (configbuf[0] != 10)) break;
+    }
+    configptr = configbuf;
+    sscanf(configptr, "%63[^\t\n]", tuningname);
 
-		// Tuning count
-		for (;;)
-		{
-			if (feof(scalatuningfile)) return;
-			fgets(configbuf, MAX_PATHNAME, scalatuningfile);
-			if ((configbuf[0]) && (configbuf[0] != '!') && (configbuf[0] != 13) && (configbuf[0] != 10)) break;
-		}
-		configptr = configbuf;
-		sscanf(configptr, "%d", &tuningcount);
+    // Tuning count
+    for (;;)
+    {
+      if (feof(scalatuningfile)) return;
+      if (!fgets(configbuf, MAX_PATHNAME, scalatuningfile)) return;
+      if ((configbuf[0]) && (configbuf[0] != '!') && (configbuf[0] != 13) && (configbuf[0] != 10)) break;
+    }
+    configptr = configbuf;
+    sscanf(configptr, "%d", &tuningcount);
+    if (tuningcount > 96) tuningcount = 96;
 
-		// Tunings
-		for (i = 0; i < tuningcount; i++)
-		{
-			for (;;)
-			{
-				if (feof(scalatuningfile)) return;
-				fgets(configbuf, MAX_PATHNAME, scalatuningfile);
-				if ((configbuf[0]) && (configbuf[0] != '!') && (configbuf[0] != 13) && (configbuf[0] != 10)) break;
-			}
-			configptr = configbuf;
-			name[0] = '\0';
-			sscanf(configptr, "%63s %2s", strbuf, name);
-			if (!i)
-			{
-				strcpy(specialnotenames, name);
-			}
-			else
-			{
-				if (i == tuningcount - 1)
-				{
-					char *tmp = strdup(specialnotenames);
-					strcpy(specialnotenames, name);
-					strcat(specialnotenames, tmp);
-					free(tmp);
-				}
-				else
-				{
-					strcat(specialnotenames, name);
-				}
-			}
-			if (!strchr(strbuf, '.'))
-			{
-				sscanf(strbuf, "%lf", &numerator);
-				if (strchr(strbuf, '/'))
-				{
-					sscanf(strchr(strbuf, '/') + 1, "%lf", &denominator);
-					tuning[i] = numerator / denominator;
-				}
-			}
-			else
-			{
-				sscanf(configptr, "%lf", &centvalue);
-				tuning[i] = pow(2.0, centvalue / 1200.0);
-			}
-		}
-		fclose(scalatuningfile);
-	}
+    // Tunings
+    for (i = 0; i < tuningcount; i++)
+    {
+      for (;;)
+      {
+        if (feof(scalatuningfile)) return;
+        if (!fgets(configbuf, MAX_PATHNAME, scalatuningfile)) return;
+        if ((configbuf[0]) && (configbuf[0] != '!') && (configbuf[0] != 13) && (configbuf[0] != 10)) break;
+      }
+      configptr = configbuf;
+      name[0] = '\0';
+      sscanf(configptr, "%63s %2s", strbuf, name);
+      if (!i)
+      {
+        strcpy(specialnotenames, name);
+      }
+      else
+      {
+        if (i == tuningcount - 1)
+        {
+          char *tmp = strdup(specialnotenames);
+          strcpy(specialnotenames, name);
+          strcat(specialnotenames, tmp);
+          free(tmp);
+        }
+        else
+        {
+          strcat(specialnotenames, name);
+        }
+      }
+      if (!strchr(strbuf, '.'))
+      {
+        sscanf(strbuf, "%lf", &numerator);
+        if (strchr(strbuf, '/'))
+        {
+          sscanf(strchr(strbuf, '/') + 1, "%lf", &denominator);
+          tuning[i] = numerator / denominator;
+        }
+      }
+      else
+      {
+        sscanf(configptr, "%lf", &centvalue);
+        tuning[i] = pow(2.0, centvalue / 1200.0);
+      }
+    }
+    fclose(scalatuningfile);
+  }
 }

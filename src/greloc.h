@@ -36,7 +36,14 @@ extern unsigned char tablemap[MAX_TABLES][MAX_TABLELEN+1];
 extern int tableerror;
 #endif
 
+#define EXP_SID 0
+#define EXP_PRGPLAYER 1
+#define EXP_PRG 2
+#define EXP_BIN 3
+
 void relocator(void);
+unsigned sidaddr_export(int s);
+int commandlineexport(const char *outname, int format, int base);
 int testoverlap(int area1start, int area1size, int area2start, int area2size);
 int packpattern(unsigned char *dest, unsigned char *src, int rows);
 unsigned char swapnybbles(unsigned char n);

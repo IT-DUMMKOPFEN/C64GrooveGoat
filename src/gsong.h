@@ -14,7 +14,17 @@ extern int pattlen[MAX_PATT];
 extern int songlen[MAX_SONGS][MAX_CHN];
 extern int highestusedpattern;
 extern int highestusedinstr;
+extern int numsids;
+extern int numchannels;
+extern unsigned sidaddr[MAX_SIDS];
+extern int songmodified;
 #endif
+
+int songvalid(int s);
+int countsongs(void);
+void setnumsids(int n);
+int channelhasdata(int c);
+void clearinactivechannels(void);
 
 void loadsong(void);
 void mergesong(void);

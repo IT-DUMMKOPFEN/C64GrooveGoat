@@ -144,6 +144,7 @@ void orderlistcommands(void)
       if (rawkey == KEY_1) tchn = 0;
       if (rawkey == KEY_2) tchn = 1;
       if (rawkey == KEY_3) tchn = 2;
+      tchn += (schn / 3) * 3;
       if (schn != tchn)
       {
         int lentemp = songlen[editorInfo.esnum][schn];
@@ -266,7 +267,7 @@ void orderlistcommands(void)
     }
     else
     {
-      for (c = 0; c < MAX_CHN; c++)
+      for (c = 0; c < numchannels; c++)
       {
         if (editorInfo.eseditpos < songlen[editorInfo.esnum][c]) editorUndoInfo.editorInfo[c].espos = editorInfo.eseditpos;
         if (editorUndoInfo.editorInfo[c].esend < editorUndoInfo.editorInfo[c].espos)
@@ -288,14 +289,14 @@ void orderlistcommands(void)
     {
       if ((editorUndoInfo.editorInfo[editorInfo.eschn].esend != editorInfo.eseditpos) && (editorInfo.eseditpos > editorUndoInfo.editorInfo[editorInfo.eschn].espos))
       {
-        for (c = 0; c < MAX_CHN; c++)
+        for (c = 0; c < numchannels; c++)
         {
           if (editorInfo.eseditpos < songlen[editorInfo.esnum][c]) editorUndoInfo.editorInfo[c].esend = editorInfo.eseditpos;
         }
       }
       else
       {
-        for (c = 0; c < MAX_CHN; c++) editorUndoInfo.editorInfo[c].esend = 0;
+        for (c = 0; c < numchannels; c++) editorUndoInfo.editorInfo[c].esend = 0;
       }
     }
     break;
@@ -312,7 +313,7 @@ void orderlistcommands(void)
       {
         int c, d;
 
-        for (c = 0; c < MAX_CHN; c++)
+        for (c = 0; c < numchannels; c++)
         {
           int start;
 
@@ -380,7 +381,7 @@ void orderlistcommands(void)
 
     case KEY_UP:
     editorInfo.eschn--;
-    if (editorInfo.eschn < 0) editorInfo.eschn = MAX_CHN - 1;
+    if (editorInfo.eschn < 0) editorInfo.eschn = numchannels - 1;
     if ((editorInfo.eseditpos == songlen[editorInfo.esnum][editorInfo.eschn]) || (editorInfo.eseditpos > songlen[editorInfo.esnum][editorInfo.eschn]+1))
     {
       editorInfo.eseditpos = songlen[editorInfo.esnum][editorInfo.eschn]+1;
@@ -391,7 +392,7 @@ void orderlistcommands(void)
 
     case KEY_DOWN:
     editorInfo.eschn++;
-    if (editorInfo.eschn >= MAX_CHN) editorInfo.eschn = 0;
+    if (editorInfo.eschn >= numchannels) editorInfo.eschn = 0;
     if ((editorInfo.eseditpos == songlen[editorInfo.esnum][editorInfo.eschn]) || (editorInfo.eseditpos > songlen[editorInfo.esnum][editorInfo.eschn]+1))
     {
       editorInfo.eseditpos = songlen[editorInfo.esnum][editorInfo.eschn]+1;
@@ -596,7 +597,7 @@ void songchange(void)
   {
 	  editorUndoInfo.editorInfo[c].espos = 0;
 	  editorUndoInfo.editorInfo[c].esend = 0;
-	  editorUndoInfo.editorInfo[c].epnum = c;
+	  editorUndoInfo.editorInfo[c].epnum = c < numchannels ? c : 0;
   }
   updateviewtopos();
 
@@ -613,7 +614,7 @@ void songchange(void)
 void updateviewtopos(void)
 {
   int c, d;
-  for (c = 0; c < MAX_CHN; c++)
+  for (c = 0; c < numchannels; c++)
   {
     for (d = editorUndoInfo.editorInfo[c].espos; d < songlen[editorInfo.esnum][c]; d++)
     {

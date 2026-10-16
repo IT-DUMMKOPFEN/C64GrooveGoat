@@ -1,8 +1,10 @@
 #ifndef GOATTRK2_H
 #define GOATTRK2_H
 
-#define PROGRAMNAME "$VER: GoatTracker v2.76"
-#define PATCHNAME "Silver Fork v1.1"
+#define PROGRAMNAME "C64 GrooveGoat"
+#define PROGRAMVERSION "0.1b"
+#define PROGRAMAUTHOR "IT-Dummkopfen"
+#define PATCHNAME "based on GoatTracker v2.76 (Silver Fork)"
 
 #include <unistd.h>
 #include <stdio.h>
@@ -12,7 +14,9 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include <math.h>
-#include "bme.h"
+#include "gplatform.h"
+#include "gaudio.h"
+#include "gfileio.h"
 
 #include "gcommon.h"
 #include "gconsole.h"
@@ -28,6 +32,8 @@
 #include "gorder.h"
 #include "ginstr.h"
 #include "gtable.h"
+#include "glayout.h"
+#include "gdialog.h"
 
 #define EDIT_PATTERN 0
 #define EDIT_ORDERLIST 1
@@ -39,10 +45,10 @@
 #define KEY_DMC 1
 #define KEY_JANKO 2
 
-#define VISIBLEPATTROWS 31
-#define VISIBLEORDERLIST 15
-#define VISIBLETABLEROWS 15
-#define VISIBLEFILES 24
+#define VISIBLEPATTROWS 42
+#define VISIBLEORDERLIST 13
+#define VISIBLETABLEROWS 23
+#define VISIBLEFILES 30
 
 #define PGUPDNREPEAT 8
 
@@ -97,9 +103,17 @@ extern char *programname;
 extern char *patchname;
 extern char *notename[];
 extern char textbuffer[MAX_PATHNAME];
+extern unsigned stereomode;
+extern char appdir[MAX_PATHNAME];
+extern char instrlibpath[MAX_PATHNAME];
 extern unsigned char hexkeytbl[16];
-extern unsigned char datafile[];
+extern unsigned prgfrontend;
+extern unsigned themesetting;
 #endif
+
+extern char statusmessage[256];
+extern int chnview;
+extern int ordchnview;
 
 void getparam(FILE *handle, unsigned *value);
 void getfloatparam(FILE *handle, float *value);
@@ -123,5 +137,17 @@ void editadsr(void);
 void calculatefreqtable(void);
 void setspecialnotenames(void);
 void readscalatuningfile(void);
+void do_sound_init(void);
+void changenumsids(int n);
+void togglethemekey(void);
+void newsong(void);
+void exportsid(void);
+void exportprg(void);
+void showinfo(void);
+void showmanual(void);
+void showsidinfo(void);
+void helpscreenshot(const char *filename);
+int calcsonglength(int subtune);
+void toggle_interpolation_mode(void);
 
 #endif

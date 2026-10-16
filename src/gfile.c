@@ -1,5 +1,11 @@
 //
-// GOATTRACKER v2 file selector
+// C64 GrooveGoat file selector
+// (based on the GoatTracker v2 file selector)
+//
+// - multiple filters separated by ';' (e.g. "*.sng;*.ggt")
+// - instrument files show their internal instrument name
+// - instrument mode: SPACE / click on the play icon previews the instrument
+// - shortcuts to the home folder and to the bundled instrument library
 //
 
 #define GFILE_C
@@ -9,13 +15,21 @@
 #endif
 
 #include "goattrk2.h"
+#include "gres.h"
 
 DIRENTRY direntry[MAX_DIRFILES];
+static char direntryinfo[MAX_DIRFILES][24];
+
+#define FS_W 104
+#define FS_X ((MAX_COLUMNS - FS_W) / 2)
+#define FS_Y 3
+#define FS_LIST_Y (FS_Y + 3)
+#define FS_H (VISIBLEFILES + 10)
 
 void initpaths(void)
 {
   int c;
-  
+
   for (c = 0; c < MAX_DIRFILES; c++)
      direntry[c].name = NULL;
 
@@ -25,12 +39,145 @@ void initpaths(void)
   memset(songpath, 0, sizeof songpath);
   memset(instrpath, 0, sizeof instrpath);
   memset(packedpath, 0, sizeof packedpath);
-  strcpy(songfilter, "*.sng");
+  strcpy(songfilter, "*.sng;*.ggt");
   strcpy(instrfilter, "*.ins");
 
   getcwd(songpath, MAX_PATHNAME);
-  strcpy(instrpath, songpath);
   strcpy(packedpath, songpath);
+  // Instruments: start in the bundled library if it exists
+  {
+    struct stat st;
+    if ((!stat(instrlibpath, &st)) && (st.st_mode & S_IFDIR))
+      strcpy(instrpath, instrlibpath);
+    else
+      strcpy(instrpath, songpath);
+  }
+}
+
+static int matchfilter(const char *filename, const char *filter)
+{
+  char lname[MAX_PATHNAME];
+  char f[MAX_FILENAME];
+  char *tok;
+  int c;
+
+  if ((!filter[0]) || (!strcmp(filter, "*")) || (!strcmp(filter, "*.*"))) return 1;
+  strncpy(lname, filename, MAX_PATHNAME - 1);
+  lname[MAX_PATHNAME - 1] = 0;
+  for (c = 0; lname[c]; c++) lname[c] = tolower((unsigned char)lname[c]);
+  strncpy(f, filter, MAX_FILENAME - 1);
+  f[MAX_FILENAME - 1] = 0;
+  for (c = 0; f[c]; c++) f[c] = tolower((unsigned char)f[c]);
+
+  tok = f;
+  while (tok && *tok)
+  {
+    char *p;
+    char *next = tok;
+    while ((*next) && (*next != ';') && (*next != ',') && (*next != ' ')) next++;
+    if (*next)
+    {
+      *next = 0;
+      next++;
+    }
+    else next = NULL;
+    if (!*tok)
+    {
+      tok = next;
+      continue;
+    }
+    p = strchr(tok, '*');
+    if (p) p++;
+    else p = tok;
+    if ((!*p) || (!strcmp(p, ".*"))) return 1;
+    // match the end of the name (extension)
+    {
+      int ln = strlen(lname);
+      int lp = strlen(p);
+      if ((ln >= lp) && (!strcmp(lname + ln - lp, p))) return 1;
+      if (strstr(lname, p)) return 1;
+    }
+    tok = next;
+  }
+  return 0;
+}
+
+// Read the internal name of a GoatTracker instrument file
+static void getinstrumentname(const char *filename, char *out)
+{
+  FILE *h = fopen(filename, "rb");
+  unsigned char buf[4 + 9 + MAX_INSTRNAMELEN];
+  out[0] = 0;
+  if (!h) return;
+  if (fread(buf, sizeof buf, 1, h) == 1)
+  {
+    if ((!memcmp(buf, "GTI3", 4)) || (!memcmp(buf, "GTI4", 4)) || (!memcmp(buf, "GTI5", 4)))
+    {
+      int c;
+      memcpy(out, buf + 13, MAX_INSTRNAMELEN);
+      out[MAX_INSTRNAMELEN - 1] = 0;
+      for (c = 0; out[c]; c++)
+        if (((unsigned char)out[c] < 32) || ((unsigned char)out[c] > 126)) out[c] = ' ';
+    }
+  }
+  fclose(h);
+}
+
+static void freedir(void)
+{
+  int c;
+  for (c = 0; c < MAX_DIRFILES; c++)
+  {
+    if (direntry[c].name)
+    {
+      free(direntry[c].name);
+      direntry[c].name = NULL;
+    }
+  }
+}
+
+// Instrument preview: back up the current instrument + tables, load the
+// file temporarily and play a test note.
+static INSTR previewbackupinstr;
+static unsigned char previewbackupl[MAX_TABLES][MAX_TABLELEN];
+static unsigned char previewbackupr[MAX_TABLES][MAX_TABLELEN];
+static int previewactive = 0;
+
+static void previewbackup(void)
+{
+  memcpy(&previewbackupinstr, &instr[editorInfo.einum], sizeof(INSTR));
+  memcpy(previewbackupl, ltable, sizeof ltable);
+  memcpy(previewbackupr, rtable, sizeof rtable);
+  previewactive = 0;
+}
+
+static void previewrestore(void)
+{
+  if (!previewactive) return;
+  releasenote(editorInfo.epchn);
+  memcpy(&instr[editorInfo.einum], &previewbackupinstr, sizeof(INSTR));
+  memcpy(ltable, previewbackupl, sizeof ltable);
+  memcpy(rtable, previewbackupr, sizeof rtable);
+  previewactive = 0;
+}
+
+static void previewplay(const char *name)
+{
+  char save[MAX_FILENAME];
+  if (!editorInfo.einum) return;
+  if (isplaying()) stopsong();
+  if (previewactive)
+  {
+    memcpy(&instr[editorInfo.einum], &previewbackupinstr, sizeof(INSTR));
+    memcpy(ltable, previewbackupl, sizeof ltable);
+    memcpy(rtable, previewbackupr, sizeof rtable);
+  }
+  strcpy(save, instrfilename);
+  strncpy(instrfilename, name, MAX_FILENAME - 1);
+  loadinstrument();
+  strcpy(instrfilename, save);
+  previewactive = 1;
+  playtestnote(FIRSTNOTE + editorInfo.epoctave * 12, editorInfo.einum, editorInfo.epchn);
 }
 
 int fileselector(char *name, char *path, char *filter, char *title, int filemode)
@@ -44,6 +191,7 @@ int fileselector(char *name, char *path, char *filter, char *title, int filemode
   int lastfile = 0;
   int lowest;
   int exitfilesel;
+  int instrmode = (filemode & FILESEL_INSTRUMENT) ? 1 : 0;
 
   DIR *dir;
   struct dirent *de;
@@ -52,8 +200,11 @@ int fileselector(char *name, char *path, char *filter, char *title, int filemode
   char drivestr[] = "A:\\";
   char driveexists[26];
   #endif
-  char cmpbuf[MAX_PATHNAME];
   char tempname[MAX_PATHNAME];
+  char buf[200];
+
+  filemode &= 0xff;
+  if (instrmode) previewbackup();
 
   // Set initial path (if any)
   if (strlen(path)) chdir(path);
@@ -72,105 +223,85 @@ int fileselector(char *name, char *path, char *filter, char *title, int filemode
   NEWPATH:
   getcwd(path, MAX_PATHNAME);
   files = 0;
-  // Deallocate old names
-  for (c = 0; c < MAX_DIRFILES; c++)
-  {
-    if (direntry[c].name)
-    {
-      free(direntry[c].name);
-      direntry[c].name = NULL;
-    }
-  }
-  #ifdef __WIN32__
-  // Create drive letters
-  for (c = 0; c < 26; c++)
-  {
-    if (driveexists[c])
-    {
-      drivestr[0] = 'A'+c;
-      direntry[files].name = strdup(drivestr);
-      direntry[files].attribute = 2;
-      files++;
-    }
-  }
-  #endif
+  freedir();
 
   // Process directory
-  #ifdef __amigaos__
-  dir = opendir("");
-  #else
   dir = opendir(".");
-  #endif
   if (dir)
   {
-    char *filtptr = strstr(filter, "*");
-    if (!filtptr) filtptr = filter;
-    else filtptr++;
-    for (c = 0; c < strlen(filter); c++)
-      filter[c] = tolower(filter[c]);
-
     while ((de = readdir(dir)))
     {
+      if (!strcmp(de->d_name, ".")) continue;
       if ((files < MAX_DIRFILES) && (strlen(de->d_name) < MAX_FILENAME))
       {
-        direntry[files].name = strdup(de->d_name);
-        direntry[files].attribute = 0;
-        stat(de->d_name, &st);
+        if (stat(de->d_name, &st)) continue;
+        direntryinfo[files][0] = 0;
         if (st.st_mode & S_IFDIR)
         {
+          // hide dot directories except ".."
+          if ((de->d_name[0] == '.') && (strcmp(de->d_name, ".."))) continue;
+          direntry[files].name = strdup(de->d_name);
           direntry[files].attribute = 1;
           files++;
         }
         else
         {
-          int c;
-          // If a file, must match filter
-          strcpy(cmpbuf, de->d_name);
-          if ((!strcmp(filtptr, "*")) || (!strcmp(filtptr, ".*")))
-            files++;
-          else
+          if (de->d_name[0] == '.') continue;
+          if (matchfilter(de->d_name, filter))
           {
-            for (c = 0; c < strlen(cmpbuf); c++)
-              cmpbuf[c] = tolower(cmpbuf[c]);
-            if (strstr(cmpbuf, filtptr))
-              files++;
+            direntry[files].name = strdup(de->d_name);
+            direntry[files].attribute = 0;
+            if (instrmode)
+              getinstrumentname(de->d_name, direntryinfo[files]);
             else
             {
-              free(direntry[files].name);
-              direntry[files].name = NULL;
+              if (st.st_size < 10000)
+                sprintf(direntryinfo[files], "%6d bytes", (int)st.st_size);
+              else
+                sprintf(direntryinfo[files], "%6d KB", (int)(st.st_size / 1024));
             }
+            files++;
           }
         }
       }
     }
     closedir(dir);
   }
-  // Sort the filelist in a most horrible fashion
+  #ifdef __WIN32__
+  // Drive letters
+  for (c = 0; c < 26; c++)
+  {
+    if ((driveexists[c]) && (files < MAX_DIRFILES))
+    {
+      drivestr[0] = 'A'+c;
+      direntry[files].name = strdup(drivestr);
+      direntry[files].attribute = 2;
+      direntryinfo[files][0] = 0;
+      files++;
+    }
+  }
+  #endif
+
+  // Sort: ".." first, then directories, files, drives
   for (c = 0; c < files; c++)
   {
     lowest = c;
     for (d = c+1; d < files; d++)
     {
-      if (direntry[d].attribute < direntry[lowest].attribute)
-      {
-        lowest = d;
-      }
-      else
-      {
-        if (direntry[d].attribute == direntry[lowest].attribute)
-        {
-          if (cmpname(direntry[d].name, direntry[lowest].name) < 0)
-          {
-            lowest = d;
-          }
-        }
-      }
+      int ad = direntry[d].attribute == 1 ? (strcmp(direntry[d].name, "..") ? 1 : 0) : (direntry[d].attribute == 0 ? 2 : 3);
+      int al = direntry[lowest].attribute == 1 ? (strcmp(direntry[lowest].name, "..") ? 1 : 0) : (direntry[lowest].attribute == 0 ? 2 : 3);
+      if (ad < al) lowest = d;
+      else if ((ad == al) && (cmpname(direntry[d].name, direntry[lowest].name) < 0)) lowest = d;
     }
     if (lowest != c)
     {
       DIRENTRY swaptemp = direntry[c];
+      char infotemp[24];
       direntry[c] = direntry[lowest];
       direntry[lowest] = swaptemp;
+      memcpy(infotemp, direntryinfo[c], 24);
+      memcpy(direntryinfo[c], direntryinfo[lowest], 24);
+      memcpy(direntryinfo[lowest], infotemp, 24);
     }
   }
 
@@ -180,72 +311,212 @@ int fileselector(char *name, char *path, char *filter, char *title, int filemode
   for (c = 0; c < files; c++)
   {
     if ((!direntry[c].attribute) && (!cmpname(name, direntry[c].name)))
-    {
       filepos = c;
-    }
   }
 
   exitfilesel = -1;
   while (exitfilesel < 0)
   {
-    int cc = cursorcolortable[cursorflash];
+    int hitbutton = 0;
+    int bx;
+
     if (cursorflashdelay >= 6)
     {
       cursorflashdelay %= 6;
       cursorflash++;
       cursorflash &= 3;
     }
+
+    // Validate filelist view
+    if (filepos < fileview) fileview = filepos;
+    if (filepos - fileview >= VISIBLEFILES) fileview = filepos - VISIBLEFILES + 1;
+    if (fileview < 0) fileview = 0;
+
+    // Draw
+    printstatus();
+    dlg_drawframe(FS_X, FS_Y, FS_W, FS_H, title);
+
+    // Path line
+    printtext(FS_X + 2, FS_Y + 1, MKCOL(7, C_PANEL), "Folder");
+    sprintf(buf, "%-*.*s", FS_W - 12, FS_W - 12, path);
+    if ((int)strlen(path) > FS_W - 12)
+      sprintf(buf, "...%-*.*s", FS_W - 15, FS_W - 15, path + strlen(path) - (FS_W - 15));
+    printtext(FS_X + 10, FS_Y + 1, MKCOL(filemode == 1 ? CEDIT : 15, C_BEATROW), buf);
+    if (filemode == 1) printcursor(FS_X + 10 + (strlen(path) < (unsigned)(FS_W - 12) ? strlen(path) : FS_W - 13), FS_Y + 1, 1);
+
+    // Column header
+    printblankc(FS_X + 1, FS_Y + 2, MKCOL(7, C_PANEL), FS_W - 2);
+    printtext(FS_X + 4, FS_Y + 2, MKCOL(7, C_PANEL), "Name");
+    printtext(FS_X + 72, FS_Y + 2, MKCOL(7, C_PANEL), instrmode ? "Instrument name" : "Size");
+
+    for (c = 0; c < VISIBLEFILES; c++)
+    {
+      int y = FS_LIST_Y + c;
+      int idx = fileview + c;
+      int bg = (c & 1) ? C_PANEL : C_BEATROW;
+      printblankc(FS_X + 1, y, MKCOL(8, bg), FS_W - 2);
+      if ((idx >= 0) && (idx < files))
+      {
+        int glyph = 0;
+        color = 8;
+        switch (direntry[idx].attribute)
+        {
+          case 0: glyph = instrmode ? GL_NOTE : GL_BULLET; color = 15; break;
+          case 1: glyph = GL_FOLDER; color = 14; break;
+          case 2: glyph = GL_DISK; color = 11; break;
+        }
+        if (idx == filepos) bg = C_SELECT;
+        printblankc(FS_X + 1, y, MKCOL(8, bg), FS_W - 2);
+        printglyph(FS_X + 2, y, MKCOL(color, bg), glyph);
+        sprintf(buf, "%-64.64s", direntry[idx].name);
+        printtext(FS_X + 4, y, MKCOL(color, bg), buf);
+        if (direntry[idx].attribute == 1)
+          printtext(FS_X + 72, y, MKCOL(7, bg), strcmp(direntry[idx].name, "..") ? "<folder>" : "<up>");
+        else if (direntry[idx].attribute == 2)
+          printtext(FS_X + 72, y, MKCOL(7, bg), "<drive>");
+        else
+          printtext(FS_X + 72, y, MKCOL(instrmode ? 11 : 7, bg), direntryinfo[idx]);
+        if ((instrmode) && (!direntry[idx].attribute))
+        {
+          printglyph(FS_X + FS_W - 4, y, MKCOL(10, bg), GL_PLAY);
+          if ((mousey == y) && (mousex == FS_X + FS_W - 4)) hitbutton = 100 + idx;
+        }
+        if ((!filemode) && (idx == filepos)) printbgx(FS_X + 1, y, C_SELECT, FS_W - 2);
+      }
+    }
+    // Scrollbar
+    if (files > VISIBLEFILES)
+    {
+      int barh = VISIBLEFILES * VISIBLEFILES / files;
+      int bary = (VISIBLEFILES - barh) * fileview / (files - VISIBLEFILES);
+      if (barh < 1) barh = 1;
+      for (c = 0; c < VISIBLEFILES; c++)
+        printglyph(FS_X + FS_W - 2, FS_LIST_Y + c, MKCOL((c >= bary) && (c < bary + barh) ? 9 : C_LINE, C_PANEL), GL_FULL);
+    }
+
+    // Filter & name
+    printtext(FS_X + 2, FS_LIST_Y + VISIBLEFILES + 1, MKCOL(7, C_PANEL), "Filter");
+    sprintf(buf, "%-40.40s", filter);
+    printtext(FS_X + 10, FS_LIST_Y + VISIBLEFILES + 1, MKCOL(filemode == 2 ? CEDIT : 15, C_BEATROW), buf);
+    if (filemode == 2) printcursor(FS_X + 10 + strlen(filter), FS_LIST_Y + VISIBLEFILES + 1, 1);
+
+    printtext(FS_X + 2, FS_LIST_Y + VISIBLEFILES + 2, MKCOL(7, C_PANEL), "Name");
+    sprintf(buf, "%-60.60s", name);
+    printtext(FS_X + 10, FS_LIST_Y + VISIBLEFILES + 2, MKCOL(filemode == 3 ? CEDIT : 15, C_BEATROW), buf);
+    if (filemode == 3) printcursor(FS_X + 10 + strlen(name), FS_LIST_Y + VISIBLEFILES + 2, 1);
+
+    // Buttons
+    bx = FS_X + 2;
+    {
+      const char *labels[6] = {" Home ", " Library ", " Up ", "  OK  ", " Cancel ", NULL};
+      int ids[6] = {1, 2, 3, 4, 5, 0};
+      int nb = 5;
+      int by = FS_LIST_Y + VISIBLEFILES + 4;
+      for (c = 0; c < nb; c++)
+      {
+        int w = strlen(labels[c]);
+        int x = bx;
+        if (ids[c] == 4) x = FS_X + FS_W - 22;
+        if (ids[c] == 5) x = FS_X + FS_W - 12;
+        if ((ids[c] == 2) && (!instrmode)) { bx += 0; continue; }
+        printtext(x, by, MKCOL(C_BUTTONTEXT, (mousey == by) && (mousex >= x) && (mousex < x + w) ? C_SELECT : C_BUTTON), labels[c]);
+        if ((mousey == by) && (mousex >= x) && (mousex < x + w)) hitbutton = ids[c];
+        if (ids[c] < 4) bx += w + 2;
+      }
+      if (instrmode)
+        printtext(bx + 2, by, MKCOL(3, C_PANEL), "SPACE = preview, ENTER = load");
+      else
+        printtext(bx + 2, by, MKCOL(3, C_PANEL), "TAB = path/filter/name, BACKSPACE = parent folder");
+    }
+
     fliptoscreen();
     getkey();
     if (lastclick) lastclick--;
 
     if (win_quitted)
     {
-      exitprogram = 1;
-      for (c = 0; c < MAX_DIRFILES; c++)
-      {
-        if (direntry[c].name)
-        {
-          free(direntry[c].name);
-          direntry[c].name = NULL;
-        }
-      }
-      return 0;
+      exitfilesel = 0;
+      break;
     }
 
-    if (mouseb)
+    // Mouse wheel
+    if (mousewheel)
     {
+      fileview -= mousewheel * 3;
+      if (fileview > files - VISIBLEFILES) fileview = files - VISIBLEFILES;
+      if (fileview < 0) fileview = 0;
+      if (filepos < fileview) filepos = fileview;
+      if (filepos >= fileview + VISIBLEFILES) filepos = fileview + VISIBLEFILES - 1;
+      if (filepos >= files) filepos = files - 1;
+      if ((filepos >= 0) && (!direntry[filepos].attribute)) strcpy(name, direntry[filepos].name);
+    }
+
+    if ((mouseb) && (!prevmouseb))
+    {
+      if (hitbutton >= 100)
+      {
+        filepos = hitbutton - 100;
+        strcpy(name, direntry[filepos].name);
+        previewplay(name);
+      }
+      else if (hitbutton)
+      {
+        switch (hitbutton)
+        {
+          case 1:
+          {
+            char *home = getenv("HOME");
+            #ifdef __WIN32__
+            if (!home) home = getenv("USERPROFILE");
+            #endif
+            if (home) chdir(home);
+            goto NEWPATH;
+          }
+          case 2:
+          chdir(instrlibpath);
+          goto NEWPATH;
+          case 3:
+          chdir("..");
+          goto NEWPATH;
+          case 4:
+          if ((filemode == 0) && (files) && (direntry[filepos].attribute)) goto ENTERFILE;
+          filemode = 3;
+          goto ENTERFILE;
+          case 5:
+          exitfilesel = 0;
+          break;
+        }
+      }
       // Cancel (click outside)
-      if ((mousey < 3) || (mousey > 3+VISIBLEFILES+6) || (mousex <= 4+10) || (mousex >= 75+10))
+      else if ((mousey < FS_Y) || (mousey >= FS_Y + FS_H) || (mousex < FS_X) || (mousex >= FS_X + FS_W))
       {
-        if ((!prevmouseb) && (lastclick)) exitfilesel = 0;
+        exitfilesel = 0;
       }
-
-      // Select dir,name,filter
-      if ((mousey >= 3+VISIBLEFILES+3) && (mousey <= 3+VISIBLEFILES+5) && (mousex >= 14+10) && (mousex <= 73+10))
-      {
-        filemode = mousey - (3+VISIBLEFILES+3) + 1;
-        if ((filemode == 3) && (!prevmouseb) && (lastclick)) goto ENTERFILE;
-      }
-
+      // Select path / filter / name field
+      else if (mousey == FS_Y + 1) filemode = 1;
+      else if (mousey == FS_LIST_Y + VISIBLEFILES + 1) filemode = 2;
+      else if (mousey == FS_LIST_Y + VISIBLEFILES + 2) filemode = 3;
+    }
+    if ((mouseb) && (hitbutton < 100) && (!hitbutton))
+    {
       // Select file from list
-      if ((mousey >= 3) && (mousey <= 3+VISIBLEFILES+2) && (mousex >= 6+10) && (mousex <= 73+10))
+      if ((mousey >= FS_LIST_Y) && (mousey < FS_LIST_Y + VISIBLEFILES) && (mousex > FS_X) && (mousex < FS_X + FS_W - 2))
       {
-        filemode = 0;
-        filepos = mousey - 4 - 1 + fileview;
-        if (filepos < 0) filepos = 0;
-        if (filepos > files-1) filepos = files - 1;
-
-        if (!direntry[filepos].attribute)
-          strcpy(name, direntry[filepos].name);
-
-        if ((!prevmouseb) && (lastclick) && (lastfile == filepos)) goto ENTERFILE;
+        int newpos = mousey - FS_LIST_Y + fileview;
+        if (newpos < files)
+        {
+          filemode = 0;
+          filepos = newpos;
+          if (!direntry[filepos].attribute)
+            strcpy(name, direntry[filepos].name);
+          if ((!prevmouseb) && (lastclick) && (lastfile == filepos)) goto ENTERFILE;
+        }
       }
     }
 
     if (!filemode)
     {
-      if (((key >= '0') && (key <= '0')) || ((key >= 'a') && (key <= 'z')) || ((key >= 'A') && (key <= 'Z')))
+      if (((key >= '0') && (key <= '9')) || ((key >= 'a') && (key <= 'z')) || ((key >= 'A') && (key <= 'Z')))
       {
         char k = tolower(key);
         int oldfilepos = filepos;
@@ -258,7 +529,7 @@ int fileselector(char *name, char *path, char *filter, char *title, int filemode
              if (tolower(direntry[filepos].name[0]) == k) break;
         }
 
-        if (!direntry[filepos].attribute) strcpy(name, direntry[filepos].name);
+        if ((filepos < files) && (!direntry[filepos].attribute)) strcpy(name, direntry[filepos].name);
       }
     }
 
@@ -268,20 +539,24 @@ int fileselector(char *name, char *path, char *filter, char *title, int filemode
       exitfilesel = 0;
       break;
 
+      case KEY_SPACE:
+      if ((instrmode) && (!filemode) && (files) && (!direntry[filepos].attribute))
+      {
+        if (shiftpressed) releasenote(editorInfo.epchn);
+        else previewplay(direntry[filepos].name);
+      }
+      break;
+
       case KEY_BACKSPACE:
       if (!filemode)
       {
-      #ifdef __amigaos__
-        chdir("/");
-      #else
         chdir("..");
-      #endif
         goto NEWPATH;
       }
       break;
 
       case KEY_HOME:
-      if (!filemode)
+      if ((!filemode) && (files))
       {
         filepos = 0;
         if (!direntry[filepos].attribute) strcpy(name, direntry[filepos].name);
@@ -289,7 +564,7 @@ int fileselector(char *name, char *path, char *filter, char *title, int filemode
       break;
 
       case KEY_END:
-      if (!filemode)
+      if ((!filemode) && (files))
       {
         filepos = files-1;
         if (!direntry[filepos].attribute) strcpy(name, direntry[filepos].name);
@@ -297,7 +572,7 @@ int fileselector(char *name, char *path, char *filter, char *title, int filemode
       break;
 
       case KEY_PGUP:
-      for (scrrep = PGUPDNREPEAT; scrrep; scrrep--)
+      for (scrrep = VISIBLEFILES - 1; scrrep; scrrep--)
       {
         if ((!filemode) && (filepos > 0))
         {
@@ -316,7 +591,7 @@ int fileselector(char *name, char *path, char *filter, char *title, int filemode
       break;
 
       case KEY_PGDN:
-      for (scrrep = PGUPDNREPEAT; scrrep; scrrep--)
+      for (scrrep = VISIBLEFILES - 1; scrrep; scrrep--)
       {
         if ((!filemode) && (filepos < files-1))
         {
@@ -352,6 +627,7 @@ int fileselector(char *name, char *path, char *filter, char *title, int filemode
       switch(filemode)
       {
         case 0:
+        if (!files) break;
         switch (direntry[filepos].attribute)
         {
           case 0:
@@ -377,12 +653,13 @@ int fileselector(char *name, char *path, char *filter, char *title, int filemode
 
         case 1:
         chdir(path);
+        // fallthrough
         case 2:
         filemode = 0;
         goto NEWPATH;
 
         case 3:
-        exitfilesel = 1;
+        if (strlen(name)) exitfilesel = 1;
         break;
       }
       break;
@@ -403,76 +680,6 @@ int fileselector(char *name, char *path, char *filter, char *title, int filemode
       break;
     }
 
-    // Validate filelist view
-    if (filepos < fileview) fileview = filepos;
-    if (filepos - fileview >= VISIBLEFILES) fileview = filepos - VISIBLEFILES + 1;
-
-    // Refresh fileselector display
-    if (isplaying()) printstatus();
-    for (c = 0; c < VISIBLEFILES+7; c++)
-    {
-      printblank(50-(MAX_FILENAME+10)/2, 3+c, MAX_FILENAME+10);
-    }
-    drawbox(50-(MAX_FILENAME+10)/2, 3, 15, MAX_FILENAME+10, VISIBLEFILES+7);
-    printblankc(50-(MAX_FILENAME+10)/2+1, 4, 15+16,MAX_FILENAME+8);
-    printtext(50-(MAX_FILENAME+10)/2+1, 4, 15+16, title);
-
-    for (c = 0; c < VISIBLEFILES; c++)
-    {
-      if ((fileview+c >= 0) && (fileview+c < files))
-      {
-        switch (direntry[fileview+c].attribute)
-        {
-          case 0:
-          sprintf(textbuffer, "%-60s        ", direntry[fileview+c].name);
-          break;
-
-          case 1:
-          sprintf(textbuffer, "%-60s   <DIR>", direntry[fileview+c].name);
-          break;
-
-          case 2:
-          sprintf(textbuffer, "%-60s   <DRV>", direntry[fileview+c].name);
-          break;
-        }
-      }
-      else
-      {
-        sprintf(textbuffer, "                                                                    ");
-      }
-      color = CNORMAL;
-      if ((fileview+c) == filepos) color = CEDIT;
-      textbuffer[68] = 0;
-      printtext(50-(MAX_FILENAME+10)/2+1, 5+c, color, textbuffer);
-      if ((!filemode) && ((fileview+c) == filepos)) printbg(50-(MAX_FILENAME+10)/2+1, 5+c, cc, 68);
-    }
-
-    printtext(50-(MAX_FILENAME+10)/2+1, 6+VISIBLEFILES, 15, "PATH:   ");
-    sprintf(textbuffer, "%-60s", path);
-    textbuffer[MAX_FILENAME] = 0;
-    color = CNORMAL;
-    if (filemode == 1) color = CEDIT;
-    printtext(50-(MAX_FILENAME+10)/2+9, 6+VISIBLEFILES, color, textbuffer);
-    if ((filemode == 1) && (strlen(path) < MAX_FILENAME)) printbg(50-(MAX_FILENAME+10)/2+9+strlen(path), 6+VISIBLEFILES, cc, 1);
-
-    printtext(50-(MAX_FILENAME+10)/2+1, 7+VISIBLEFILES, 15, "FILTER: ");
-    sprintf(textbuffer, "%-60s", filter);
-    textbuffer[MAX_FILENAME] = 0;
-    color = CNORMAL;
-    if (filemode == 2) color = CEDIT;
-    printtext(50-(MAX_FILENAME+10)/2+9, 7+VISIBLEFILES, color, textbuffer);
-    if (filemode == 2) printbg(50-(MAX_FILENAME+10)/2+9+strlen(filter), 7+VISIBLEFILES, cc, 1);
-
-    printtext(50-(MAX_FILENAME+10)/2+1, 8+VISIBLEFILES, 15, "NAME:   ");
-    sprintf(textbuffer, "%-60s", name);
-    textbuffer[MAX_FILENAME] = 0;
-    color = CNORMAL;
-    if (filemode == 3) color = CEDIT;
-    printtext(50-(MAX_FILENAME+10)/2+9, 8+VISIBLEFILES, color, textbuffer);
-    if (filemode == 3) printbg(50-(MAX_FILENAME+10)/2+9+strlen(name), 8+VISIBLEFILES, cc, 1);
-
-    if (win_quitted) exitfilesel = 0;
-
     if ((mouseb) && (!prevmouseb))
     {
       lastclick = DOUBLECLICKDELAY;
@@ -480,17 +687,12 @@ int fileselector(char *name, char *path, char *filter, char *title, int filemode
     }
   }
 
-  // Deallocate all used names
-  for (c = 0; c < MAX_DIRFILES; c++)
-  {
-    if (direntry[c].name)
-    {
-      free(direntry[c].name);
-      direntry[c].name = NULL;
-    }
-  }
+  freedir();
+  if (instrmode) previewrestore();
 
   // Restore screen & exit
+  key = 0;
+  rawkey = 0;
   printmainscreen();
   return exitfilesel;
 }
@@ -501,14 +703,14 @@ void editstring(char *buffer, int maxlength)
 
   if (key)
   {
-    if ((key == 8 || key == KEY_DEL))
+    if ((key == 8) || (key == KEY_DEL))
     {
       if (len > 0) {
         buffer[len-1] = 0;
       }
       return;
     }
-    if ((key >= 32) && (key < 256))
+    if ((key >= 32) && (key < 256) && (key != 127))
     {
       if (len < maxlength-1)
       {
@@ -530,4 +732,3 @@ int cmpname(char *string1, char *string2)
     if ((!char1) || (!char2)) return 0;
   }
 }
-

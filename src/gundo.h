@@ -48,7 +48,7 @@ enum UNDO_AREA {
 	UNDO_AREA_ORDERLIST_LENGTH_EXPANDED
 };
 
-#define UNDO_AREA_SIZE 1024	//512	// guess.. 256 patterns.. plus other stuff
+#define UNDO_AREA_SIZE 2048	//512	// guess.. 256 patterns.. plus other stuff
 #define UNDO_AREA_DIRTY_CHECK 0x5a
 #define UNDO_AREA_CLEAN 0
 

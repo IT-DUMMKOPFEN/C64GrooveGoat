@@ -50,12 +50,26 @@ typedef struct
   unsigned char mute;
   unsigned char advance;
   unsigned char gatetimer;
+  unsigned char looped;
 } CHN;
+
+typedef struct
+{
+  unsigned char filterctrl;
+  unsigned char filtertype;
+  unsigned char filtercutoff;
+  unsigned char filtertime;
+  unsigned char filterptr;
+  unsigned char masterfader;
+} SIDFILT;
 
 #ifndef GPLAY_C
 extern EDITOR_UNDO_INFO editorUndoInfo;
 extern CHN chn[MAX_CHN];
-extern unsigned char masterfader;
+extern SIDFILT sidfilt[MAX_SIDS];
+extern int psnum;
+extern int playframes;
+extern int songinit;
 extern unsigned char freqtbllo[];
 extern unsigned char freqtblhi[];
 extern int lastsonginit;
@@ -69,6 +83,7 @@ void rewindsong(void);
 void playtestnote(int note, int ins, int chnnum);
 void releasenote(int chnnum);
 void mutechannel(int chnnum);
+void solochannel(int chnnum);
 int isplaying(void);
 void playroutine(void);
 

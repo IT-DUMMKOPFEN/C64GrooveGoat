@@ -48,6 +48,8 @@ public:
   
   // Read/write registers.
   reg8 read(reg8 offset);
+  // GrooveGoat: envelope level of a voice (for level meters)
+  reg8 read_env(int v) { return voice[v].envelope.readENV(); }
   void write(reg8 offset, reg8 value);
   void mute(reg8 channel, bool enable);
 

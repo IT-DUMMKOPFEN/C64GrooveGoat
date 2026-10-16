@@ -18,11 +18,278 @@ int pattlen[MAX_PATT];
 int songlen[MAX_SONGS][MAX_CHN];
 int highestusedpattern;
 int highestusedinstr;
+int numsids = 1;
+int numchannels = 3;
+unsigned sidaddr[MAX_SIDS] = {0xd400, 0xd420, 0xd440, 0xd460, 0xd480, 0xd4a0, 0xd4c0, 0xd4e0};
+int songmodified = 0;
 
+int songvalid(int s)
+{
+  int c;
+  if ((s < 0) || (s >= MAX_SONGS)) return 0;
+  for (c = 0; c < numchannels; c++)
+  {
+    if (!songlen[s][c]) return 0;
+  }
+  return 1;
+}
+
+int countsongs(void)
+{
+  int c = MAX_SONGS - 1;
+  for (;;)
+  {
+    if (songvalid(c)) break;
+    if (c == 0) break;
+    c--;
+  }
+  return c + 1;
+}
+
+// Find a pattern that is not used by any orderlist and is empty
+static int findfreepattern(int start)
+{
+  int c, d;
+  findusedpatterns();
+  for (c = start; c < MAX_PATT; c++)
+  {
+    int empty = 1;
+    if (pattused[c]) continue;
+    for (d = 0; d < pattlen[c]; d++)
+    {
+      if ((pattern[c][d*4] != REST) || (pattern[c][d*4+1]) || (pattern[c][d*4+2]) || (pattern[c][d*4+3]))
+      {
+        empty = 0;
+        break;
+      }
+    }
+    if (empty) return c;
+  }
+  return -1;
+}
+
+// Does a channel contain anything else than an empty default orderlist?
+int channelhasdata(int c)
+{
+  int s, d;
+  for (s = 0; s < MAX_SONGS; s++)
+  {
+    for (d = 0; d < songlen[s][c]; d++)
+    {
+      int p = songorder[s][c][d];
+      if (p < MAX_PATT)
+      {
+        int e;
+        for (e = 0; e < pattlen[p]; e++)
+        {
+          if ((pattern[p][e*4] != REST) || (pattern[p][e*4+1]) || (pattern[p][e*4+2]) || (pattern[p][e*4+3]))
+            return 1;
+        }
+      }
+    }
+  }
+  return 0;
+}
+
+// Erase orderlists of channels that are not in use
+void clearinactivechannels(void)
+{
+  int s, c;
+  for (c = numchannels; c < MAX_CHN; c++)
+  {
+    for (s = 0; s < MAX_SONGS; s++)
+    {
+      memset(&songorder[s][c][0], 0, MAX_SONGLEN+2);
+      songorder[s][c][0] = LOOPSONG;
+      songlen[s][c] = 0;
+    }
+    editorUndoInfo.editorInfo[c].epnum = 0;
+    editorUndoInfo.editorInfo[c].espos = 0;
+    editorUndoInfo.editorInfo[c].esend = 0;
+  }
+}
+
+// Change the amount of SIDs (1, 2, 4 or 8). New channels get their own
+// empty patterns in all existing subtunes, removed channels are cleared.
+void setnumsids(int n)
+{
+  int oldchannels = numchannels;
+  int newchannels;
+  int s, c;
+  int validsongs[MAX_SONGS];
+
+  if ((n != 1) && (n != 2) && (n != 4) && (n != 8)) return;
+  if (n == numsids) return;
+
+  stopsong();
+  countpatternlengths();
+  for (s = 0; s < MAX_SONGS; s++) validsongs[s] = songvalid(s);
+
+  newchannels = n * 3;
+  if (newchannels > oldchannels)
+  {
+    int nextpatt = 0;
+    for (c = oldchannels; c < newchannels; c++)
+    {
+      int p = -1;
+      for (s = 0; s < MAX_SONGS; s++)
+      {
+        memset(&songorder[s][c][0], 0, MAX_SONGLEN+2);
+        if (validsongs[s])
+        {
+          if (p < 0)
+          {
+            p = findfreepattern(nextpatt);
+            if (p < 0) p = 0;
+            nextpatt = p + 1;
+          }
+          songorder[s][c][0] = p;
+          songorder[s][c][1] = LOOPSONG;
+          songorder[s][c][2] = 0;
+          songlen[s][c] = 1;
+        }
+        else
+        {
+          songorder[s][c][0] = LOOPSONG;
+          songlen[s][c] = 0;
+        }
+      }
+      // Reserve the pattern so the next channel gets another one
+      if (p >= 0) pattused[p] = 1;
+      editorUndoInfo.editorInfo[c].epnum = p >= 0 ? p : 0;
+      editorUndoInfo.editorInfo[c].espos = 0;
+      editorUndoInfo.editorInfo[c].esend = 0;
+      chn[c].mute = 0;
+    }
+  }
+  else
+  {
+    for (c = newchannels; c < MAX_CHN; c++)
+    {
+      for (s = 0; s < MAX_SONGS; s++)
+      {
+        memset(&songorder[s][c][0], 0, MAX_SONGLEN+2);
+        songorder[s][c][0] = LOOPSONG;
+        songlen[s][c] = 0;
+      }
+      chn[c].mute = 0;
+    }
+  }
+
+  numsids = n;
+  numchannels = newchannels;
+  if (editorInfo.epchn >= numchannels) editorInfo.epchn = numchannels - 1;
+  if (editorInfo.eschn >= numchannels) editorInfo.eschn = numchannels - 1;
+  if (editorInfo.epmarkchn >= numchannels) editorInfo.epmarkchn = -1;
+  if (editorInfo.esmarkchn >= numchannels) editorInfo.esmarkchn = -1;
+  countpatternlengths();
+  songmodified = 1;
+}
+
+// Write the GoatTracker v2 song body (shared by .sng and .ggt)
+static void writesongbody(FILE *handle, int nch)
+{
+  int c, d;
+  int length;
+  int amount;
+  int writebytes;
+
+  // Determine amount of patterns & instruments
+  countpatternlengths();
+  for (c = 1; c < MAX_INSTR; c++)
+  {
+    if ((instr[c].ad) || (instr[c].sr) || (instr[c].ptr[0]) || (instr[c].ptr[1]) ||
+        (instr[c].ptr[2]) || (instr[c].vibdelay) || (instr[c].ptr[3]))
+    {
+      if (c > highestusedinstr) highestusedinstr = c;
+    }
+  }
+
+  // Write infotexts
+  fwrite(songname, sizeof songname, 1, handle);
+  fwrite(authorname, sizeof authorname, 1, handle);
+  fwrite(copyrightname, sizeof copyrightname, 1, handle);
+
+  // Determine amount of songs to be saved
+  amount = countsongs();
+
+  fwrite8(handle, amount);
+  // Write songorderlists
+  for (d = 0; d < amount; d++)
+  {
+    for (c = 0; c < nch; c++)
+    {
+      length = songlen[d][c]+1;
+      fwrite8(handle, length);
+      writebytes = length;
+      writebytes++;
+      fwrite(songorder[d][c], writebytes, 1, handle);
+    }
+  }
+  // Write amount of instruments
+  fwrite8(handle, highestusedinstr);
+  // Write instruments
+  for (c = 1; c <= highestusedinstr; c++)
+  {
+    fwrite8(handle, instr[c].ad);
+    fwrite8(handle, instr[c].sr);
+    fwrite8(handle, instr[c].ptr[WTBL]);
+    fwrite8(handle, instr[c].ptr[PTBL]);
+    fwrite8(handle, instr[c].ptr[FTBL]);
+    fwrite8(handle, instr[c].ptr[STBL]);
+    fwrite8(handle, instr[c].vibdelay);
+    fwrite8(handle, instr[c].gatetimer);
+    fwrite8(handle, instr[c].firstwave);
+    fwrite(&instr[c].name, MAX_INSTRNAMELEN, 1, handle);
+  }
+  // Write tables
+  for (c = 0; c < MAX_TABLES; c++)
+  {
+    writebytes = gettablelen(c);
+    fwrite8(handle, writebytes);
+    fwrite(ltable[c], writebytes, 1, handle);
+    fwrite(rtable[c], writebytes, 1, handle);
+  }
+  // Write patterns
+  amount = highestusedpattern + 1;
+  fwrite8(handle, amount);
+  for (c = 0; c < amount; c++)
+  {
+    length = pattlen[c]+1;
+    fwrite8(handle, length);
+    fwrite(pattern[c], length * 4, 1, handle);
+  }
+}
+
+static int hasextension(const char *name, const char *ext)
+{
+  int nl = strlen(name);
+  int el = strlen(ext);
+  if (nl < el) return 0;
+  return !cmpname((char *)name + nl - el, (char *)ext);
+}
+
+static void setextension(char *name, const char *ext)
+{
+  int c;
+  for (c = strlen(name) - 1; c >= 0; c--)
+  {
+    if ((name[c] == '/') || (name[c] == '\\')) break;
+    if (name[c] == '.')
+    {
+      name[c] = 0;
+      break;
+    }
+  }
+  if (strlen(name) + strlen(ext) < MAX_FILENAME) strcat(name, ext);
+}
+
+// Save the song. 1 or 2 SIDs: GoatTracker (Stereo) compatible .sng,
+// 4 or 8 SIDs (or a .ggt name): C64 GrooveGoat format.
 int savesong(void)
 {
   int c;
-  char ident[] = {'G', 'T', 'S', '5'};
+  int ggt = 0;
   FILE *handle;
 
   if (strlen(songfilename) < MAX_FILENAME-4)
@@ -32,95 +299,45 @@ int savesong(void)
     {
       if (songfilename[c] == '.') extfound = 1;
     }
-    if (!extfound) strcat(songfilename, ".sng");
+    if (!extfound) strcat(songfilename, numsids > 2 ? ".ggt" : ".sng");
   }
+  if (hasextension(songfilename, ".ggt")) ggt = 1;
+  if ((numsids > 2) && (!ggt))
+  {
+    setextension(songfilename, ".ggt");
+    ggt = 1;
+  }
+
   handle = fopen(songfilename, "wb");
   if (handle)
   {
-    int d;
-    int length;
-    int amount;
-    int writebytes;
-    fwrite(ident, 4, 1, handle);
-
-    // Determine amount of patterns & instruments
-    countpatternlengths();
-    for (c = 1; c < MAX_INSTR; c++)
+    if (ggt)
     {
-      if ((instr[c].ad) || (instr[c].sr) || (instr[c].ptr[0]) || (instr[c].ptr[1]) ||
-          (instr[c].ptr[2]) || (instr[c].vibdelay) || (instr[c].ptr[3]))
-      {
-        if (c > highestusedinstr) highestusedinstr = c;
-      }
+      fwrite("GGT1", 4, 1, handle);
+      fwrite8(handle, numsids);
+      fwrite8(handle, (editorInfo.ntsc ? 1 : 0) | (editorInfo.sidmodel ? 2 : 0));
+      fwrite8(handle, editorInfo.multiplier);
+      fwritele16(handle, editorInfo.adparam);
+      for (c = 0; c < numsids; c++) fwritele16(handle, sidaddr[c]);
+      fwrite8(handle, 0); // amount of extra bytes (reserved for future use)
     }
-
-    // Write infotexts
-    fwrite(songname, sizeof songname, 1, handle);
-    fwrite(authorname, sizeof authorname, 1, handle);
-    fwrite(copyrightname, sizeof copyrightname, 1, handle);
-
-    // Determine amount of songs to be saved
-    c = MAX_SONGS - 1;
-    for (;;)
+    else
     {
-      if ((songlen[c][0])&&
-         (songlen[c][1])&&
-         (songlen[c][2])) break;
-      if (c == 0) break;
-      c--;
+      fwrite("GTS5", 4, 1, handle);
     }
-    amount = c + 1;
-
-    fwrite8(handle, amount);
-    // Write songorderlists
-    for (d = 0; d < amount; d++)
-    {
-      for (c = 0; c < MAX_CHN; c++)
-      {
-        length = songlen[d][c]+1;
-        fwrite8(handle, length);
-        writebytes = length;
-        writebytes++;
-        fwrite(songorder[d][c], writebytes, 1, handle);
-      }
-    }
-    // Write amount of instruments
-    fwrite8(handle, highestusedinstr);
-    // Write instruments
-    for (c = 1; c <= highestusedinstr; c++)
-    {
-      fwrite8(handle, instr[c].ad);
-      fwrite8(handle, instr[c].sr);
-      fwrite8(handle, instr[c].ptr[WTBL]);
-      fwrite8(handle, instr[c].ptr[PTBL]);
-      fwrite8(handle, instr[c].ptr[FTBL]);
-      fwrite8(handle, instr[c].ptr[STBL]);
-      fwrite8(handle, instr[c].vibdelay);
-      fwrite8(handle, instr[c].gatetimer);
-      fwrite8(handle, instr[c].firstwave);
-      fwrite(&instr[c].name, MAX_INSTRNAMELEN, 1, handle);
-    }
-    // Write tables
-    for (c = 0; c < MAX_TABLES; c++)
-    {
-      writebytes = gettablelen(c);
-      fwrite8(handle, writebytes);
-      fwrite(ltable[c], writebytes, 1, handle);
-      fwrite(rtable[c], writebytes, 1, handle);
-    }
-    // Write patterns
-    amount = highestusedpattern + 1;
-    fwrite8(handle, amount);
-    for (c = 0; c < amount; c++)
-    {
-      length = pattlen[c]+1;
-      fwrite8(handle, length);
-      fwrite(pattern[c], length * 4, 1, handle);
-    }
+    writesongbody(handle, numchannels);
     fclose(handle);
     strcpy(loadedsongfilename, songfilename);
+    songmodified = 0;
+    if (ggt)
+      sprintf(statusmessage, "Saved %s (%d SIDs, C64 GrooveGoat format)", songfilename, numsids);
+    else if (numsids == 2)
+      sprintf(statusmessage, "Saved %s (2 SIDs, GoatTracker Stereo format)", songfilename);
+    else
+      sprintf(statusmessage, "Saved %s (GoatTracker 2 format)", songfilename);
     return 1;
   }
+  sprintf(statusmessage, "Could not save %s!", songfilename);
   return 0;
 }
 
@@ -174,75 +391,251 @@ int saveinstrument(void)
   return 0;
 }
 
+// Parse (or just validate) a GoatTracker v2 song body for nch channels.
+// Returns number of bytes consumed, or -1 on error.
+static int parsesongbody(const unsigned char *buf, int len, int nch, int apply)
+{
+  int pos = 0;
+  int c, d;
+  int amount;
+
+#define NEED(n) if (pos + (n) > len) return -1;
+  NEED(MAX_STR * 3);
+  if (apply)
+  {
+    memcpy(songname, buf + pos, MAX_STR);
+    memcpy(authorname, buf + pos + MAX_STR, MAX_STR);
+    memcpy(copyrightname, buf + pos + MAX_STR * 2, MAX_STR);
+    songname[MAX_STR-1] = 0;
+    authorname[MAX_STR-1] = 0;
+    copyrightname[MAX_STR-1] = 0;
+  }
+  pos += MAX_STR * 3;
+
+  // Songorderlists
+  NEED(1);
+  amount = buf[pos++];
+  if (amount > MAX_SONGS) return -1;
+  for (d = 0; d < amount; d++)
+  {
+    for (c = 0; c < nch; c++)
+    {
+      int length, loadsize;
+      NEED(1);
+      length = buf[pos++];
+      loadsize = length + 1;
+      if (loadsize > MAX_SONGLEN + 2) return -1;
+      NEED(loadsize);
+      // The orderlist must end with the loop mark
+      if ((length < 1) || (buf[pos + length - 1] != LOOPSONG)) return -1;
+      if (apply) memcpy(songorder[d][c], buf + pos, loadsize);
+      pos += loadsize;
+    }
+  }
+  // Instruments
+  NEED(1);
+  amount = buf[pos++];
+  if (amount >= MAX_INSTR) return -1;
+  for (c = 1; c <= amount; c++)
+  {
+    NEED(9 + MAX_INSTRNAMELEN);
+    if (apply)
+    {
+      instr[c].ad = buf[pos];
+      instr[c].sr = buf[pos+1];
+      instr[c].ptr[WTBL] = buf[pos+2];
+      instr[c].ptr[PTBL] = buf[pos+3];
+      instr[c].ptr[FTBL] = buf[pos+4];
+      instr[c].ptr[STBL] = buf[pos+5];
+      instr[c].vibdelay = buf[pos+6];
+      instr[c].gatetimer = buf[pos+7];
+      instr[c].firstwave = buf[pos+8];
+      memcpy(instr[c].name, buf + pos + 9, MAX_INSTRNAMELEN);
+      instr[c].name[MAX_INSTRNAMELEN-1] = 0;
+    }
+    pos += 9 + MAX_INSTRNAMELEN;
+  }
+  // Tables
+  for (c = 0; c < MAX_TABLES; c++)
+  {
+    int loadsize;
+    NEED(1);
+    loadsize = buf[pos++];
+    NEED(loadsize * 2);
+    if (apply)
+    {
+      memcpy(ltable[c], buf + pos, loadsize);
+      memcpy(rtable[c], buf + pos + loadsize, loadsize);
+    }
+    pos += loadsize * 2;
+  }
+  // Patterns
+  NEED(1);
+  amount = buf[pos++];
+  if (amount > MAX_PATT) return -1;
+  for (c = 0; c < amount; c++)
+  {
+    int length;
+    NEED(1);
+    length = buf[pos++] * 4;
+    if (length > MAX_PATTROWS * 4 + 4) return -1;
+    NEED(length);
+    if (apply) memcpy(pattern[c], buf + pos, length);
+    pos += length;
+  }
+#undef NEED
+  return pos;
+}
+
+static unsigned char *readwholefile(const char *name, int *len)
+{
+  FILE *handle = fopen(name, "rb");
+  unsigned char *buf;
+  long size;
+  if (!handle) return NULL;
+  fseek(handle, 0, SEEK_END);
+  size = ftell(handle);
+  fseek(handle, 0, SEEK_SET);
+  if ((size <= 0) || (size > 16*1024*1024))
+  {
+    fclose(handle);
+    return NULL;
+  }
+  buf = (unsigned char *)malloc(size);
+  if (!buf)
+  {
+    fclose(handle);
+    return NULL;
+  }
+  if (fread(buf, size, 1, handle) != 1)
+  {
+    free(buf);
+    fclose(handle);
+    return NULL;
+  }
+  fclose(handle);
+  *len = (int)size;
+  return buf;
+}
+
+// Determine the channel count of a GTS3-5 body (3 = GoatTracker,
+// 6 = GoatTracker Stereo) by checking which one parses consistently.
+static int detectchannels(const unsigned char *body, int len)
+{
+  if (parsesongbody(body, len, 3, 0) == len) return 3;
+  if (parsesongbody(body, len, 6, 0) == len) return 6;
+  if (parsesongbody(body, len, 3, 0) > 0) return 3;
+  if (parsesongbody(body, len, 6, 0) > 0) return 6;
+  return 0;
+}
+
 void loadsong(void)
 {
   int c;
   int ok = 0;
   char ident[4];
   FILE *handle;
+  int len = 0;
+  unsigned char *buf = readwholefile(songfilename, &len);
+
+  statusmessage[0] = 0;
+
+  if ((buf) && (len >= 4))
+  {
+    memcpy(ident, buf, 4);
+
+    // C64 GrooveGoat multi-SID format
+    if (!memcmp(ident, "GGT1", 4))
+    {
+      int pos = 4;
+      int n, nch, extra;
+      if (len > 10)
+      {
+        n = buf[pos++];
+        if ((n == 1) || (n == 2) || (n == 4) || (n == 8))
+        {
+          int flags = buf[pos++];
+          int mult = buf[pos++];
+          int adp = buf[pos] | (buf[pos+1] << 8);
+          pos += 2;
+          nch = n * 3;
+          if (pos + n * 2 + 1 <= len)
+          {
+            unsigned addrs[MAX_SIDS];
+            for (c = 0; c < n; c++)
+            {
+              addrs[c] = buf[pos] | (buf[pos+1] << 8);
+              pos += 2;
+            }
+            extra = buf[pos++];
+            pos += extra;
+            if ((pos < len) && (parsesongbody(buf + pos, len - pos, nch, 0) > 0))
+            {
+              clearsong(1,1,1,1,1);
+              numsids = n;
+              numchannels = nch;
+              for (c = 0; c < n; c++) sidaddr[c] = addrs[c];
+              for (c = n; c < MAX_SIDS; c++) sidaddr[c] = sidaddr[c-1] + 0x20;
+              editorInfo.ntsc = flags & 1;
+              editorInfo.sidmodel = (flags >> 1) & 1;
+              if (mult <= 16) editorInfo.multiplier = mult;
+              editorInfo.adparam = adp;
+              clearinactivechannels();
+              parsesongbody(buf + pos, len - pos, nch, 1);
+              ok = 1;
+            }
+          }
+        }
+      }
+      if (ok)
+      {
+        countpatternlengths();
+        songchange();
+        sprintf(statusmessage, "Loaded %s (%d SIDs, C64 GrooveGoat format)", songfilename, numsids);
+      }
+    }
+
+    // GoatTracker v2 / GoatTracker Stereo
+    if ((!memcmp(ident, "GTS3", 4)) || (!memcmp(ident, "GTS4", 4)) || (!memcmp(ident, "GTS5", 4)))
+    {
+      int nch = detectchannels(buf + 4, len - 4);
+      if (nch)
+      {
+        clearsong(1,1,1,1,1);
+        numsids = nch / 3;
+        numchannels = nch;
+        for (c = 0; c < MAX_SIDS; c++) sidaddr[c] = 0xd400 + c * 0x20;
+        clearinactivechannels();
+        parsesongbody(buf + 4, len - 4, nch, 1);
+        ok = 1;
+        countpatternlengths();
+        songchange();
+        if (nch == 6)
+          sprintf(statusmessage, "Loaded %s (2 SIDs, GoatTracker Stereo format)", songfilename);
+        else
+          sprintf(statusmessage, "Loaded %s (GoatTracker 2 format)", songfilename);
+      }
+    }
+  }
+  if (buf) free(buf);
+
+  if (ok) goto LOADDONE;
 
   handle = fopen(songfilename, "rb");
 
   if (handle)
   {
     fread(ident, 4, 1, handle);
-    if ((!memcmp(ident, "GTS3", 4)) || (!memcmp(ident, "GTS4", 4)) || (!memcmp(ident, "GTS5", 4)))
+    if ((!memcmp(ident, "GTS2", 4)) || (!memcmp(ident, "GTS!", 4)))
     {
-      int d;
-      int length;
-      int amount;
-      int loadsize;
-      clearsong(1,1,1,1,1);
-      ok = 1;
-
-      // Read infotexts
-      fread(songname, sizeof songname, 1, handle);
-      fread(authorname, sizeof authorname, 1, handle);
-      fread(copyrightname, sizeof copyrightname, 1, handle);
-
-      // Read songorderlists
-      amount = fread8(handle);
-      for (d = 0; d < amount; d++)
+      // Old formats are always single SID
+      if (numsids != 1)
       {
-        for (c = 0; c < MAX_CHN; c++)
-        {
-          length = fread8(handle);
-          loadsize = length;
-          loadsize++;
-          fread(songorder[d][c], loadsize, 1, handle);
-        }
+        clearsong(1,1,1,1,1);
+        numsids = 1;
+        numchannels = 3;
+        clearinactivechannels();
       }
-      // Read instruments
-      amount = fread8(handle);
-      for (c = 1; c <= amount; c++)
-      {
-        instr[c].ad = fread8(handle);
-        instr[c].sr = fread8(handle);
-        instr[c].ptr[WTBL] = fread8(handle);
-        instr[c].ptr[PTBL] = fread8(handle);
-        instr[c].ptr[FTBL] = fread8(handle);
-        instr[c].ptr[STBL] = fread8(handle);
-        instr[c].vibdelay = fread8(handle);
-        instr[c].gatetimer = fread8(handle);
-        instr[c].firstwave = fread8(handle);
-        fread(&instr[c].name, MAX_INSTRNAMELEN, 1, handle);
-      }
-      // Read tables
-      for (c = 0; c < MAX_TABLES; c++)
-      {
-        loadsize = fread8(handle);
-        fread(ltable[c], loadsize, 1, handle);
-        fread(rtable[c], loadsize, 1, handle);
-      }
-      // Read patterns
-      amount = fread8(handle);
-      for (c = 0; c < amount; c++)
-      {
-        length = fread8(handle) * 4;
-        fread(pattern[c], length, 1, handle);
-      }
-      countpatternlengths();
-      songchange();
     }
 
     // Goattracker v2.xx (3-table) import
@@ -805,9 +1198,15 @@ void loadsong(void)
       }
     }
     fclose(handle);
+    if ((ok) && (!statusmessage[0]))
+      sprintf(statusmessage, "Loaded %s (imported old GoatTracker format)", songfilename);
   }
+  LOADDONE:
+  if (!ok)
+    sprintf(statusmessage, "Could not load %s - unknown or damaged file", songfilename);
   if (ok)
   {
+    songmodified = 0;
     strcpy(loadedsongfilename, songfilename);
 
     // Reset table views
@@ -1235,7 +1634,7 @@ void clearsong(int cs, int cp, int ci, int ct, int cn)
 
   stopsong();
 
-  masterfader = 0x0f;
+  for (c = 0; c < MAX_SIDS; c++) sidfilt[c].masterfader = 0x0f;
   editorInfo.epmarkchn = -1;
   editorInfo.etmarknum = -1;
   editorInfo.esmarkchn = -1;
@@ -1256,7 +1655,7 @@ void clearsong(int cs, int cp, int ci, int ct, int cn)
       for (d = 0; d < MAX_SONGS; d++)
       {
         memset(&songorder[d][c][0], 0, MAX_SONGLEN+2);
-        if (!d)
+        if ((!d) && (c < numchannels))
         {
           songorder[d][c][0] = c;
           songorder[d][c][1] = LOOPSONG;
@@ -1273,6 +1672,7 @@ void clearsong(int cs, int cp, int ci, int ct, int cn)
   }
   if (cs)
   {
+    songmodified = 0;
     editorInfo.esview = 0;
     editorInfo.eseditpos = 0;
     editorInfo.escolumn = 0;
@@ -1394,9 +1794,7 @@ int insertpattern(int p)
 
   for (c = 0; c < MAX_SONGS; c++)
   {
-    if ((songlen[c][0]) &&
-        (songlen[c][1]) &&
-        (songlen[c][2]))
+    if (songvalid(c))
     {
       for (d = 0; d < MAX_CHN; d++)
       {
@@ -1429,9 +1827,7 @@ void deletepattern(int p)
 
   for (c = 0; c < MAX_SONGS; c++)
   {
-    if ((songlen[c][0]) &&
-        (songlen[c][1]) &&
-        (songlen[c][2]))
+    if (songvalid(c))
     {
       for (d = 0; d < MAX_CHN; d++)
       {
@@ -1467,9 +1863,7 @@ void findusedpatterns(void)
   memset(pattused, 0, sizeof pattused);
   for (c = 0; c < MAX_SONGS; c++)
   {
-    if ((songlen[c][0]) &&
-        (songlen[c][1]) &&
-        (songlen[c][2]))
+    if (songvalid(c))
     {
       for (d = 0; d < MAX_CHN; d++)
       {
@@ -1503,9 +1897,7 @@ void findduplicatepatterns(void)
 
             for (f = 0; f < MAX_SONGS; f++)
             {
-              if ((songlen[f][0]) &&
-                  (songlen[f][1]) &&
-                  (songlen[f][2]))
+              if (songvalid(f))
               {
                 for (g = 0; g < MAX_CHN; g++)
                 {
@@ -1587,13 +1979,18 @@ void optimizeeverything(int oi, int ot)
 
 void mergesong(void)
 {
-  int c;
-  char ident[4];
-  FILE *handle;
+  int c, d, e;
   int songbase;
   int pattbase;
   int instrbase;
   int tablebase[MAX_TABLES];
+  int len = 0;
+  int pos = 0;
+  int fnch = 0;
+  int emptypatt = -1;
+  unsigned char *buf;
+
+  statusmessage[0] = 0;
 
   // Determine amount of patterns & instruments
   countpatternlengths();
@@ -1607,144 +2004,183 @@ void mergesong(void)
     }
   }
 
-  // Determine amount of songs
-  c = MAX_SONGS - 1;
-  for (;;)
-  {
-    if ((songlen[c][0])&&
-       (songlen[c][1])&&
-       (songlen[c][2])) break;
-    if (c == 0) break;
-    c--;
-  }     
-  
   pattbase = highestusedpattern + 1;
   instrbase = highestusedinstr;
-  songbase = c + 1;
+  songbase = countsongs();
+  if (!songvalid(songbase - 1)) songbase--;
 
   for (c = 0; c < MAX_TABLES; c++)
-  {
     tablebase[c] = gettablelen(c);
+
+  buf = readwholefile(songfilename, &len);
+  if ((!buf) || (len < 4))
+  {
+    sprintf(statusmessage, "Could not read %s", songfilename);
+    free(buf);
+    return;
   }
 
-  handle = fopen(songfilename, "rb");
-
-  if (handle)
+  if (!memcmp(buf, "GGT1", 4))
   {
-    fread(ident, 4, 1, handle);
-    if ((!memcmp(ident, "GTS3", 4)) || (!memcmp(ident, "GTS4", 4)) || (!memcmp(ident, "GTS5", 4)))
+    int n = buf[4];
+    fnch = n * 3;
+    pos = 4 + 1 + 1 + 1 + 2 + n * 2;
+    if (pos < len) pos += 1 + buf[pos];
+  }
+  else if ((!memcmp(buf, "GTS3", 4)) || (!memcmp(buf, "GTS4", 4)) || (!memcmp(buf, "GTS5", 4)))
+  {
+    fnch = detectchannels(buf + 4, len - 4);
+    pos = 4;
+  }
+  if ((!fnch) || (pos >= len) || (parsesongbody(buf + pos, len - pos, fnch, 0) <= 0))
+  {
+    sprintf(statusmessage, "Merge: unsupported or damaged file %s", songfilename);
+    free(buf);
+    return;
+  }
+  if (fnch > numchannels)
+  {
+    sprintf(statusmessage, "Merge: the song uses %d SIDs - raise the SID count first", fnch / 3);
+    free(buf);
+    return;
+  }
+
+  // Skip infotexts
+  pos += MAX_STR * 3;
+
+  // Read songorderlists
+  {
+    int amount = buf[pos++];
+    if (amount + songbase > MAX_SONGS)
     {
-      int d;
-      int e;
-      int length;
-      int amount;
-      int loadsize;
-
-      // Skip infotexts
-      fseek(handle, sizeof songname + sizeof authorname + sizeof copyrightname, SEEK_CUR);
-
-      // Read songorderlists
-      amount = fread8(handle);
-      if (amount + songbase > MAX_SONGS)
-        goto ABORT;
-      for (d = 0; d < amount; d++)
+      sprintf(statusmessage, "Merge: too many subtunes");
+      goto ABORT;
+    }
+    for (d = 0; d < amount; d++)
+    {
+      for (c = 0; c < fnch; c++)
       {
-        for (c = 0; c < MAX_CHN; c++)
+        int length = buf[pos++];
+        int loadsize = length + 1;
+        memcpy(songorder[songbase + d][c], buf + pos, loadsize);
+        pos += loadsize;
+        // Remap patterns
+        for (e = 0; e < loadsize - 1; e++)
         {
-          length = fread8(handle);
-          loadsize = length;
-          loadsize++;
-          fread(songorder[songbase + d][c], loadsize, 1, handle);
-          // Remap patterns
-          for (e = 0; e < loadsize - 1; e++)
-          {
-            if (songorder[songbase + d][c][e] < REPEAT)
-              songorder[songbase + d][c][e] += pattbase;
-          }
+          if (songorder[songbase + d][c][e] < REPEAT)
+            songorder[songbase + d][c][e] += pattbase;
         }
       }
-      // Read instruments
-      amount = fread8(handle);
-      if (amount + instrbase > MAX_INSTR)
-        goto ABORT;
-      for (c = 1; c <= amount; c++)
+      // Channels the merged song does not have play an empty pattern
+      for (c = fnch; c < numchannels; c++)
       {
-        instr[c + instrbase].ad = fread8(handle);
-        instr[c + instrbase].sr = fread8(handle);
-        instr[c + instrbase].ptr[WTBL] = fread8(handle);
-        instr[c + instrbase].ptr[PTBL] = fread8(handle);
-        instr[c + instrbase].ptr[FTBL] = fread8(handle);
-        instr[c + instrbase].ptr[STBL] = fread8(handle);
-        if (instr[c + instrbase].ptr[WTBL] > 0)
-          instr[c + instrbase].ptr[WTBL] += tablebase[WTBL];
-        if (instr[c + instrbase].ptr[PTBL] > 0)
-          instr[c + instrbase].ptr[PTBL] += tablebase[PTBL];
-        if (instr[c + instrbase].ptr[FTBL] > 0)
-          instr[c + instrbase].ptr[FTBL] += tablebase[FTBL];
-        if (instr[c + instrbase].ptr[STBL] > 0)
-          instr[c + instrbase].ptr[STBL] += tablebase[STBL];
-        instr[c + instrbase].vibdelay = fread8(handle);
-        instr[c + instrbase].gatetimer = fread8(handle);
-        instr[c + instrbase].firstwave = fread8(handle);
-        fread(&instr[c + instrbase].name, MAX_INSTRNAMELEN, 1, handle);
-      }
-      // Read tables
-      for (c = 0; c < MAX_TABLES; c++)
-      {
-        loadsize = fread8(handle);
-        if (loadsize + tablebase[c] > MAX_TABLELEN)
-          goto ABORT;
-        fread(&ltable[c][tablebase[c]], loadsize, 1, handle);
-        fread(&rtable[c][tablebase[c]], loadsize, 1, handle);
-        // Remap jumps and tablecommands
-        for (d = tablebase[c]; d < tablebase[c] + loadsize; d++)
+        if (emptypatt < 0)
         {
-          if (ltable[c][d] == 0xff && rtable[c][d] > 0)
-            rtable[c][d] += tablebase[c];
-          if (c == 0 && (ltable[c][d] >= WAVECMD && ltable[c][d] <= WAVELASTCMD))
-          {
-            int cmd = ltable[c][d] & 0xf;
-            if (cmd == CMD_SETWAVEPTR && rtable[c][d] > 0)
-              rtable[c][d] += tablebase[WTBL];
-            if (cmd == CMD_SETPULSEPTR && rtable[c][d] > 0)
-              rtable[c][d] += tablebase[PTBL];
-            if (cmd == CMD_SETFILTERPTR && rtable[c][d] > 0)
-              rtable[c][d] += tablebase[FTBL];
-            if (((cmd >= CMD_PORTAUP && cmd <= CMD_VIBRATO) || cmd == CMD_FUNKTEMPO) && rtable[c][d] > 0)
-              rtable[c][d] += tablebase[STBL];
-          }
+          emptypatt = findfreepattern(pattbase + 100 < MAX_PATT ? pattbase + 100 : pattbase);
+          if (emptypatt < 0) emptypatt = MAX_PATT - 1;
         }
-      }
-      // Read patterns
-      amount = fread8(handle);
-      if (amount + pattbase > MAX_PATT)
-        goto ABORT;
-
-      for (c = 0; c < amount; c++)
-      {
-        length = fread8(handle) * 4;
-        fread(pattern[c + pattbase], length, 1, handle);
-        // Remap pattern instruments and commands
-        for (d = 0; d < length; d += 4)
-        {
-          if (pattern[c + pattbase][d + 1] > 0)
-            pattern[c + pattbase][d + 1] += instrbase;
-          if (pattern[c + pattbase][d + 2] == CMD_SETWAVEPTR && pattern[c + pattbase][d + 3] > 0)
-            pattern[c + pattbase][d + 3] += tablebase[WTBL];
-          if (pattern[c + pattbase][d + 2] == CMD_SETPULSEPTR && pattern[c + pattbase][d + 3] > 0)
-            pattern[c + pattbase][d + 3] += tablebase[PTBL];
-          if (pattern[c + pattbase][d + 2] == CMD_SETFILTERPTR && pattern[c + pattbase][d + 3] > 0)
-            pattern[c + pattbase][d + 3] += tablebase[FTBL];
-          if (((pattern[c + pattbase][d + 2] >= CMD_PORTAUP && pattern[c + pattbase][d + 2] <= CMD_VIBRATO) ||
-            pattern[c + pattbase][d + 2] == CMD_FUNKTEMPO) && pattern[c + pattbase][d + 3] > 0)
-            pattern[c + pattbase][d + 3] += tablebase[STBL];
-        }
+        memset(songorder[songbase + d][c], 0, MAX_SONGLEN + 2);
+        songorder[songbase + d][c][0] = emptypatt;
+        songorder[songbase + d][c][1] = LOOPSONG;
+        songorder[songbase + d][c][2] = 0;
       }
     }
   }
+  // Read instruments
+  {
+    int amount = buf[pos++];
+    if (amount + instrbase >= MAX_INSTR)
+    {
+      sprintf(statusmessage, "Merge: too many instruments");
+      goto ABORT;
+    }
+    for (c = 1; c <= amount; c++)
+    {
+      INSTR *ip = &instr[c + instrbase];
+      ip->ad = buf[pos];
+      ip->sr = buf[pos+1];
+      ip->ptr[WTBL] = buf[pos+2];
+      ip->ptr[PTBL] = buf[pos+3];
+      ip->ptr[FTBL] = buf[pos+4];
+      ip->ptr[STBL] = buf[pos+5];
+      if (ip->ptr[WTBL] > 0) ip->ptr[WTBL] += tablebase[WTBL];
+      if (ip->ptr[PTBL] > 0) ip->ptr[PTBL] += tablebase[PTBL];
+      if (ip->ptr[FTBL] > 0) ip->ptr[FTBL] += tablebase[FTBL];
+      if (ip->ptr[STBL] > 0) ip->ptr[STBL] += tablebase[STBL];
+      ip->vibdelay = buf[pos+6];
+      ip->gatetimer = buf[pos+7];
+      ip->firstwave = buf[pos+8];
+      memcpy(ip->name, buf + pos + 9, MAX_INSTRNAMELEN);
+      ip->name[MAX_INSTRNAMELEN-1] = 0;
+      pos += 9 + MAX_INSTRNAMELEN;
+    }
+  }
+  // Read tables
+  for (c = 0; c < MAX_TABLES; c++)
+  {
+    int loadsize = buf[pos++];
+    if (loadsize + tablebase[c] > MAX_TABLELEN)
+    {
+      sprintf(statusmessage, "Merge: tables are full");
+      goto ABORT;
+    }
+    memcpy(&ltable[c][tablebase[c]], buf + pos, loadsize);
+    memcpy(&rtable[c][tablebase[c]], buf + pos + loadsize, loadsize);
+    pos += loadsize * 2;
+    // Remap jumps and tablecommands
+    for (d = tablebase[c]; d < tablebase[c] + loadsize; d++)
+    {
+      if (ltable[c][d] == 0xff && rtable[c][d] > 0)
+        rtable[c][d] += tablebase[c];
+      if (c == 0 && (ltable[c][d] >= WAVECMD && ltable[c][d] <= WAVELASTCMD))
+      {
+        int cmd = ltable[c][d] & 0xf;
+        if (cmd == CMD_SETWAVEPTR && rtable[c][d] > 0)
+          rtable[c][d] += tablebase[WTBL];
+        if (cmd == CMD_SETPULSEPTR && rtable[c][d] > 0)
+          rtable[c][d] += tablebase[PTBL];
+        if (cmd == CMD_SETFILTERPTR && rtable[c][d] > 0)
+          rtable[c][d] += tablebase[FTBL];
+        if (((cmd >= CMD_PORTAUP && cmd <= CMD_VIBRATO) || cmd == CMD_FUNKTEMPO) && rtable[c][d] > 0)
+          rtable[c][d] += tablebase[STBL];
+      }
+    }
+  }
+  // Read patterns
+  {
+    int amount = buf[pos++];
+    if (amount + pattbase > MAX_PATT)
+    {
+      sprintf(statusmessage, "Merge: too many patterns");
+      goto ABORT;
+    }
+    for (c = 0; c < amount; c++)
+    {
+      int length = buf[pos++] * 4;
+      unsigned char *pp = pattern[c + pattbase];
+      memcpy(pp, buf + pos, length);
+      pos += length;
+      // Remap pattern instruments and commands
+      for (d = 0; d < length; d += 4)
+      {
+        if (pp[d + 1] > 0)
+          pp[d + 1] += instrbase;
+        if (pp[d + 2] == CMD_SETWAVEPTR && pp[d + 3] > 0)
+          pp[d + 3] += tablebase[WTBL];
+        if (pp[d + 2] == CMD_SETPULSEPTR && pp[d + 3] > 0)
+          pp[d + 3] += tablebase[PTBL];
+        if (pp[d + 2] == CMD_SETFILTERPTR && pp[d + 3] > 0)
+          pp[d + 3] += tablebase[FTBL];
+        if (((pp[d + 2] >= CMD_PORTAUP && pp[d + 2] <= CMD_VIBRATO) ||
+          pp[d + 2] == CMD_FUNKTEMPO) && pp[d + 3] > 0)
+          pp[d + 3] += tablebase[STBL];
+      }
+    }
+  }
+  sprintf(statusmessage, "Merged %s as new subtune(s) starting at %02X", songfilename, songbase);
 
   ABORT:
-  fclose(handle);
+  free(buf);
   countpatternlengths();
   songchange();
 }

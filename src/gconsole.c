@@ -1,5 +1,9 @@
 /*
- * GOATTRACKER "console" output routines
+ * C64 GrooveGoat "console" output routines
+ *
+ * Character cell screen like in GoatTracker, but rendered into a 32-bit
+ * framebuffer with anti-aliased fonts, two color themes (night = C64 blue,
+ * day = light) and HiDPI support. The framebuffer is scaled to the window.
  */
 
 #define GCONSOLE_C
@@ -8,13 +12,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include "goattrk2.h"
+#include "gres.h"
 
 int gfxinitted = 0;
 unsigned *scrbuffer = NULL;
 unsigned *prevscrbuffer = NULL;
-unsigned char *chardata = NULL;
 int key = 0;
 int rawkey = 0;
+int symkey = 0;
 int shiftpressed = 0;
 int shiftonlypressed = 0;
 int ctrlpressed = 0;
@@ -23,77 +28,343 @@ int metapressed = 0;
 int cursorflashdelay = 0;
 int mouseb = 0;
 int prevmouseb = 0;
-unsigned mousex = 0;
-unsigned mousey = 0;
-unsigned mousepixelx = 0;
-unsigned mousepixely = 0;
-unsigned oldmousepixelx = 0xffffffff;
-unsigned oldmousepixely = 0xffffffff;
+int mousex = 0;
+int mousey = 0;
+int mousewheel = 0;
 int mouseheld = 0;
-int region[MAX_ROWS];
-int fontwidth = 8;
-int fontheight = 14;
-int mousesizex = 11;
-int mousesizey = 20;
+int theme = THEME_NIGHT;
 unsigned bigwindow = 1;
 
-void loadexternalpalette(void);
-void initicon(void);
+extern int plat_dstx, plat_dsty, plat_dstw, plat_dsth, plat_fbw, plat_fbh;
 
-inline void setcharcolor(unsigned *dptr, short ch, short color)
+static SDL_Texture *texture = NULL;
+static Uint32 *fb = NULL;
+static int scale = 0;
+static int fbw = 0, fbh = 0;
+static int fulldirty = 1;
+static Uint32 palette[32];
+static int cursorbg = 2;
+static int cursorfg = 0;
+
+// ---------------------------------------------------------------------------
+// Themes
+// ---------------------------------------------------------------------------
+
+static const Uint32 nightpal[32] = {
+  0x352879, // 0  background: original C64 dark blue
+  0x6c5eb5, // 1  C64 light blue (title/mark background)
+  0x9ad284, // 2  light green (cursor)
+  0x7b71b8, // 3  muted channels
+  0xd0574a, // 4  red
+  0xa0782f, // 5  brown
+  0xe09b48, // 6  orange
+  0xbcb6ec, // 7  secondary text
+  0x948adf, // 8  normal text (C64 light blue, a bit brighter)
+  0xa9a0f5, // 9  light blue
+  0xa8f0a0, // 10 edit highlight (light green)
+  0x78d8e4, // 11 cyan
+  0xff8f80, // 12 playing (light red)
+  0xd37be0, // 13 magenta
+  0xf2f07a, // 14 yellow
+  0xffffff, // 15 white / titles
+  0x2c2168, // 16 panel
+  0x4a3c9e, // 17 header bar
+  0xffffff, // 18 header text
+  0x4b3ea3, // 19 button
+  0xf4f2ff, // 20 button text
+  0x7a6ad8, // 21 button highlight
+  0xe2231a, // 22 rainbow red
+  0xf7941d, // 23 rainbow orange
+  0xffde17, // 24 rainbow yellow
+  0x39b54a, // 25 rainbow green
+  0x00aeef, // 26 rainbow blue
+  0x5a4cb0, // 27 lines
+  0x34287a, // 28 beat row
+  0x6b3a78, // 29 playing row
+  0x2a5a7c, // 30 edit row
+  0x5d50b8, // 31 selection
+};
+
+static const Uint32 daypal[32] = {
+  0xeceaf6, // 0  background
+  0xc9c2f0, // 1  marks
+  0x6cc46c, // 2  green
+  0x9a96b4, // 3  muted
+  0xc0392b, // 4  red
+  0x8a6420, // 5  brown
+  0xc8700f, // 6  orange
+  0x5a5480, // 7  secondary text
+  0x2e2a55, // 8  normal text
+  0x3e31a2, // 9  C64 blue accent
+  0x15803a, // 10 edit highlight
+  0x0f7585, // 11 cyan
+  0xc82828, // 12 playing
+  0x8a2e9a, // 13 magenta
+  0x7d6e00, // 14 yellow (dark)
+  0x121030, // 15 titles (darkest)
+  0xfbfaff, // 16 panel
+  0x352879, // 17 header bar (C64 blue)
+  0xffffff, // 18 header text
+  0xdcd7f5, // 19 button
+  0x1a1640, // 20 button text
+  0xb4aaf0, // 21 button highlight
+  0xe2231a, // 22 rainbow red
+  0xf7941d, // 23 rainbow orange
+  0xf2c500, // 24 rainbow yellow
+  0x39b54a, // 25 rainbow green
+  0x00aeef, // 26 rainbow blue
+  0xc4bee6, // 27 lines
+  0xf0eefa, // 28 beat row
+  0xf8d7d0, // 29 playing row
+  0xd3ecdc, // 30 edit row
+  0xcfc8f5, // 31 selection
+};
+
+void settheme(int t)
 {
-  *dptr = (ch & 0xff) | (color << 16);
+  int c;
+  const Uint32 *src;
+
+  theme = t ? THEME_DAY : THEME_NIGHT;
+  src = theme == THEME_DAY ? daypal : nightpal;
+  for (c = 0; c < 32; c++) palette[c] = 0xff000000 | src[c];
+  if (theme == THEME_DAY)
+  {
+    cursorbg = 9;
+    cursorfg = 0;
+  }
+  else
+  {
+    cursorbg = 2;
+    cursorfg = 16;
+  }
+  fulldirty = 1;
 }
 
-inline void setcolor(unsigned *dptr, short color)
+// ---------------------------------------------------------------------------
+// Image tiles (glyph codes >= 256)
+// ---------------------------------------------------------------------------
+
+#define MAX_TILEIMAGES 16
+#define FIRSTTILE 256
+
+typedef struct
 {
-  *dptr = (*dptr & 0xffff) | (color << 16);
+  char name[32];
+  int cw, ch;          // size in cells
+  int firstglyph;
+  Uint32 *pixels;      // RGBA (A in top byte) at current scale
+  int pw, ph;
+} TILEIMAGE;
+
+static TILEIMAGE tileimages[MAX_TILEIMAGES];
+static int numtileimages = 0;
+static int nexttile = FIRSTTILE;
+
+// Render an image resource scaled (area average) into the tile pixel buffer
+static void buildtileimage(TILEIMAGE *t)
+{
+  const RESIMAGE *src = NULL;
+  const RESIMAGE *i;
+  int w = t->cw * CELLW * scale;
+  int h = t->ch * CELLH * scale;
+  int side = w < h ? w : h;
+  int ox = (w - side) / 2;
+  int oy = (h - side) / 2;
+  int x, y;
+  char base[32];
+
+  // Images are named like "logo" and stored in several sizes
+  strcpy(base, t->name);
+  for (i = res_images; i->name; i++)
+  {
+    if (!strncmp(i->name, base, strlen(base)))
+    {
+      if ((!src) || ((src->w < side) && (i->w > src->w)) || ((i->w >= side) && (i->w < src->w)))
+        src = i;
+    }
+  }
+  free(t->pixels);
+  t->pixels = (Uint32 *)calloc(w * h, sizeof(Uint32));
+  t->pw = w;
+  t->ph = h;
+  if ((!src) || (!t->pixels)) return;
+
+  for (y = 0; y < side; y++)
+  {
+    for (x = 0; x < side; x++)
+    {
+      // box filter from source
+      int sx0 = x * src->w / side;
+      int sx1 = (x + 1) * src->w / side;
+      int sy0 = y * src->h / side;
+      int sy1 = (y + 1) * src->h / side;
+      int sx, sy, n = 0;
+      unsigned r = 0, g = 0, b = 0, a = 0;
+      if (sx1 <= sx0) sx1 = sx0 + 1;
+      if (sy1 <= sy0) sy1 = sy0 + 1;
+      for (sy = sy0; sy < sy1; sy++)
+      {
+        for (sx = sx0; sx < sx1; sx++)
+        {
+          const unsigned char *p = src->rgba + (sy * src->w + sx) * 4;
+          r += p[0] * p[3];
+          g += p[1] * p[3];
+          b += p[2] * p[3];
+          a += p[3];
+          n++;
+        }
+      }
+      if (a)
+      {
+        r /= a;
+        g /= a;
+        b /= a;
+      }
+      a /= n;
+      t->pixels[(y + oy) * w + (x + ox)] = (a << 24) | (r << 16) | (g << 8) | b;
+    }
+  }
+}
+
+static TILEIMAGE *gettileimage(const char *name, int cw, int ch)
+{
+  int c;
+  for (c = 0; c < numtileimages; c++)
+  {
+    if ((!strcmp(tileimages[c].name, name)) && (tileimages[c].cw == cw) && (tileimages[c].ch == ch))
+      return &tileimages[c];
+  }
+  if (numtileimages >= MAX_TILEIMAGES) return NULL;
+  {
+    TILEIMAGE *t = &tileimages[numtileimages++];
+    memset(t, 0, sizeof(TILEIMAGE));
+    strncpy(t->name, name, sizeof t->name - 1);
+    t->cw = cw;
+    t->ch = ch;
+    t->firstglyph = nexttile;
+    nexttile += cw * ch;
+    if (scale) buildtileimage(t);
+    return t;
+  }
+}
+
+static TILEIMAGE *findtile(int glyph, int *tx, int *ty)
+{
+  int c;
+  for (c = 0; c < numtileimages; c++)
+  {
+    TILEIMAGE *t = &tileimages[c];
+    if ((glyph >= t->firstglyph) && (glyph < t->firstglyph + t->cw * t->ch))
+    {
+      int idx = glyph - t->firstglyph;
+      *tx = idx % t->cw;
+      *ty = idx / t->cw;
+      return t;
+    }
+  }
+  return NULL;
+}
+
+void drawimage(int x, int y, const char *name, int cellsw, int cellsh)
+{
+  TILEIMAGE *t = gettileimage(name, cellsw, cellsh);
+  int cx, cy;
+  if ((!t) || (!scrbuffer)) return;
+  for (cy = 0; cy < cellsh; cy++)
+  {
+    for (cx = 0; cx < cellsw; cx++)
+    {
+      unsigned *dptr;
+      if ((x + cx < 0) || (x + cx >= MAX_COLUMNS) || (y + cy < 0) || (y + cy >= MAX_ROWS)) continue;
+      dptr = scrbuffer + (x + cx) + (y + cy) * MAX_COLUMNS;
+      *dptr = (*dptr & 0xffff0000) | (t->firstglyph + cy * cellsw + cx);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Low level cell access
+// ---------------------------------------------------------------------------
+
+static inline unsigned decodecolor(int color)
+{
+  int fg, bg;
+  if (color & 0x8000)
+  {
+    fg = color & 31;
+    bg = (color >> 5) & 31;
+  }
+  else
+  {
+    fg = color & 15;
+    bg = (color >> 4) & 15;
+  }
+  return (fg << 16) | (bg << 21);
+}
+
+static inline void setcharcolor(unsigned *dptr, int ch, int color)
+{
+  *dptr = (ch & 0xffff) | decodecolor(color);
+}
+
+unsigned getcell(int x, int y)
+{
+  if ((!scrbuffer) || (x < 0) || (y < 0) || (x >= MAX_COLUMNS) || (y >= MAX_ROWS)) return 0;
+  return scrbuffer[x + y * MAX_COLUMNS];
+}
+
+// ---------------------------------------------------------------------------
+// Init / shutdown
+// ---------------------------------------------------------------------------
+
+static void seticon(void)
+{
+  const RESIMAGE *img = res_getimage("logo64");
+  SDL_Surface *s;
+  if (!img) return;
+  s = SDL_CreateRGBSurfaceFrom((void *)img->rgba, img->w, img->h, 32, img->w * 4,
+    0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000);
+  if (s)
+  {
+    plat_seticon(s);
+    SDL_FreeSurface(s);
+  }
+}
+
+static int setupscale(void)
+{
+  int newscale = plat_getscale();
+  int c;
+
+  if ((newscale == scale) && (texture) && (fb)) return 1;
+  scale = newscale;
+  fbw = MAX_COLUMNS * CELLW * scale;
+  fbh = MAX_ROWS * CELLH * scale;
+  plat_fbw = fbw;
+  plat_fbh = fbh;
+  if (texture) SDL_DestroyTexture(texture);
+  free(fb);
+  fb = (Uint32 *)malloc(fbw * fbh * sizeof(Uint32));
+  texture = SDL_CreateTexture(plat_renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, fbw, fbh);
+  if ((!fb) || (!texture)) return 0;
+  for (c = 0; c < numtileimages; c++) buildtileimage(&tileimages[c]);
+  fulldirty = 1;
+  return 1;
 }
 
 int initscreen(void)
 {
-  int handle;
-
-  if (bigwindow > 1)
-  {
-    fontwidth *= bigwindow;
-    fontheight *= bigwindow;
-    mousesizex *= 2;
-    mousesizey *= 2;
-  }
-
-  if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER) < 0)
+  if (!plat_init("C64 GrooveGoat", MAX_COLUMNS * CELLW, MAX_ROWS * CELLH))
     return 0;
-  win_openwindow("GoatTracker", NULL);
-  win_setmousemode(MOUSE_ALWAYS_HIDDEN);
-  initicon();
+  seticon();
 
-  if (!gfx_init(MAX_COLUMNS * fontwidth, MAX_ROWS * fontheight, 60, 0))
-  {
-    win_fullscreen = 0;
-    if (!gfx_init(MAX_COLUMNS * fontwidth, MAX_ROWS * fontheight, 60, 0))
-      return 0;
-  }
-
-  scrbuffer = (unsigned*)malloc(MAX_COLUMNS * MAX_ROWS * sizeof(unsigned));
-  prevscrbuffer = (unsigned*)malloc(MAX_COLUMNS * MAX_ROWS * sizeof(unsigned));
+  scrbuffer = (unsigned *)malloc(MAX_COLUMNS * MAX_ROWS * sizeof(unsigned));
+  prevscrbuffer = (unsigned *)malloc(MAX_COLUMNS * MAX_ROWS * sizeof(unsigned));
   if ((!scrbuffer) || (!prevscrbuffer)) return 0;
 
-  memset(region, 0, sizeof region);
-
-  chardata = (unsigned char*)malloc(4096);
-  if (!chardata) return 0;
-  handle = io_open("chargen.bin");
-  if (handle == -1) return 0;
-  io_read(handle, &chardata[0], 4096);
-  io_close(handle);
-
-  gfx_loadpalette("palette.bin");
-  loadexternalpalette();
-  gfx_setpalette();
-
-  if (bigwindow - 1) gfx_loadsprites(0, "bcursor.bin");
-  else gfx_loadsprites(0, "cursor.bin");
+  settheme(theme);
+  if (!setupscale()) return 0;
 
   gfxinitted = 1;
   clearscreen();
@@ -101,97 +372,40 @@ int initscreen(void)
   return 1;
 }
 
-void loadexternalpalette(void)
-{
-  FILE *ext_f;
-  if ((ext_f = fopen("custom.pal", "rt")))
-  {
-    int p = 0;
-    char ln[100];
-    strcpy(ln, "");
-    fgets(ln, sizeof(ln), ext_f);
-
-    if (strncmp("JASC-PAL", ln, 8) == 0)
-    {
-      int colors;
-      fgets(ln, sizeof(ln), ext_f);
-      fgets(ln, sizeof(ln), ext_f);
-      if (sscanf(ln, "%d", &colors) == 1 && colors == 256)
-      {
-        while (!feof(ext_f))
-        {
-          int r, g, b;
-          if (!fgets(ln, sizeof(ln), ext_f)) break;
-          if (sscanf(ln, "%d %d %d", &r, &g, &b) == 3)
-          {
-            // JASC palette is 8-bit and goat palette is 6-bit
-            gfx_palette[p++] = r / 4;
-            gfx_palette[p++] = g / 4;
-            gfx_palette[p++] = b / 4;
-          }
-
-          if (p >= 768) break;
-        }
-        gfx_calcpalette(64, 0, 0, 0);
-      }
-    }
-
-    fclose(ext_f);
-  }
-}
-
-void initicon(void)
-{
-  int handle = io_open("goattrk2.bmp");
-  if (handle != -1)
-  {
-    SDL_RWops *rw;
-    SDL_Surface *icon;
-    char *iconbuffer;
-    int size;
-
-    size = io_lseek(handle, 0, SEEK_END);
-    io_lseek(handle, 0, SEEK_SET);
-    iconbuffer = (char*)malloc(size);
-    if (iconbuffer)
-    {
-      io_read(handle, iconbuffer, size);
-      io_close(handle);
-      rw = SDL_RWFromMem(iconbuffer, size);
-      icon = SDL_LoadBMP_RW(rw, 0);
-      SDL_WM_SetIcon(icon, 0);
-      free(iconbuffer);
-    }
-  }
-}
 void closescreen(void)
 {
-  if (scrbuffer)
-  {
-    free(scrbuffer);
-    scrbuffer = NULL;
-  }
-  if (prevscrbuffer)
-  {
-    free(prevscrbuffer);
-    prevscrbuffer = NULL;
-  }
-  if (chardata)
-  {
-    free(chardata);
-    chardata = NULL;
-  }
-
+  int c;
+  if (!gfxinitted) return;
   gfxinitted = 0;
+  free(scrbuffer);
+  free(prevscrbuffer);
+  scrbuffer = prevscrbuffer = NULL;
+  free(fb);
+  fb = NULL;
+  for (c = 0; c < numtileimages; c++)
+  {
+    free(tileimages[c].pixels);
+    tileimages[c].pixels = NULL;
+  }
+  if (texture) SDL_DestroyTexture(texture);
+  texture = NULL;
+  plat_shutdown();
 }
+
+void forceredraw(void)
+{
+  fulldirty = 1;
+}
+
+// ---------------------------------------------------------------------------
+// Text output (same API as GoatTracker)
+// ---------------------------------------------------------------------------
 
 void clearscreen(void)
 {
   int c;
   unsigned *dptr = scrbuffer;
-
   if (!gfxinitted) return;
-
   for (c = 0; c < MAX_ROWS * MAX_COLUMNS; c++)
   {
     setcharcolor(dptr, 0x20, 0x7);
@@ -201,419 +415,361 @@ void clearscreen(void)
 
 void printtext(int x, int y, int color, const char *text)
 {
-  unsigned *dptr = scrbuffer + (x + y * MAX_COLUMNS);
-
+  unsigned *dptr;
   if (!gfxinitted) return;
-  if (y < 0) return;
-  if (y >= MAX_ROWS) return;
+  if ((y < 0) || (y >= MAX_ROWS)) return;
+  dptr = scrbuffer + (x + y * MAX_COLUMNS);
   while (*text)
   {
-    setcharcolor(dptr, *text, color);
+    if ((x >= 0) && (x < MAX_COLUMNS)) setcharcolor(dptr, (unsigned char)*text, color);
     dptr++;
+    x++;
     text++;
   }
 }
 
 void printtextc(int y, int color, const char *text)
 {
-  int x = (MAX_COLUMNS - strlen(text)) / 2;
-
+  int x = (MAX_COLUMNS - (int)strlen(text)) / 2;
   printtext(x, y, color, text);
 }
 
 void printtextcp(int cp, int y, int color, const char *text)
 {
-  int x = cp - (strlen(text) / 2);
-
+  int x = cp - ((int)strlen(text) / 2);
   printtext(x, y, color, text);
 }
 
-
 void printblank(int x, int y, int length)
 {
-  unsigned *dptr = scrbuffer + (x + y * MAX_COLUMNS);
-
-  if (!gfxinitted) return;
-  if (y < 0) return;
-  if (y >= MAX_ROWS) return;
-  while (length--)
-  {
-    setcharcolor(dptr, 0x20, 0x7);
-    dptr++;
-  }
+  printblankc(x, y, 0x7, length);
 }
 
 void printblankc(int x, int y, int color, int length)
 {
-  unsigned *dptr = scrbuffer + (x + y * MAX_COLUMNS);
-
+  unsigned *dptr;
   if (!gfxinitted) return;
-  if (y < 0) return;
-  if (y >= MAX_ROWS) return;
+  if ((y < 0) || (y >= MAX_ROWS)) return;
+  dptr = scrbuffer + (x + y * MAX_COLUMNS);
   while (length--)
   {
-    setcharcolor(dptr, 0x20, color);
+    if ((x >= 0) && (x < MAX_COLUMNS)) setcharcolor(dptr, 0x20, color);
     dptr++;
+    x++;
   }
+}
+
+void printglyph(int x, int y, int color, int glyph)
+{
+  if (!gfxinitted) return;
+  if ((y < 0) || (y >= MAX_ROWS) || (x < 0) || (x >= MAX_COLUMNS)) return;
+  setcharcolor(scrbuffer + x + y * MAX_COLUMNS, glyph, color);
+}
+
+void fillarea(int x, int y, int w, int h, int color, int glyph)
+{
+  int cx, cy;
+  for (cy = y; cy < y + h; cy++)
+    for (cx = x; cx < x + w; cx++)
+      printglyph(cx, cy, color, glyph);
 }
 
 void drawbox(int x, int y, int color, int sx, int sy)
 {
-  unsigned *dptr;
-  unsigned *dptr2;
-  int counter;
-
+  int c;
   if (!gfxinitted) return;
-  if (y < 0) return;
-  if (y >= MAX_ROWS) return;
-  if (y+sy > MAX_ROWS) return;
   if ((!sx) || (!sy)) return;
-
-  dptr = scrbuffer + (x + y * MAX_COLUMNS);
-  dptr2 = scrbuffer + ((x+sx-1) + y * MAX_COLUMNS);
-  counter = sy;
-
-  while (counter--)
+  for (c = 1; c < sx - 1; c++)
   {
-    setcharcolor(dptr, '|', color);
-    setcharcolor(dptr2, '|', color);
-    dptr += MAX_COLUMNS;
-    dptr2 += MAX_COLUMNS;
+    printglyph(x + c, y, color, GL_HLINE);
+    printglyph(x + c, y + sy - 1, color, GL_HLINE);
   }
-
-  dptr = scrbuffer + (x + y * MAX_COLUMNS);
-  dptr2 = scrbuffer + (x + (y+sy-1) * MAX_COLUMNS);
-  counter = sx;
-
-  while (counter--)
+  for (c = 1; c < sy - 1; c++)
   {
-    setcharcolor(dptr, '-', color);
-    setcharcolor(dptr2, '-', color);
-    dptr++;
-    dptr2++;
+    printglyph(x, y + c, color, GL_VLINE);
+    printglyph(x + sx - 1, y + c, color, GL_VLINE);
   }
+  printglyph(x, y, color, GL_TL);
+  printglyph(x + sx - 1, y, color, GL_TR);
+  printglyph(x, y + sy - 1, color, GL_BL);
+  printglyph(x + sx - 1, y + sy - 1, color, GL_BR);
+}
 
-  dptr = scrbuffer + (x + y * MAX_COLUMNS);
-  setcharcolor(dptr, '+', color);
+// Panel: a filled area with a header bar (title) on its first row
+void drawpanel(int x, int y, int w, int h, const char *title, int active)
+{
+  fillarea(x, y, w, h, MKCOL(8, C_PANEL), ' ');
+  if (title)
+  {
+    printblankc(x, y, MKCOL(C_HEADERTEXT, active ? C_BUTTONHI : C_HEADER), w);
+    printtext(x + 1, y, MKCOL(C_HEADERTEXT, active ? C_BUTTONHI : C_HEADER), title);
+  }
+}
 
-  dptr = scrbuffer + ((x+sx-1) + y * MAX_COLUMNS);
-  setcharcolor(dptr, '+', color);
-
-  dptr = scrbuffer + (x + (y+sy-1) * MAX_COLUMNS);
-  setcharcolor(dptr, '+', color);
-
-  dptr = scrbuffer + ((x+sx-1) + (y+sy-1) * MAX_COLUMNS);
-  setcharcolor(dptr, '+', color);
+void drawrainbow(int x, int y, int length)
+{
+  int c;
+  for (c = 0; c < length; c++)
+    printglyph(x + c, y, MKCOL(C_RB1 + (c * 5 / (length > 0 ? length : 1)), 0), GL_FULL);
 }
 
 void printbg(int x, int y, int color, int length)
 {
-  unsigned *dptr = scrbuffer + (x + y * MAX_COLUMNS);
-
+  unsigned *dptr;
   if (!gfxinitted) return;
-  if (y < 0) return;
-  if (y >= MAX_ROWS) return;
+  if ((y < 0) || (y >= MAX_ROWS)) return;
+  dptr = scrbuffer + (x + y * MAX_COLUMNS);
   while (length--)
   {
-    setcolor(dptr, 15 | (color << 4));
+    if ((x >= 0) && (x < MAX_COLUMNS))
+    {
+      if (color == 1)
+        *dptr = (*dptr & 0xffff) | decodecolor(MKCOL(15, C_SELECT));
+      else
+        *dptr = (*dptr & 0xffff) | decodecolor(MKCOL(cursorfg, cursorbg));
+    }
     dptr++;
+    x++;
+  }
+}
+
+void printcursor(int x, int y, int length)
+{
+  unsigned *dptr;
+  if (!gfxinitted) return;
+  if ((y < 0) || (y >= MAX_ROWS)) return;
+  dptr = scrbuffer + (x + y * MAX_COLUMNS);
+  while (length--)
+  {
+    if ((x >= 0) && (x < MAX_COLUMNS))
+      *dptr = (*dptr & 0xffff) | decodecolor(MKCOL(cursorfg, cursorbg));
+    dptr++;
+    x++;
+  }
+}
+
+void printbgx(int x, int y, int bg, int length)
+{
+  unsigned *dptr;
+  if (!gfxinitted) return;
+  if ((y < 0) || (y >= MAX_ROWS)) return;
+  dptr = scrbuffer + (x + y * MAX_COLUMNS);
+  while (length--)
+  {
+    if ((x >= 0) && (x < MAX_COLUMNS))
+      *dptr = (*dptr & ~(31u << 21)) | ((unsigned)(bg & 31) << 21);
+    dptr++;
+    x++;
+  }
+}
+
+void printfgx(int x, int y, int fg, int length)
+{
+  unsigned *dptr;
+  if (!gfxinitted) return;
+  if ((y < 0) || (y >= MAX_ROWS)) return;
+  dptr = scrbuffer + (x + y * MAX_COLUMNS);
+  while (length--)
+  {
+    if ((x >= 0) && (x < MAX_COLUMNS))
+      *dptr = (*dptr & ~(31u << 16)) | ((unsigned)(fg & 31) << 16);
+    dptr++;
+    x++;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Rendering
+// ---------------------------------------------------------------------------
+
+static inline Uint32 blend(Uint32 bg, Uint32 fg, unsigned a)
+{
+  unsigned ia = 255 - a;
+  unsigned r = (((bg >> 16) & 0xff) * ia + ((fg >> 16) & 0xff) * a) / 255;
+  unsigned g = (((bg >> 8) & 0xff) * ia + ((fg >> 8) & 0xff) * a) / 255;
+  unsigned b = ((bg & 0xff) * ia + (fg & 0xff) * a) / 255;
+  return 0xff000000 | (r << 16) | (g << 8) | b;
+}
+
+static void rendercell(int x, int y, unsigned cell)
+{
+  int glyph = cell & 0xffff;
+  Uint32 fgc = palette[(cell >> 16) & 31];
+  Uint32 bgc = palette[(cell >> 21) & 31];
+  int cw = CELLW * scale;
+  int ch = CELLH * scale;
+  Uint32 *dst = fb + (y * ch) * fbw + x * cw;
+  int px, py;
+
+  if (glyph < 256)
+  {
+    const unsigned char *a = (scale == 1 ? res_font1 : res_font2) + glyph * cw * ch;
+    for (py = 0; py < ch; py++)
+    {
+      for (px = 0; px < cw; px++)
+      {
+        unsigned v = *a++;
+        if (!v) dst[px] = bgc;
+        else if (v == 255) dst[px] = fgc;
+        else dst[px] = blend(bgc, fgc, v);
+      }
+      dst += fbw;
+    }
+  }
+  else
+  {
+    int tx = 0, ty = 0;
+    TILEIMAGE *t = findtile(glyph, &tx, &ty);
+    if ((!t) || (!t->pixels))
+    {
+      for (py = 0; py < ch; py++, dst += fbw)
+        for (px = 0; px < cw; px++) dst[px] = bgc;
+      return;
+    }
+    for (py = 0; py < ch; py++)
+    {
+      const Uint32 *s = t->pixels + (ty * ch + py) * t->pw + tx * cw;
+      for (px = 0; px < cw; px++)
+      {
+        Uint32 v = s[px];
+        unsigned a = v >> 24;
+        dst[px] = a ? blend(bgc, v, a) : bgc;
+      }
+      dst += fbw;
+    }
   }
 }
 
 void fliptoscreen(void)
 {
-  unsigned *sptr = scrbuffer;
-  unsigned *cmpptr = prevscrbuffer;
-  int x,y;
-  int regionschanged = 0;
+  int x, y;
+  int firstrow = MAX_ROWS, lastrow = -1;
+  static int presented = 0;
 
   if (!gfxinitted) return;
 
-  // Mark previous mousecursor area changed if mouse moved
-  if ((mousepixelx != oldmousepixelx) || (mousepixely != oldmousepixely))
+  if (win_resized)
   {
-    if ((oldmousepixelx >= 0) && (oldmousepixely >= 0))
-    {
-      int sy = oldmousepixely / fontheight;
-      int ey = (oldmousepixely + mousesizey - 1) / fontheight;
-      int sx = oldmousepixelx / fontwidth;
-      int ex = (oldmousepixelx + mousesizex - 1) / fontwidth;
-
-      if (ey >= MAX_ROWS) ey = MAX_ROWS - 1;
-      if (ex >= MAX_COLUMNS) ex = MAX_COLUMNS - 1;
-
-      for (y = sy; y <= ey; y++)
-      {
-        for (x = sx; x <= ex; x++)
-          prevscrbuffer[y*MAX_COLUMNS+x] = 0xffffffff;
-      }
-    }
+    win_resized = 0;
+    setupscale();
+    fulldirty = 1;
+  }
+  if (win_redraw)
+  {
+    win_redraw = 0;
+    presented = 0;
   }
 
-  // If redraw requested, mark whole screen changed
-  if (gfx_redraw)
-  {
-    gfx_redraw = 0;
-    memset(prevscrbuffer, 0xff, MAX_COLUMNS*MAX_ROWS*sizeof(unsigned));
-  }
-
-  if (!gfx_lock()) return;
-
-  // Now redraw text on changed areas
   for (y = 0; y < MAX_ROWS; y++)
   {
+    unsigned *sptr = scrbuffer + y * MAX_COLUMNS;
+    unsigned *cmpptr = prevscrbuffer + y * MAX_COLUMNS;
     for (x = 0; x < MAX_COLUMNS; x++)
     {
-      // Check if char changed
-      if (*sptr != *cmpptr)
+      if ((fulldirty) || (sptr[x] != cmpptr[x]))
       {
-        *cmpptr = *sptr;
-        region[y] = 1;
-        regionschanged = 1;
-
-        {
-          unsigned char *chptr = &chardata[(*sptr & 0xffff)*16];
-          unsigned char *dptr = (unsigned char*)gfx_screen->pixels + y*fontheight * gfx_screen->pitch + x*fontwidth;
-          unsigned char bgcolor = (*sptr) >> 20;
-          unsigned char fgcolor = ((*sptr) >> 16) & 0xf;
-          int c;
-          unsigned char e = *chptr++;
-
-          for (c = 0; c < 14; c++)
-          {
-            e = *chptr++;
-            
-            switch (bigwindow)
-            {
-              case 1:
-                if (e & 128) *dptr++ = fgcolor;
-                else *dptr++ = bgcolor;
-                if (e & 64) *dptr++ = fgcolor;
-                else *dptr++ = bgcolor;
-                if (e & 32) *dptr++ = fgcolor;
-                else *dptr++ = bgcolor;
-                if (e & 16) *dptr++ = fgcolor;
-                else *dptr++ = bgcolor;
-                if (e & 8) *dptr++ = fgcolor;
-                else *dptr++ = bgcolor;
-                if (e & 4) *dptr++ = fgcolor;
-                else *dptr++ = bgcolor;
-                if (e & 2) *dptr++ = fgcolor;
-                else *dptr++ = bgcolor;
-                if (e & 1) *dptr++ = fgcolor;
-                else *dptr++ = bgcolor;
-                dptr += gfx_screen->pitch - fontwidth;
-              break;
-              case 2:
-                if (e & 128) {*dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor;}
-                if (e & 64) {*dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor;}
-                if (e & 32) {*dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor;}
-                if (e & 16) {*dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor;}
-                if (e & 8) {*dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor;}
-                if (e & 4) {*dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor;}
-                if (e & 2) {*dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor;}
-                if (e & 1) {*dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor;}
-                dptr += gfx_screen->pitch - fontwidth;
-                if (e & 128) {*dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor;}
-                if (e & 64) {*dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor;}
-                if (e & 32) {*dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor;}
-                if (e & 16) {*dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor;}
-                if (e & 8) {*dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor;}
-                if (e & 4) {*dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor;}
-                if (e & 2) {*dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor;}
-                if (e & 1) {*dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor;}
-                dptr += gfx_screen->pitch - fontwidth;
-              break;
-              case 3:
-                *dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;
-                *dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;
-                *dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;
-                *dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;
-                *dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;
-                *dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;
-                *dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;
-                *dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;
-                dptr += gfx_screen->pitch - fontwidth;
-                if (e & 128) {*dptr++ = fgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;}
-                if (e & 64) {*dptr++ = fgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;}
-                if (e & 32) {*dptr++ = fgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;}
-                if (e & 16) {*dptr++ = fgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;}
-                if (e & 8) {*dptr++ = fgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;}
-                if (e & 4) {*dptr++ = fgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;}
-                if (e & 2) {*dptr++ = fgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;}
-                if (e & 1) {*dptr++ = fgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;}
-                dptr += gfx_screen->pitch - fontwidth;
-                if (e & 128) {*dptr++ = fgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;}
-                if (e & 64) {*dptr++ = fgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;}
-                if (e & 32) {*dptr++ = fgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;}
-                if (e & 16) {*dptr++ = fgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;}
-                if (e & 8) {*dptr++ = fgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;}
-                if (e & 4) {*dptr++ = fgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;}
-                if (e & 2) {*dptr++ = fgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;}
-                if (e & 1) {*dptr++ = fgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;}
-                dptr += gfx_screen->pitch - fontwidth;
-              break;
-              case 4:
-                *dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;
-                *dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;
-                *dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;
-                *dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;
-                *dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;
-                *dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;
-                *dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;
-                *dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;
-                dptr += gfx_screen->pitch - fontwidth;
-                if (e & 128) {*dptr++ = bgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;}
-                if (e & 64) {*dptr++ = bgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;}
-                if (e & 32) {*dptr++ = bgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;}
-                if (e & 16) {*dptr++ = bgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;}
-                if (e & 8) {*dptr++ = bgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;}
-                if (e & 4) {*dptr++ = bgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;}
-                if (e & 2) {*dptr++ = bgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;}
-                if (e & 1) {*dptr++ = bgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;}
-                dptr += gfx_screen->pitch - fontwidth;
-                if (e & 128) {*dptr++ = bgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;}
-                if (e & 64) {*dptr++ = bgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;}
-                if (e & 32) {*dptr++ = bgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;}
-                if (e & 16) {*dptr++ = bgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;}
-                if (e & 8) {*dptr++ = bgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;}
-                if (e & 4) {*dptr++ = bgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;}
-                if (e & 2) {*dptr++ = bgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;}
-                if (e & 1) {*dptr++ = bgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;}
-                dptr += gfx_screen->pitch - fontwidth;
-                if (e & 128) {*dptr++ = bgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;}
-                if (e & 64) {*dptr++ = bgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;}
-                if (e & 32) {*dptr++ = bgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;}
-                if (e & 16) {*dptr++ = bgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;}
-                if (e & 8) {*dptr++ = bgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;}
-                if (e & 4) {*dptr++ = bgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;}
-                if (e & 2) {*dptr++ = bgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;}
-                if (e & 1) {*dptr++ = bgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor; *dptr++ = fgcolor;}
-                else {*dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor; *dptr++ = bgcolor;}
-                dptr += gfx_screen->pitch - fontwidth;
-              break;
-            }
-          }
-        }
+        cmpptr[x] = sptr[x];
+        rendercell(x, y, sptr[x]);
+        if (y < firstrow) firstrow = y;
+        if (y > lastrow) lastrow = y;
       }
-      sptr++;
-      cmpptr++;
     }
   }
+  fulldirty = 0;
 
-
-  // Redraw mouse if text was redrawn
-  if (regionschanged)
+  if (lastrow >= firstrow)
   {
-    int sy = mousepixely / fontheight;
-    int ey = (mousepixely + mousesizey - 1) / fontheight;
-    if (ey >= MAX_ROWS) ey = MAX_ROWS - 1;
-
-    gfx_drawsprite(mousepixelx, mousepixely, 0x1);
-    for (y = sy; y <= ey; y++)
-      region[y] = 1;
+    SDL_Rect r;
+    r.x = 0;
+    r.y = firstrow * CELLH * scale;
+    r.w = fbw;
+    r.h = (lastrow - firstrow + 1) * CELLH * scale;
+    SDL_UpdateTexture(texture, &r, fb + r.y * fbw, fbw * sizeof(Uint32));
+    presented = 0;
   }
 
-  // Store current mouse position as old
-  oldmousepixelx = mousepixelx;
-  oldmousepixely = mousepixely;
-
-  // Redraw changed screen regions
-  gfx_unlock();
-  for (y = 0; y < MAX_ROWS; y++)
+  if (!presented)
   {
-    if (region[y])
-    {
-      SDL_UpdateRect(gfx_screen, 0, y*fontheight, MAX_COLUMNS*fontwidth, fontheight);
-      region[y] = 0;
-    }
+    int outw = 1, outh = 1;
+    SDL_Rect dst;
+    double sx, sy, s;
+    SDL_GetRendererOutputSize(plat_renderer, &outw, &outh);
+    sx = (double)outw / fbw;
+    sy = (double)outh / fbh;
+    s = sx < sy ? sx : sy;
+    dst.w = (int)(fbw * s);
+    dst.h = (int)(fbh * s);
+    dst.x = (outw - dst.w) / 2;
+    dst.y = (outh - dst.h) / 2;
+    plat_dstx = dst.x;
+    plat_dsty = dst.y;
+    plat_dstw = dst.w;
+    plat_dsth = dst.h;
+#if SDL_VERSION_ATLEAST(2, 0, 12)
+    SDL_SetTextureScaleMode(texture, ((dst.w == fbw) && (dst.h == fbh)) ? SDL_ScaleModeNearest : SDL_ScaleModeLinear);
+#endif
+    SDL_SetRenderDrawColor(plat_renderer, (palette[0] >> 16) & 0xff, (palette[0] >> 8) & 0xff, palette[0] & 0xff, 255);
+    SDL_RenderClear(plat_renderer);
+    SDL_RenderCopy(plat_renderer, texture, NULL, &dst);
+    SDL_RenderPresent(plat_renderer);
+    presented = 1;
   }
 }
+
+int savescreenshot(const char *filename)
+{
+  SDL_Surface *s;
+  int result;
+  if (!fb) return 0;
+  fulldirty = 1;
+  fliptoscreen();
+  s = SDL_CreateRGBSurfaceFrom(fb, fbw, fbh, 32, fbw * 4, 0x00ff0000, 0x0000ff00, 0x000000ff, 0);
+  if (!s) return 0;
+  result = SDL_SaveBMP(s, filename);
+  SDL_FreeSurface(s);
+  return result == 0;
+}
+
+// ---------------------------------------------------------------------------
+// Input
+// ---------------------------------------------------------------------------
 
 void getkey(void)
 {
   int c;
   win_asciikey = 0;
+  win_symkey = 0;
   cursorflashdelay += win_getspeed(50);
 
   prevmouseb = mouseb;
-
-  mou_getpos(&mousepixelx, &mousepixely);
-  mouseb = mou_getbuttons();
-  mousex = mousepixelx / fontwidth;
-  mousey = mousepixely / fontheight;
+  mouseb = win_mousebuttons;
+  mousex = win_mousex / (CELLW * (scale ? scale : 1));
+  mousey = win_mousey / (CELLH * (scale ? scale : 1));
+  if (mousex >= MAX_COLUMNS) mousex = MAX_COLUMNS - 1;
+  if (mousey >= MAX_ROWS) mousey = MAX_ROWS - 1;
+  mousewheel = win_mousewheel;
+  win_mousewheel = 0;
 
   if (mouseb) mouseheld++;
   else mouseheld = 0;
 
   key = win_asciikey;
+  symkey = win_symkey;
   rawkey = 0;
   for (c = 0; c < MAX_KEYS; c++)
   {
     if (win_keytable[c])
     {
       if ((c != KEY_LEFTSHIFT) && (c != KEY_RIGHTSHIFT) &&
-          (c != KEY_CTRL) && (c != KEY_RIGHTCTRL))
+          (c != KEY_CTRL) && (c != KEY_RIGHTCTRL) &&
+          (c != KEY_ALT) && (c != KEY_RIGHTALT) &&
+          (c != KEY_LEFTMETA) && (c != KEY_RIGHTMETA))
       {
         rawkey = c;
         win_keytable[c] = 0;
         break;
       }
+      win_keytable[c] = 0;
     }
   }
 
@@ -623,53 +779,38 @@ void getkey(void)
   metapressed = 0;
   shiftonlypressed = 0;
 
-  if ((win_keystate[KEY_LEFTSHIFT])||(win_keystate[KEY_RIGHTSHIFT])||
-      (win_keystate[KEY_CTRL])||(win_keystate[KEY_RIGHTCTRL]))
+  if ((win_keystate[KEY_LEFTSHIFT]) || (win_keystate[KEY_RIGHTSHIFT]) ||
+      (win_keystate[KEY_CTRL]) || (win_keystate[KEY_RIGHTCTRL]))
     shiftpressed = 1;
-
   if ((win_keystate[KEY_LEFTSHIFT]) || (win_keystate[KEY_RIGHTSHIFT]))
-	  shiftonlypressed = 1;
-
+    shiftonlypressed = 1;
   if ((win_keystate[KEY_CTRL]) || (win_keystate[KEY_RIGHTCTRL]))
-	  ctrlpressed = 1;
-
-  if (win_keystate[KEY_ALT] || win_keystate[KEY_RIGHTALT])
-      altpressed = 1;
-
-  if (win_keystate[SDLK_LMETA] || win_keystate[SDLK_RMETA])
+    ctrlpressed = 1;
+  if ((win_keystate[KEY_ALT]) || (win_keystate[KEY_RIGHTALT]))
+    altpressed = 1;
+  if ((win_keystate[KEY_LEFTMETA]) || (win_keystate[KEY_RIGHTMETA]))
     metapressed = 1;
 
-  if (rawkey == SDLK_KP_ENTER)
+  // While CTRL / CMD / ALT is held, no text characters are wanted
+  if ((ctrlpressed) || (metapressed))
   {
-    key = KEY_ENTER;
-    rawkey = SDLK_RETURN;
+    if ((key >= 32) && (key < 256)) key = 0;
   }
 
-  if (rawkey == SDLK_KP0) key = '0';
-  if (rawkey == SDLK_KP1) key = '1';
-  if (rawkey == SDLK_KP2) key = '2';
-  if (rawkey == SDLK_KP3) key = '3';
-  if (rawkey == SDLK_KP4) key = '4';
-  if (rawkey == SDLK_KP5) key = '5';
-  if (rawkey == SDLK_KP6) key = '6';
-  if (rawkey == SDLK_KP7) key = '7';
-  if (rawkey == SDLK_KP8) key = '8';
-  if (rawkey == SDLK_KP9) key = '9';
-
-  if (rawkey == SDLK_INSERT) 
-    // some keyboard/systems provide a key code that gets interpreted as additional keystroke
-    // in some cases (table editor). Observed with a Dell USB keyboard on macOS 11. 
-    key = 0;
-
-  if ((rawkey == SDLK_BACKSPACE && altpressed) ||
-      (rawkey == SDLK_DELETE && shiftpressed))
-    // macbook keyboard insert using alt+backspace or fn+shift+backspace
-    rawkey = SDLK_INSERT;
-
-  if (rawkey == SDLK_DELETE && key == SDLK_LEFTPAREN)
-    // macbook keyboard delete using fn+backspace
+  if (rawkey == KEY_KPENTER)
   {
-    rawkey = SDLK_DELETE;
-    key = KEY_DEL;
+    key = KEY_ENTER;
+    rawkey = KEY_ENTER;
+  }
+
+  if ((rawkey >= KEY_KP0) && (rawkey <= KEY_KP9) && (!key))
+    key = '0' + rawkey - KEY_KP0;
+
+  // Macbook keyboard: insert using ALT+BACKSPACE or FN+SHIFT+BACKSPACE
+  if (((rawkey == KEY_BACKSPACE) && (altpressed)) ||
+      ((rawkey == KEY_DEL) && (shiftonlypressed)))
+  {
+    rawkey = KEY_INS;
+    key = 0;
   }
 }

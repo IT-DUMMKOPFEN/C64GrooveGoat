@@ -3,7 +3,8 @@
 
 #define MAX_DIRFILES 16384
 #define MAX_FILENAME 60
-#define MAX_PATHNAME 256
+#define MAX_PATHNAME 1024
+#define FILESEL_INSTRUMENT 0x100
 
 typedef struct
 {

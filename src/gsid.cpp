@@ -1,11 +1,16 @@
 /*
  * GOATTRACKER reSID interface
+ *
+ * C64 GrooveGoat: up to 8 reSID / reSID-fp instances, mixed to stereo with
+ * a configurable panning per SID.
  */
 
 #define GSID_C
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
+#include <math.h>
 #include "resid/sid.h"
 #include "resid-fp/sidfp.h"
 
@@ -14,7 +19,10 @@
 
 int clockrate;
 int samplerate;
-unsigned char sidreg[NUMSIDREGS];
+int sidcount = 1;
+unsigned char sidreg[MAX_SIDS][NUMSIDREGS];
+int sidpan[MAX_SIDS];   // -100 (left) .. 100 (right)
+
 unsigned char sidorder[] =
   {0x18,0x17,0x16,0x15,
    0x14,0x13,0x12,0x11,0x10,0x0f,0x0e,
@@ -27,8 +35,13 @@ unsigned char altsidorder[] =
    0x0e,0x0f,0x10,0x11,0x12,0x13,0x14,
    0x15,0x16,0x17,0x18};
 
-SID *sid = 0;
-SIDFP *sidfp = 0;
+static SID *sid[MAX_SIDS] = {0};
+static SIDFP *sidfp[MAX_SIDS] = {0};
+static short *sidbuf = NULL;
+static float *mixbuf = NULL;
+static int sidbufsize = 0;
+static float pangainl[MAX_SIDS];
+static float pangainr[MAX_SIDS];
 
 FILTERPARAMS filterparams =
   {0.50f, 3.3e6f, 1.0e-4f,
@@ -37,12 +50,42 @@ FILTERPARAMS filterparams =
    0.9613160610660189f};
 
 extern unsigned residdelay;
-//extern unsigned adparam;
 
-
-void sid_init(int speed, unsigned m, unsigned ntsc, unsigned interpolate, unsigned customclockrate, unsigned usefp)
+void sid_setpanning(int nsids, int stereo)
 {
   int c;
+  float mastergain = 1.0f / sqrtf((float)(nsids > 0 ? nsids : 1));
+  if (nsids > 1) mastergain *= 1.25f;
+  if (mastergain > 1.0f) mastergain = 1.0f;
+
+  for (c = 0; c < MAX_SIDS; c++)
+  {
+    int pan = 0;
+    if ((stereo) && (nsids > 1))
+    {
+      // Spread SIDs alternately left/right, inner pairs closer to centre
+      switch (nsids)
+      {
+        case 2: pan = (c & 1) ? 60 : -60; break;
+        case 4: { static const int p[4] = {-80, 80, -35, 35}; pan = p[c & 3]; } break;
+        default: { static const int p[8] = {-90, 90, -65, 65, -40, 40, -15, 15}; pan = p[c & 7]; } break;
+      }
+    }
+    sidpan[c] = pan;
+    {
+      float a = (pan + 100) / 200.0f * 1.5707963f;
+      // constant power panning, normalized so that centre = 1.0 on both sides
+      pangainl[c] = cosf(a) * 1.41421356f * mastergain;
+      pangainr[c] = sinf(a) * 1.41421356f * mastergain;
+      if (pangainl[c] > mastergain * 1.41421356f) pangainl[c] = mastergain * 1.41421356f;
+      if (pangainr[c] > mastergain * 1.41421356f) pangainr[c] = mastergain * 1.41421356f;
+    }
+  }
+}
+
+void sid_init(int speed, unsigned m, unsigned ntsc, unsigned interpolate, unsigned customclockrate, unsigned usefp, int nsids)
+{
+  int c, s;
 
   if (ntsc) clockrate = NTSCCLOCKRATE;
     else clockrate = PALCLOCKRATE;
@@ -51,75 +94,84 @@ void sid_init(int speed, unsigned m, unsigned ntsc, unsigned interpolate, unsign
     clockrate = customclockrate;
 
   samplerate = speed;
+  if (nsids < 1) nsids = 1;
+  if (nsids > MAX_SIDS) nsids = MAX_SIDS;
 
-  if (!usefp)
+  for (s = 0; s < MAX_SIDS; s++)
   {
-    if (sidfp)
+    int want = s < nsids;
+    if ((!usefp) || (!want))
     {
-      delete sidfp;
-      sidfp = NULL;
+      if (sidfp[s])
+      {
+        delete sidfp[s];
+        sidfp[s] = NULL;
+      }
+    }
+    if ((usefp) || (!want))
+    {
+      if (sid[s])
+      {
+        delete sid[s];
+        sid[s] = NULL;
+      }
+    }
+    if (!want) continue;
+    if ((!usefp) && (!sid[s])) sid[s] = new SID;
+    if ((usefp) && (!sidfp[s])) sidfp[s] = new SIDFP;
+
+    switch(interpolate)
+    {
+      case 0:
+      if (sid[s]) sid[s]->set_sampling_parameters(clockrate, SAMPLE_FAST, speed);
+      if (sidfp[s]) sidfp[s]->set_sampling_parameters(clockrate, SAMPLE_INTERPOLATE, speed);
+      break;
+
+      default:
+      if (sid[s]) sid[s]->set_sampling_parameters(clockrate, SAMPLE_INTERPOLATE, speed);
+      if (sidfp[s]) sidfp[s]->set_sampling_parameters(clockrate, SAMPLE_RESAMPLE_INTERPOLATE, speed);
+      break;
     }
 
-    if (!sid) sid = new SID;
-  }
-  else
-  {
-    if (sid)
+    if (sid[s]) sid[s]->reset();
+    if (sidfp[s]) sidfp[s]->reset();
+    for (c = 0; c < NUMSIDREGS; c++)
+      sidreg[s][c] = 0x00;
+
+    if (m == 1)
     {
-      delete sid;
-      sid = NULL;
+      if (sid[s]) sid[s]->set_chip_model(MOS8580);
+      if (sidfp[s]) sidfp[s]->set_chip_model(MOS8580);
     }
-    
-    if (!sidfp) sidfp = new SIDFP;
-  }
+    else
+    {
+      if (sid[s]) sid[s]->set_chip_model(MOS6581);
+      if (sidfp[s]) sidfp[s]->set_chip_model(MOS6581);
+    }
 
-  switch(interpolate)
-  {
-    case 0:
-    if (sid) sid->set_sampling_parameters(clockrate, SAMPLE_FAST, speed);
-    if (sidfp) sidfp->set_sampling_parameters(clockrate, SAMPLE_INTERPOLATE, speed);
-    break;
+    if (sidfp[s])
+    {
+      sidfp[s]->get_filter().set_distortion_properties(
+        filterparams.distortionrate,
+        filterparams.distortionpoint,
+        filterparams.distortioncfthreshold);
+      sidfp[s]->get_filter().set_type3_properties(
+        filterparams.type3baseresistance,
+        filterparams.type3offset,
+        filterparams.type3steepness,
+        filterparams.type3minimumfetresistance);
+      sidfp[s]->get_filter().set_type4_properties(
+        filterparams.type4k,
+        filterparams.type4b);
+      sidfp[s]->set_voice_nonlinearity(
+        filterparams.voicenonlinearity);
+    }
+  }
+  for (s = nsids; s < MAX_SIDS; s++)
+    for (c = 0; c < NUMSIDREGS; c++)
+      sidreg[s][c] = 0x00;
 
-    default:
-    if (sid) sid->set_sampling_parameters(clockrate, SAMPLE_INTERPOLATE, speed);
-    if (sidfp) sidfp->set_sampling_parameters(clockrate, SAMPLE_RESAMPLE_INTERPOLATE, speed);
-    break;
-  }
-
-  if (sid) sid->reset();
-  if (sidfp) sidfp->reset();
-  for (c = 0; c < NUMSIDREGS; c++)
-  {
-    sidreg[c] = 0x00;
-  }
-  if (m == 1)
-  {
-    if (sid) sid->set_chip_model(MOS8580);
-    if (sidfp) sidfp->set_chip_model(MOS8580);
-  }
-  else
-  {
-    if (sid) sid->set_chip_model(MOS6581);
-    if (sidfp) sidfp->set_chip_model(MOS6581);
-  }
-
-  if (sidfp)
-  {
-    sidfp->get_filter().set_distortion_properties(
-      filterparams.distortionrate,
-      filterparams.distortionpoint,
-      filterparams.distortioncfthreshold);
-    sidfp->get_filter().set_type3_properties(
-      filterparams.type3baseresistance,
-      filterparams.type3offset,
-      filterparams.type3steepness,
-      filterparams.type3minimumfetresistance);
-    sidfp->get_filter().set_type4_properties(
-      filterparams.type4k,
-      filterparams.type4b);
-    sidfp->set_voice_nonlinearity(
-      filterparams.voicenonlinearity);
-  }
+  sidcount = nsids;
 }
 
 unsigned char sid_getorder(unsigned char index, unsigned int adparam)
@@ -130,10 +182,32 @@ unsigned char sid_getorder(unsigned char index, unsigned int adparam)
     return sidorder[index];
 }
 
-int sid_fillbuffer(short *ptr, int samples, unsigned int adparam)
+int sid_getenv(int s, int v)
+{
+  if ((s < 0) || (s >= sidcount) || (v < 0) || (v > 2)) return 0;
+  if (sid[s]) return sid[s]->read_env(v);
+  if (sidfp[s]) return sidfp[s]->read_env(v);
+  return 0;
+}
+
+static inline int clockone(int s, int cycles, short *ptr, int samples)
+{
+  cycle_count delta = cycles;
+  if (sid[s]) return sid[s]->clock(delta, ptr, samples);
+  if (sidfp[s]) return sidfp[s]->clock(delta, ptr, samples);
+  return 0;
+}
+
+static inline void writeone(int s, unsigned char reg, unsigned char value)
+{
+  if (sid[s]) sid[s]->write(reg, value);
+  if (sidfp[s]) sidfp[s]->write(reg, value);
+}
+
+// Render one SID into a mono buffer, writing its registers first
+static int fillone(int s, short *ptr, int samples, unsigned int adparam)
 {
   int tdelta;
-  int tdelta2;
   int result = 0;
   int total = 0;
   int c;
@@ -141,52 +215,51 @@ int sid_fillbuffer(short *ptr, int samples, unsigned int adparam)
   int badline = rand() % NUMSIDREGS;
 
   tdelta = clockrate * samples / samplerate;
-  if (tdelta <= 0) return total;
+  if (tdelta <= 0)
+  {
+    memset(ptr, 0, samples * sizeof(short));
+    return samples;
+  }
 
   for (c = 0; c < NUMSIDREGS; c++)
   {
-    unsigned char o = sid_getorder(c,adparam);
+    unsigned char o = sid_getorder(c, adparam);
 
     // Possible random badline delay once per writing
     if ((badline == c) && (residdelay))
     {
-      tdelta2 = residdelay;
-      if (sid) result = sid->clock(tdelta2, ptr, samples);
-      if (sidfp) result = sidfp->clock(tdelta2, ptr, samples);
+      result = clockone(s, residdelay, ptr, samples);
       total += result;
       ptr += result;
       samples -= result;
       tdelta -= residdelay;
     }
 
-    if (sid) sid->write(o, sidreg[o]);
-    if (sidfp) sidfp->write(o, sidreg[o]);
+    writeone(s, o, sidreg[s][o]);
 
-    tdelta2 = SIDWRITEDELAY;
-    if (sid) result = sid->clock(tdelta2, ptr, samples);
-    if (sidfp) result = sidfp->clock(tdelta2, ptr, samples);
+    result = clockone(s, SIDWRITEDELAY, ptr, samples);
     total += result;
     ptr += result;
     samples -= result;
     tdelta -= SIDWRITEDELAY;
 
-    if (tdelta <= 0) return total;
+    if (tdelta <= 0) break;
   }
 
-  if (sid) result = sid->clock(tdelta, ptr, samples);
-  if (sidfp) result = sidfp->clock(tdelta, ptr, samples);
-  total += result;
-  ptr += result;
-  samples -= result;
+  if (tdelta > 0)
+  {
+    result = clockone(s, tdelta, ptr, samples);
+    total += result;
+    ptr += result;
+    samples -= result;
+  }
 
   // Loop extra cycles until all samples produced
-  while (samples)
+  while (samples > 0)
   {
     tdelta = clockrate * samples / samplerate;
-    if (tdelta <= 0) return total;
-
-    if (sid) result = sid->clock(tdelta, ptr, samples);
-    if (sidfp) result = sidfp->clock(tdelta, ptr, samples);
+    if (tdelta <= 0) tdelta = 1;
+    result = clockone(s, tdelta, ptr, samples);
     total += result;
     ptr += result;
     samples -= result;
@@ -195,3 +268,68 @@ int sid_fillbuffer(short *ptr, int samples, unsigned int adparam)
   return total;
 }
 
+// Fill an output buffer. If stereo, the buffer is interleaved L/R and must
+// have room for 2 * samples values.
+int sid_fillbuffer(short *ptr, int samples, unsigned int adparam, int stereo)
+{
+  int s, c;
+
+  if (samples <= 0) return 0;
+
+  if ((sidcount == 1) && (!stereo))
+  {
+    if ((!sid[0]) && (!sidfp[0])) return 0;
+    return fillone(0, ptr, samples, adparam);
+  }
+
+  if (sidbufsize < samples)
+  {
+    free(sidbuf);
+    free(mixbuf);
+    sidbufsize = samples + 1024;
+    sidbuf = (short *)malloc(sidbufsize * sizeof(short));
+    mixbuf = (float *)malloc(sidbufsize * 2 * sizeof(float));
+    if ((!sidbuf) || (!mixbuf))
+    {
+      sidbufsize = 0;
+      return 0;
+    }
+  }
+
+  {
+    float *mix = mixbuf;
+    memset(mix, 0, samples * 2 * sizeof(float));
+    for (s = 0; s < sidcount; s++)
+    {
+      if ((!sid[s]) && (!sidfp[s])) continue;
+      fillone(s, sidbuf, samples, adparam);
+      for (c = 0; c < samples; c++)
+      {
+        float v = sidbuf[c];
+        mix[c * 2] += v * pangainl[s];
+        mix[c * 2 + 1] += v * pangainr[s];
+      }
+    }
+    if (stereo)
+    {
+      for (c = 0; c < samples * 2; c++)
+      {
+        float v = mix[c];
+        if (v > 32767.0f) v = 32767.0f;
+        if (v < -32768.0f) v = -32768.0f;
+        ptr[c] = (short)v;
+      }
+    }
+    else
+    {
+      for (c = 0; c < samples; c++)
+      {
+        float v = (mix[c * 2] + mix[c * 2 + 1]) * 0.5f;
+        if (v > 32767.0f) v = 32767.0f;
+        if (v < -32768.0f) v = -32768.0f;
+        ptr[c] = (short)v;
+      }
+    }
+  }
+  return samples;
+}

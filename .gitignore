@@ -1,3 +1,6 @@
 .vscode/
-linux/
 *.o
+build/
+dist/
+attic/
+__pycache__/

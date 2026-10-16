@@ -1,5 +1,8 @@
 //
-// GOATTRACKER v2 playroutine
+// GOATTRACKER v2 playroutine (editor playback)
+//
+// C64 GrooveGoat: extended to up to 8 SIDs / 24 channels. Every SID has its
+// own filter and master volume state; tempo commands affect all channels.
 //
 
 #define GPLAY_C
@@ -35,21 +38,34 @@ unsigned char freqtblhi[] = {
   0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00};
 
 CHN chn[MAX_CHN];
+SIDFILT sidfilt[MAX_SIDS];
 EDITOR_UNDO_INFO editorUndoInfo;
 
-unsigned char filterctrl = 0;
-unsigned char filtertype = 0;
-unsigned char filtercutoff = 0;
-unsigned char filtertime = 0;
-unsigned char filterptr = 0;
 unsigned char funktable[2];
-unsigned char masterfader = 0x0f;
 int psnum = 0;
 int songinit = 0;
 int lastsonginit = 0;
 int startpattpos = 0;
+int playframes = 0;
+
+// Register of SID s, offset r (voice registers are r + 7 * voice)
+#define SREG(c, r) sidreg[(c) / 3][(r) + 7 * ((c) % 3)]
 
 void sequencer(int c, CHN *cptr);
+
+static void setalltempo(unsigned char t)
+{
+  int c;
+  for (c = 0; c < numchannels; c++) chn[c].tempo = t;
+}
+
+static int defaulttempo(void)
+{
+  if (editorInfo.multiplier)
+    return 6 * editorInfo.multiplier - 1;
+  else
+    return 6 - 1;
+}
 
 void initchannels(void)
 {
@@ -62,22 +78,24 @@ void initchannels(void)
   {
     chn[c].trans = 0;
     chn[c].instr = 1;
-    if (editorInfo.multiplier)
-      cptr->tempo = 6* editorInfo.multiplier-1;
-    else
-      cptr->tempo = 6-1;
+    cptr->tempo = defaulttempo();
     cptr++;
+  }
+  for (c = 0; c < MAX_SIDS; c++)
+  {
+    memset(&sidfilt[c], 0, sizeof(SIDFILT));
+    sidfilt[c].masterfader = 0x0f;
   }
 
   if (editorInfo.multiplier)
   {
-    funktable[0] = 9* editorInfo.multiplier-1;
-    funktable[1] = 6* editorInfo.multiplier-1;
+    funktable[0] = 9 * editorInfo.multiplier - 1;
+    funktable[1] = 6 * editorInfo.multiplier - 1;
   }
   else
   {
-    funktable[0] = 9-1;
-    funktable[1] = 6-1;
+    funktable[0] = 9 - 1;
+    funktable[1] = 6 - 1;
   }
 }
 
@@ -131,8 +149,8 @@ void playtestnote(int note, int ins, int chnnum)
     chn[chnnum].gate = 0xfe; // Keyoff
     if (!(instr[ins].gatetimer & 0x80))
     {
-      sidreg[0x5+chnnum*7] = editorInfo.adparam>>8; // Hardrestart
-      sidreg[0x6+chnnum*7] = editorInfo.adparam&0xff;
+      SREG(chnnum, 0x5) = editorInfo.adparam>>8; // Hardrestart
+      SREG(chnnum, 0x6) = editorInfo.adparam&0xff;
     }
   }
 
@@ -152,12 +170,181 @@ void releasenote(int chnnum)
 
 void mutechannel(int chnnum)
 {
+  if ((chnnum < 0) || (chnnum >= MAX_CHN)) return;
   chn[chnnum].mute ^= 1;
+}
+
+// Solo: mute all others; if already soloed, unmute everything
+void solochannel(int chnnum)
+{
+  int c;
+  int alreadysolo = 1;
+  if ((chnnum < 0) || (chnnum >= numchannels)) return;
+  for (c = 0; c < numchannels; c++)
+  {
+    if ((c == chnnum) && (chn[c].mute)) alreadysolo = 0;
+    if ((c != chnnum) && (!chn[c].mute)) alreadysolo = 0;
+  }
+  for (c = 0; c < numchannels; c++)
+  {
+    if (alreadysolo) chn[c].mute = 0;
+    else chn[c].mute = (c != chnnum);
+  }
 }
 
 int isplaying(void)
 {
   return (songinit != PLAY_STOPPED);
+}
+
+static void stopiftablejump(int table, unsigned char ptr)
+{
+  if (ptr)
+  {
+    // Stop the song in case of jumping into a jump
+    if (ltable[table][ptr-1] == 0xff)
+      stopsong();
+  }
+}
+
+static void setfilterptr(SIDFILT *f, unsigned char ptr)
+{
+  f->filterptr = ptr;
+  f->filtertime = 0;
+  stopiftablejump(FTBL, ptr);
+}
+
+static void filterexec(int s)
+{
+  SIDFILT *f = &sidfilt[s];
+
+  if (f->filterptr)
+  {
+    // Filter jump
+    if (ltable[FTBL][f->filterptr-1] == 0xff)
+    {
+      f->filterptr = rtable[FTBL][f->filterptr-1];
+      if (!f->filterptr) goto FILTERSTOP;
+    }
+
+    if (!f->filtertime)
+    {
+      // Filter set
+      if (ltable[FTBL][f->filterptr-1] >= 0x80)
+      {
+        f->filtertype = ltable[FTBL][f->filterptr-1] & 0x70;
+        f->filterctrl = rtable[FTBL][f->filterptr-1];
+        f->filterptr++;
+        // Can be combined with cutoff set
+        if (ltable[FTBL][f->filterptr-1] == 0x00)
+        {
+          f->filtercutoff = rtable[FTBL][f->filterptr-1];
+          f->filterptr++;
+        }
+      }
+      else
+      {
+        // New modulation step
+        if (ltable[FTBL][f->filterptr-1])
+          f->filtertime = ltable[FTBL][f->filterptr-1];
+        else
+        {
+          // Cutoff set
+          f->filtercutoff = rtable[FTBL][f->filterptr-1];
+          f->filterptr++;
+        }
+      }
+    }
+    // Filter modulation
+    if (f->filtertime)
+    {
+      f->filtercutoff += rtable[FTBL][f->filterptr-1];
+      f->filtertime--;
+      if (!f->filtertime) f->filterptr++;
+    }
+  }
+  FILTERSTOP:
+  sidreg[s][0x15] = 0x00;
+  sidreg[s][0x16] = f->filtercutoff;
+  sidreg[s][0x17] = f->filterctrl;
+  sidreg[s][0x18] = f->filtertype | f->masterfader;
+}
+
+static unsigned short calcspeed(CHN *cptr, unsigned char param)
+{
+  unsigned short speed = 0;
+  if (param)
+  {
+    speed = (ltable[STBL][param-1] << 8) | rtable[STBL][param-1];
+  }
+  if (speed >= 0x8000)
+  {
+    speed = freqtbllo[cptr->lastnote + 1] | (freqtblhi[cptr->lastnote + 1] << 8);
+    speed -= freqtbllo[cptr->lastnote] | (freqtblhi[cptr->lastnote] << 8);
+    speed >>= rtable[STBL][param-1];
+  }
+  return speed;
+}
+
+static void toneporta(CHN *cptr, unsigned char param)
+{
+  unsigned short targetfreq = freqtbllo[cptr->note] | (freqtblhi[cptr->note] << 8);
+  unsigned short speed = 0;
+
+  if (!param)
+  {
+    cptr->freq = targetfreq;
+    cptr->vibtime = 0;
+  }
+  else
+  {
+    speed = calcspeed(cptr, param);
+    if (cptr->freq < targetfreq)
+    {
+      cptr->freq += speed;
+      if (cptr->freq > targetfreq)
+      {
+        cptr->freq = targetfreq;
+        cptr->vibtime = 0;
+      }
+    }
+    if (cptr->freq > targetfreq)
+    {
+      cptr->freq -= speed;
+      if (cptr->freq < targetfreq)
+      {
+        cptr->freq = targetfreq;
+        cptr->vibtime = 0;
+      }
+    }
+  }
+}
+
+static void vibrato(CHN *cptr, unsigned char param)
+{
+  unsigned short speed = 0;
+  unsigned char cmpvalue = 0;
+
+  if (param)
+  {
+    cmpvalue = ltable[STBL][param-1];
+    speed = rtable[STBL][param-1];
+  }
+  if (cmpvalue >= 0x80)
+  {
+    cmpvalue &= 0x7f;
+    speed = freqtbllo[cptr->lastnote + 1] | (freqtblhi[cptr->lastnote + 1] << 8);
+    speed -= freqtbllo[cptr->lastnote] | (freqtblhi[cptr->lastnote] << 8);
+    speed >>= rtable[STBL][param-1];
+  }
+
+  if ((cptr->vibtime < 0x80) && (cptr->vibtime > cmpvalue))
+    cptr->vibtime ^= 0xff;
+  cptr->vibtime += 0x02;
+  if (cptr->vibtime & 0x01)
+    cptr->freq -= speed;
+  else
+    cptr->freq += speed;
 }
 
 void playroutine(void)
@@ -173,18 +360,25 @@ void playroutine(void)
   {
     lastsonginit = songinit;
 
-    filterctrl = 0;
-    filterptr = 0;
+    for (c = 0; c < MAX_SIDS; c++)
+    {
+      sidfilt[c].filterctrl = 0;
+      sidfilt[c].filterptr = 0;
+    }
 
     resettime();
+    playframes = 0;
 
     if ((songinit == 0x02) || (songinit == 0x03))
     {
-      if ((editorUndoInfo.editorInfo[0].espos >= songlen[psnum][0]) || (editorUndoInfo.editorInfo[1].espos >= songlen[psnum][1]) || (editorUndoInfo.editorInfo[2].espos >= songlen[psnum][2]))
-         songinit = 0x01;
+      for (c = 0; c < numchannels; c++)
+      {
+        if (editorUndoInfo.editorInfo[c].espos >= songlen[psnum][c])
+          songinit = 0x01;
+      }
     }
 
-    for (c = 0; c < MAX_CHN; c++)
+    for (c = 0; c < numchannels; c++)
     {
       cptr->songptr = 0;
       cptr->command = 0;
@@ -196,10 +390,8 @@ void playroutine(void)
       cptr->ptr[WTBL] = 0;
       cptr->newnote = 0;
       cptr->repeat = 0;
-      if (editorInfo.multiplier)
-        cptr->tick = 6* editorInfo.multiplier-1;
-      else
-        cptr->tick = 6-1;
+      cptr->looped = 0;
+      cptr->tick = defaulttempo();
       cptr->gatetimer = instr[1].gatetimer & 0x3f;
       cptr->pattptr = 0x7fffffff;
       if (cptr->tempo < 2) cptr->tempo = 0;
@@ -211,14 +403,13 @@ void playroutine(void)
         {
           funktable[0] = 9* editorInfo.multiplier-1;
           funktable[1] = 6* editorInfo.multiplier-1;
-          cptr->tempo = 6* editorInfo.multiplier-1;
         }
         else
         {
           funktable[0] = 9-1;
           funktable[1] = 6-1;
-          cptr->tempo = 6-1;
         }
+        cptr->tempo = defaulttempo();
         if ((instr[MAX_INSTR-1].ad >= 2) && (!(instr[MAX_INSTR-1].ptr[WTBL])))
           cptr->tempo = instr[MAX_INSTR-1].ad - 1;
         cptr->trans = 0;
@@ -230,7 +421,7 @@ void playroutine(void)
         cptr->advance = 0;
         cptr->pattptr = startpattpos * 4;
         cptr->pattnum = editorUndoInfo.editorInfo[c].epnum;
-        if (cptr->pattptr >= (pattlen[cptr->pattnum] * 4))
+        if (cptr->pattptr >= (unsigned)(pattlen[cptr->pattnum] * 4))
           cptr->pattptr = 0;
         break;
 
@@ -245,76 +436,24 @@ void playroutine(void)
       songinit = 0;
     else
       songinit = PLAY_STOPPED;
-    if ((!songlen[psnum][0]) || (!songlen[psnum][1]) || (!songlen[psnum][2]))
+    if (!songvalid(psnum))
       songinit = PLAY_STOPPED; // Zero length song
 
     startpattpos = 0;
   }
   else
   {
-    if (filterptr)
-    {
-      // Filter jump
-      if (ltable[FTBL][filterptr-1] == 0xff)
-      {
-        filterptr = rtable[FTBL][filterptr-1];
-        if (!filterptr) goto FILTERSTOP;
-      }
+    for (c = 0; c < numsids; c++)
+      filterexec(c);
 
-      if (!filtertime)
-      {
-        // Filter set
-        if (ltable[FTBL][filterptr-1] >= 0x80)
-        {
-          filtertype = ltable[FTBL][filterptr-1] & 0x70;
-          filterctrl = rtable[FTBL][filterptr-1];
-          filterptr++;
-          // Can be combined with cutoff set
-          if (ltable[FTBL][filterptr-1] == 0x00)
-          {
-            filtercutoff = rtable[FTBL][filterptr-1];
-            filterptr++;
-          }
-        }
-        else
-        {
-          // New modulation step
-          if (ltable[FTBL][filterptr-1])
-            filtertime = ltable[FTBL][filterptr-1];
-          else
-          {
-            // Cutoff set
-            filtercutoff = rtable[FTBL][filterptr-1];
-            filterptr++;
-          }
-        }
-      }
-      // Filter modulation
-      if (filtertime)
-      {
-        filtercutoff += rtable[FTBL][filterptr-1];
-        filtertime--;
-        if (!filtertime) filterptr++;
-      }
-    }
-    FILTERSTOP:
-    sidreg[0x15] = 0x00;
-    sidreg[0x16] = filtercutoff;
-    sidreg[0x17] = filterctrl;
-    sidreg[0x18] = filtertype | masterfader;
-
-    for (c = 0; c < MAX_CHN; c++)
+    for (c = 0; c < numchannels; c++)
     {
+      SIDFILT *filt = &sidfilt[c / 3];
       iptr = &instr[cptr->instr];
 
       // Reset tempo in jammode
       if ((songinit == PLAY_STOPPED) && (cptr->tempo < 2))
-      {
-        if (editorInfo.multiplier)
-          cptr->tempo = 6* editorInfo.multiplier-1;
-        else
-          cptr->tempo = 6-1;
-      }
+        cptr->tempo = defaulttempo();
 
       // Decrease tick
       cptr->tick--;
@@ -333,7 +472,7 @@ void playroutine(void)
           cptr->tempo ^= 1;
         }
         // Check for illegally high gatetimer and stop the song in this case
-        if (chn->gatetimer > cptr->tick)
+        if (cptr->gatetimer > cptr->tick)
           stopsong();
       }
       goto WAVEEXEC;
@@ -365,39 +504,19 @@ void playroutine(void)
             }
           }
 
-
           cptr->ptr[WTBL] = iptr->ptr[WTBL];
+          stopiftablejump(WTBL, cptr->ptr[WTBL]);
 
-          if (cptr->ptr[WTBL])
-          {
-            // Stop the song in case of jumping into a jump
-            if (ltable[WTBL][cptr->ptr[WTBL]-1] == 0xff)
-              stopsong();
-          }
           if (iptr->ptr[PTBL])
           {
             cptr->ptr[PTBL] = iptr->ptr[PTBL];
             cptr->pulsetime = 0;
-            if (cptr->ptr[PTBL])
-            {
-              // Stop the song in case of jumping into a jump
-              if (ltable[PTBL][cptr->ptr[PTBL]-1] == 0xff)
-                stopsong();
-            }
+            stopiftablejump(PTBL, cptr->ptr[PTBL]);
           }
           if (iptr->ptr[FTBL])
-          {
-            filterptr = iptr->ptr[FTBL];
-            filtertime = 0;
-            if (filterptr)
-            {
-              // Stop the song in case of jumping into a jump
-              if (ltable[FTBL][filterptr-1] == 0xff)
-                stopsong();
-            }
-          }
-          sidreg[0x5+7*c] = iptr->ad;
-          sidreg[0x6+7*c] = iptr->sr;
+            setfilterptr(filt, iptr->ptr[FTBL]);
+          SREG(c, 0x5) = iptr->ad;
+          SREG(c, 0x6) = iptr->sr;
         }
       }
 
@@ -424,11 +543,11 @@ void playroutine(void)
         break;
 
         case CMD_SETAD:
-        sidreg[0x5+7*c] = cptr->newcmddata;
+        SREG(c, 0x5) = cptr->newcmddata;
         break;
 
         case CMD_SETSR:
-        sidreg[0x6+7*c] = cptr->newcmddata;
+        SREG(c, 0x6) = cptr->newcmddata;
         break;
 
         case CMD_SETWAVE:
@@ -438,48 +557,31 @@ void playroutine(void)
         case CMD_SETWAVEPTR:
         cptr->ptr[WTBL] = cptr->newcmddata;
         cptr->wavetime = 0;
-        if (cptr->ptr[WTBL])
-        {
-          // Stop the song in case of jumping into a jump
-          if (ltable[WTBL][cptr->ptr[WTBL]-1] == 0xff)
-            stopsong();
-        }
+        stopiftablejump(WTBL, cptr->ptr[WTBL]);
         break;
 
         case CMD_SETPULSEPTR:
         cptr->ptr[PTBL] = cptr->newcmddata;
         cptr->pulsetime = 0;
-        if (cptr->ptr[PTBL])
-        {
-          // Stop the song in case of jumping into a jump
-          if (ltable[PTBL][cptr->ptr[PTBL]-1] == 0xff)
-            stopsong();
-        }
+        stopiftablejump(PTBL, cptr->ptr[PTBL]);
         break;
 
         case CMD_SETFILTERPTR:
-        filterptr = cptr->newcmddata;
-        filtertime = 0;
-        if (filterptr)
-        {
-          // Stop the song in case of jumping into a jump
-          if (ltable[FTBL][filterptr-1] == 0xff)
-            stopsong();
-        }
+        setfilterptr(filt, cptr->newcmddata);
         break;
 
         case CMD_SETFILTERCTRL:
-        filterctrl = cptr->newcmddata;
-        if (!filterctrl) filterptr = 0;
+        filt->filterctrl = cptr->newcmddata;
+        if (!filt->filterctrl) filt->filterptr = 0;
         break;
 
         case CMD_SETFILTERCUTOFF:
-        filtercutoff = cptr->newcmddata;
+        filt->filtercutoff = cptr->newcmddata;
         break;
 
         case CMD_SETMASTERVOL:
         if (cptr->newcmddata < 0x10)
-          masterfader = cptr->newcmddata;
+          filt->masterfader = cptr->newcmddata;
         break;
 
         case CMD_FUNKTEMPO:
@@ -488,9 +590,7 @@ void playroutine(void)
           funktable[0] = ltable[STBL][cptr->newcmddata-1]-1;
           funktable[1] = rtable[STBL][cptr->newcmddata-1]-1;
         }
-        chn[0].tempo = 0;
-        chn[1].tempo = 0;
-        chn[2].tempo = 0;
+        setalltempo(0);
         break;
 
         case CMD_SETTEMPO:
@@ -501,11 +601,7 @@ void playroutine(void)
           if (cptr->newcmddata >= 0x80)
             cptr->tempo = newtempo;
           else
-          {
-            chn[0].tempo = newtempo;
-            chn[1].tempo = newtempo;
-            chn[2].tempo = newtempo;
-          }
+            setalltempo(newtempo);
         }
         break;
       }
@@ -540,114 +636,27 @@ void playroutine(void)
               break;
 
               case CMD_PORTAUP:
-              {
-                unsigned short speed = 0;
-                if (param)
-                {
-                  speed = (ltable[STBL][param-1] << 8) | rtable[STBL][param-1];
-                }
-                if (speed >= 0x8000)
-                {
-                  speed = freqtbllo[cptr->lastnote + 1] | (freqtblhi[cptr->lastnote + 1] << 8);
-                  speed -= freqtbllo[cptr->lastnote] | (freqtblhi[cptr->lastnote] << 8);
-                  speed >>= rtable[STBL][param-1];
-                }
-                cptr->freq += speed;
-              }
+              cptr->freq += calcspeed(cptr, param);
               break;
 
               case CMD_PORTADOWN:
-              {
-                unsigned short speed = 0;
-                if (param)
-                {
-                  speed = (ltable[STBL][param-1] << 8) | rtable[STBL][param-1];
-                }
-                if (speed >= 0x8000)
-                {
-                  speed = freqtbllo[cptr->lastnote + 1] | (freqtblhi[cptr->lastnote + 1] << 8);
-                  speed -= freqtbllo[cptr->lastnote] | (freqtblhi[cptr->lastnote] << 8);
-                  speed >>= rtable[STBL][param-1];
-                }
-                cptr->freq -= speed;
-              }
+              cptr->freq -= calcspeed(cptr, param);
               break;
 
               case CMD_TONEPORTA:
-              {
-                unsigned short targetfreq = freqtbllo[cptr->note] | (freqtblhi[cptr->note] << 8);
-                unsigned short speed = 0;
-
-                if (!param)
-                {
-                  cptr->freq = targetfreq;
-                  cptr->vibtime = 0;
-                }
-                else
-                {
-                  speed = (ltable[STBL][param-1] << 8) | rtable[STBL][param-1];
-                  if (speed >= 0x8000)
-                  {
-                    speed = freqtbllo[cptr->lastnote + 1] | (freqtblhi[cptr->lastnote + 1] << 8);
-                    speed -= freqtbllo[cptr->lastnote] | (freqtblhi[cptr->lastnote] << 8);
-                    speed >>= rtable[STBL][param-1];
-                  }
-                  if (cptr->freq < targetfreq)
-                  {
-                    cptr->freq += speed;
-                    if (cptr->freq > targetfreq)
-                    {
-                      cptr->freq = targetfreq;
-                      cptr->vibtime = 0;
-                    }
-                  }
-                  if (cptr->freq > targetfreq)
-                  {
-                    cptr->freq -= speed;
-                    if (cptr->freq < targetfreq)
-                    {
-                      cptr->freq = targetfreq;
-                      cptr->vibtime = 0;
-                    }
-                  }
-                }
-              }
+              toneporta(cptr, param);
               break;
 
               case CMD_VIBRATO:
-              {
-                unsigned short speed = 0;
-                unsigned char cmpvalue = 0;
-
-                if (param)
-                {
-                  cmpvalue = ltable[STBL][param-1];
-                  speed = rtable[STBL][param-1];
-                }
-                if (cmpvalue >= 0x80)
-                {
-                  cmpvalue &= 0x7f;
-                  speed = freqtbllo[cptr->lastnote + 1] | (freqtblhi[cptr->lastnote + 1] << 8);
-                  speed -= freqtbllo[cptr->lastnote] | (freqtblhi[cptr->lastnote] << 8);
-                  speed >>= rtable[STBL][param-1];
-                }
-
-                if ((cptr->vibtime < 0x80) && (cptr->vibtime > cmpvalue))
-                  cptr->vibtime ^= 0xff;
-                cptr->vibtime += 0x02;
-                if (cptr->vibtime & 0x01)
-                  cptr->freq -= speed;
-                else
-                  cptr->freq += speed;
-              }
+              vibrato(cptr, param);
               break;
 
               case CMD_SETAD:
-              sidreg[0x5+7*c] = param;
+              SREG(c, 0x5) = param;
               break;
 
               case CMD_SETSR:
-              sidreg[0x6+7*c] = param;;
+              SREG(c, 0x6) = param;
               break;
 
               case CMD_SETWAVE:
@@ -657,37 +666,25 @@ void playroutine(void)
               case CMD_SETPULSEPTR:
               cptr->ptr[PTBL] = param;
               cptr->pulsetime = 0;
-              if (cptr->ptr[PTBL])
-              {
-                // Stop the song in case of jumping into a jump
-                if (ltable[PTBL][cptr->ptr[PTBL]-1] == 0xff)
-                  stopsong();
-              }
+              stopiftablejump(PTBL, cptr->ptr[PTBL]);
               break;
 
               case CMD_SETFILTERPTR:
-              filterptr = param;
-              filtertime = 0;
-              if (filterptr)
-              {
-                // Stop the song in case of jumping into a jump
-                if (ltable[FTBL][filterptr-1] == 0xff)
-                stopsong();
-              }
+              setfilterptr(filt, param);
               break;
 
               case CMD_SETFILTERCTRL:
-              filterctrl = param;
-              if (!filterctrl) filterptr = 0;
+              filt->filterctrl = param;
+              if (!filt->filterctrl) filt->filterptr = 0;
               break;
 
               case CMD_SETFILTERCUTOFF:
-              filtercutoff = param;
+              filt->filtercutoff = param;
               break;
 
               case CMD_SETMASTERVOL:
               if (param < 0x10)
-                masterfader = param;
+                filt->masterfader = param;
               break;
             }
           }
@@ -732,37 +729,11 @@ void playroutine(void)
         switch(cptr->command)
         {
           case CMD_PORTAUP:
-          {
-            unsigned short speed = 0;
-            if (cptr->cmddata)
-            {
-              speed = (ltable[STBL][cptr->cmddata-1] << 8) | rtable[STBL][cptr->cmddata-1];
-            }
-            if (speed >= 0x8000)
-            {
-              speed = freqtbllo[cptr->lastnote + 1] | (freqtblhi[cptr->lastnote + 1] << 8);
-              speed -= freqtbllo[cptr->lastnote] | (freqtblhi[cptr->lastnote] << 8);
-              speed >>= rtable[STBL][cptr->cmddata-1];
-            }
-            cptr->freq += speed;
-          }
+          cptr->freq += calcspeed(cptr, cptr->cmddata);
           break;
 
           case CMD_PORTADOWN:
-          {
-            unsigned short speed = 0;
-            if (cptr->cmddata)
-            {
-              speed = (ltable[STBL][cptr->cmddata-1] << 8) | rtable[STBL][cptr->cmddata-1];
-            }
-            if (speed >= 0x8000)
-            {
-              speed = freqtbllo[cptr->lastnote + 1] | (freqtblhi[cptr->lastnote + 1] << 8);
-              speed -= freqtbllo[cptr->lastnote] | (freqtblhi[cptr->lastnote] << 8);
-              speed >>= rtable[STBL][cptr->cmddata-1];
-            }
-            cptr->freq -= speed;
-          }
+          cptr->freq -= calcspeed(cptr, cptr->cmddata);
           break;
 
           case CMD_DONOTHING:
@@ -773,73 +744,13 @@ void playroutine(void)
             cptr->vibdelay--;
             break;
           }
+          // fallthrough
           case CMD_VIBRATO:
-          {
-            unsigned short speed = 0;
-            unsigned char cmpvalue = 0;
-
-            if (cptr->cmddata)
-            {
-              cmpvalue = ltable[STBL][cptr->cmddata-1];
-              speed = rtable[STBL][cptr->cmddata-1];
-            }
-            if (cmpvalue >= 0x80)
-            {
-              cmpvalue &= 0x7f;
-              speed = freqtbllo[cptr->lastnote + 1] | (freqtblhi[cptr->lastnote + 1] << 8);
-              speed -= freqtbllo[cptr->lastnote] | (freqtblhi[cptr->lastnote] << 8);
-              speed >>= rtable[STBL][cptr->cmddata-1];
-            }
-
-            if ((cptr->vibtime < 0x80) && (cptr->vibtime > cmpvalue))
-              cptr->vibtime ^= 0xff;
-            cptr->vibtime += 0x02;
-            if (cptr->vibtime & 0x01)
-              cptr->freq -= speed;
-            else
-              cptr->freq += speed;
-          }
+          vibrato(cptr, cptr->cmddata);
           break;
 
           case CMD_TONEPORTA:
-          {
-            unsigned short targetfreq = freqtbllo[cptr->note] | (freqtblhi[cptr->note] << 8);
-            unsigned short speed = 0;
-
-            if (!cptr->cmddata)
-            {
-              cptr->freq = targetfreq;
-              cptr->vibtime = 0;
-            }
-            else
-            {
-              speed = (ltable[STBL][cptr->cmddata-1] << 8) | rtable[STBL][cptr->cmddata-1];
-              if (speed >= 0x8000)
-              {
-                speed = freqtbllo[cptr->lastnote + 1] | (freqtblhi[cptr->lastnote + 1] << 8);
-                speed -= freqtbllo[cptr->lastnote] | (freqtblhi[cptr->lastnote] << 8);
-                speed >>= rtable[STBL][cptr->cmddata-1];
-              }
-              if (cptr->freq < targetfreq)
-              {
-                cptr->freq += speed;
-                if (cptr->freq > targetfreq)
-                {
-                  cptr->freq = targetfreq;
-                  cptr->vibtime = 0;
-                }
-              }
-              if (cptr->freq > targetfreq)
-              {
-                cptr->freq -= speed;
-                if (cptr->freq < targetfreq)
-                {
-                  cptr->freq = targetfreq;
-                  cptr->vibtime = 0;
-                }
-              }
-            }
-          }
+          toneporta(cptr, cptr->cmddata);
           break;
         }
       }
@@ -928,8 +839,8 @@ void playroutine(void)
               cptr->gate = 0xfe;
               if (!(instr[cptr->instr].gatetimer & 0x80))
               {
-                sidreg[0x5+7*c] = editorInfo.adparam>>8;
-                sidreg[0x6+7*c] = editorInfo.adparam&0xff;
+                SREG(c, 0x5) = editorInfo.adparam>>8;
+                SREG(c, 0x6) = editorInfo.adparam&0xff;
               }
             }
           }
@@ -937,19 +848,23 @@ void playroutine(void)
       }
       NEXTCHN:
       if (cptr->mute)
-        sidreg[0x4+7*c] = cptr->wave = 0x08;
+        SREG(c, 0x4) = cptr->wave = 0x08;
       else
       {
-        sidreg[0x0+7*c] = cptr->freq & 0xff;
-        sidreg[0x1+7*c] = cptr->freq >> 8;
-        sidreg[0x2+7*c] = cptr->pulse & 0xfe;
-        sidreg[0x3+7*c] = cptr->pulse >> 8;
-        sidreg[0x4+7*c] = cptr->wave & cptr->gate;
+        SREG(c, 0x0) = cptr->freq & 0xff;
+        SREG(c, 0x1) = cptr->freq >> 8;
+        SREG(c, 0x2) = cptr->pulse & 0xfe;
+        SREG(c, 0x3) = cptr->pulse >> 8;
+        SREG(c, 0x4) = cptr->wave & cptr->gate;
       }
       cptr++;
     }
   }
-  if (songinit != PLAY_STOPPED) incrementtime();
+  if (songinit != PLAY_STOPPED)
+  {
+    incrementtime();
+    playframes++;
+  }
 }
 
 void sequencer(int c, CHN *cptr)
@@ -962,6 +877,7 @@ void sequencer(int c, CHN *cptr)
     if (songorder[psnum][c][cptr->songptr] == LOOPSONG)
     {
       cptr->songptr = songorder[psnum][c][cptr->songptr+1];
+      cptr->looped++;
       if (cptr->songptr >= songlen[psnum][c])
       {
         stopsong();
@@ -994,9 +910,9 @@ void sequencer(int c, CHN *cptr)
       stopsong();
       cptr->pattnum = 0;
     }
-    if (cptr->pattptr >= (pattlen[cptr->pattnum] * 4))
+    if (cptr->pattptr >= (unsigned)(pattlen[cptr->pattnum] * 4))
       cptr->pattptr = 0;
-      
+
     // Check for playback endpos
     if ((lastsonginit != PLAY_BEGINNING) && (editorUndoInfo.editorInfo[c].esend > 0) && (editorUndoInfo.editorInfo[c].esend > editorUndoInfo.editorInfo[c].espos) && (cptr->songptr > editorUndoInfo.editorInfo[c].esend) && (editorUndoInfo.editorInfo[c].espos < songlen[psnum][c]))
       cptr->songptr = editorUndoInfo.editorInfo[c].espos;

@@ -1,6 +1,9 @@
 //
 // GOATTRACKER sound routines
 //
+// C64 GrooveGoat: stereo output of up to 8 emulated SIDs. HardSID/CatWeasel
+// hardware output is still supported, but only for the first SID.
+//
 
 #define GSOUND_C
 
@@ -19,10 +22,12 @@ int firsttimeinit = 1;
 unsigned framerate = PALFRAMERATE;
 Sint16 *buffer = NULL;
 FILE *writehandle = NULL;
+int stereooutput = 1;
 
 void sound_playrout(void);
 void sound_mixer(Sint32 *dest, unsigned samples);
-Uint32 sound_timer(Uint32 interval);
+Uint32 sound_timer(Uint32 interval, void *param);
+static SDL_TimerID soundtimer = 0;
 
 #ifdef __WIN32__
 
@@ -31,31 +36,12 @@ typedef void (CALLBACK* lpWriteToHardSID)(Uint8 DeviceID, Uint8 SID_reg, Uint8 D
 typedef Uint8 (CALLBACK* lpReadFromHardSID)(Uint8 DeviceID, Uint8 SID_reg);
 typedef void (CALLBACK* lpInitHardSID_Mapper)(void);
 typedef void (CALLBACK* lpMuteHardSID_Line)(int Mute);
-typedef void (CALLBACK* lpHardSID_Delay)(Uint8 DeviceID, Uint16 Cycles);
-typedef void (CALLBACK* lpHardSID_Write)(Uint8 DeviceID, Uint16 Cycles, Uint8 SID_reg, Uint8 Data);
-typedef void (CALLBACK* lpHardSID_Flush)(Uint8 DeviceID);
-typedef void (CALLBACK* lpHardSID_SoftFlush)(Uint8 DeviceID);
-typedef boolean (CALLBACK* lpHardSID_Lock)(Uint8 DeviceID);
 lpWriteToHardSID WriteToHardSID = NULL;
 lpReadFromHardSID ReadFromHardSID = NULL;
 lpInitHardSID_Mapper InitHardSID_Mapper = NULL;
 lpMuteHardSID_Line MuteHardSID_Line = NULL;
-lpHardSID_Delay HardSID_Delay = NULL;
-lpHardSID_Write HardSID_Write = NULL;
-lpHardSID_Flush HardSID_Flush = NULL;
-lpHardSID_SoftFlush HardSID_SoftFlush = NULL;
-lpHardSID_Lock HardSID_Lock = NULL;
 HINSTANCE hardsiddll = 0;
 int dll_initialized = FALSE;
-// Cycle-exact HardSID support
-int cycleexacthardsid = FALSE;
-SDL_Thread* playerthread = NULL;
-SDL_mutex* flushmutex = NULL;
-volatile int runplayerthread = FALSE;
-volatile int flushplayerthread = FALSE;
-volatile int suspendplayroutine = FALSE;
-int sound_thread(void *userdata);
-
 void InitHardDLL(void);
 
 // Win32 CatWeasel MK3 PCI output
@@ -73,11 +59,6 @@ int catweaselfd = -1;
 int sound_init(unsigned b, unsigned mr, unsigned writer, unsigned hardsid, unsigned model, unsigned ntsc, unsigned multiplier, unsigned catweasel, unsigned interpolate, unsigned customclockrate)
 {
   int c;
-
-  #ifdef __WIN32__
-  if (!flushmutex)
-      flushmutex = SDL_CreateMutex();
-  #endif
 
   sound_uninit();
 
@@ -115,44 +96,18 @@ int sound_init(unsigned b, unsigned mr, unsigned writer, unsigned hardsid, unsig
     if (dll_initialized)
     {
       usehardsid = hardsid;
-      if (cycleexacthardsid) {
-        HardSID_Lock(usehardsid-1);
-        HardSID_Flush(usehardsid-1);
-        HardSID_Write(usehardsid-1, SIDWRITEDELAY, 0, 0x00);
-        Sleep(300);
-      }
       for (c = 0; c < NUMSIDREGS; c++)
       {
-        sidreg[c] = 0;
-        if (cycleexacthardsid) {
-            HardSID_Write(usehardsid-1, SIDWRITEDELAY, c, 0x00);
-        }
-        else {
-            WriteToHardSID(usehardsid-1, c, 0x00);
-        }
+        sidreg[0][c] = 0;
+        WriteToHardSID(usehardsid-1, c, 0x00);
       }
-      if (cycleexacthardsid) {
-        HardSID_SoftFlush(usehardsid-1);
-      }
-      else {
-        MuteHardSID_Line(FALSE);
-      }
+      MuteHardSID_Line(FALSE);
     }
     else return 0;
-    if (!cycleexacthardsid)
-    {
-      SDL_SetTimer(1000 / framerate, sound_timer);
-    }
-    else
-    {
-      runplayerthread = TRUE;
-      playerthread = SDL_CreateThread(sound_thread, NULL);
-      if (!playerthread) return 0;
-    }
     #else
     char filename[80];
     sprintf(filename, "/dev/sid%d", hardsid-1);
-    hardsidfd = open(filename, O_WRONLY, S_IREAD|S_IWRITE);
+    hardsidfd = open(filename, O_WRONLY, S_IRUSR|S_IWUSR);
     if (hardsidfd >= 0)
     {
       usehardsid = hardsid;
@@ -163,9 +118,8 @@ int sound_init(unsigned b, unsigned mr, unsigned writer, unsigned hardsid, unsig
       }
     }
     else return 0;
-    SDL_SetTimer(1000 / framerate, sound_timer);
     #endif
-
+    soundtimer = SDL_AddTimer(1000 / framerate, sound_timer, NULL);
     goto SOUNDOK;
   }
 
@@ -182,7 +136,7 @@ int sound_init(unsigned b, unsigned mr, unsigned writer, unsigned hardsid, unsig
       catweaselfd = open("/dev/misc/sid", O_WRONLY);
     if (catweaselfd < 0)
       return 0;
-    #ifndef __amigaos__
+    #ifdef __linux__
     if (ntsc)
       ioctl(catweaselfd, CWSID_IOCTL_NTSC);
     else
@@ -191,11 +145,11 @@ int sound_init(unsigned b, unsigned mr, unsigned writer, unsigned hardsid, unsig
     #endif
 
     usecatweasel = 1;
-    SDL_SetTimer(1000 / framerate, sound_timer);
+    soundtimer = SDL_AddTimer(1000 / framerate, sound_timer, NULL);
     goto SOUNDOK;
   }
 
-  if (!buffer) buffer = (Sint16*)malloc(MIXBUFFERSIZE * sizeof(Sint16));
+  if (!buffer) buffer = (Sint16*)malloc(MIXBUFFERSIZE * 2 * sizeof(Sint16));
   if (!buffer) return 0;
 
   if (writer)
@@ -209,14 +163,20 @@ int sound_init(unsigned b, unsigned mr, unsigned writer, unsigned hardsid, unsig
 
   if (firsttimeinit)
   {
-    if (!snd_init(mr, SIXTEENBIT|MONO, b, 1, 0)) return 0;
+    if (!snd_init(playspeed, SIXTEENBIT|STEREO, b)) return 0;
     firsttimeinit = 0;
   }
   playspeed = snd_mixrate;
-  sid_init(playspeed, model, ntsc, interpolate & 1, customclockrate, interpolate >> 1);
+  stereooutput = (snd_mixmode & STEREO) ? 1 : 0;
 
+  snd_lock();
+  sid_init(playspeed, model, ntsc, interpolate & 1, customclockrate, interpolate >> 1, numsids);
+  sid_setpanning(numsids, stereomode);
   snd_player = &sound_playrout;
   snd_setcustommixer(sound_mixer);
+  initted = 1;
+  snd_unlock();
+  return 1;
 
   SOUNDOK:
   initted = 1;
@@ -228,33 +188,24 @@ void sound_uninit(void)
   int c;
 
   if (!initted) return;
-  initted = 0;
-
-  // Apparently a delay is needed to make sure the sound timer thread is
-  // not mixing stuff anymore, and we can safely delete related structures
-  SDL_Delay(50);
 
   if (usehardsid || usecatweasel)
   {
-    #ifdef __WIN32__
-    if (!playerthread)
+    initted = 0;
+    if (soundtimer)
     {
-      SDL_SetTimer(0, NULL);
+      SDL_RemoveTimer(soundtimer);
+      soundtimer = 0;
     }
-    else
-    {
-      runplayerthread = FALSE;
-      SDL_WaitThread(playerthread, NULL);
-      playerthread = NULL;
-    }
-    #else
-    SDL_SetTimer(0, NULL);
-    #endif
+    SDL_Delay(50);
   }
   else
   {
-      snd_setcustommixer(NULL);
+    snd_lock();
+    initted = 0;
+    snd_setcustommixer(NULL);
     snd_player = NULL;
+    snd_unlock();
   }
 
   if (writehandle)
@@ -262,25 +213,12 @@ void sound_uninit(void)
     fclose(writehandle);
     writehandle = NULL;
   }
-  
-  if (buffer)
-  {
-    free(buffer);
-    buffer = NULL;
-  }
 
   if (usehardsid)
   {
     #ifdef __WIN32__
     for (c = 0; c < NUMSIDREGS; c++)
-    {
-        if (cycleexacthardsid) {
-            HardSID_Write(usehardsid-1, SIDWRITEDELAY, c, 0x00);
-        }
-        else {
-            WriteToHardSID(usehardsid-1, c, 0x00);
-        }
-    }
+      WriteToHardSID(usehardsid-1, c, 0x00);
     MuteHardSID_Line(TRUE);
     #else
     if (hardsidfd >= 0)
@@ -294,6 +232,7 @@ void sound_uninit(void)
       hardsidfd = -1;
     }
     #endif
+    usehardsid = 0;
   }
 
   if (usecatweasel)
@@ -320,110 +259,24 @@ void sound_uninit(void)
       catweaselfd = -1;
     }
     #endif
+    usecatweasel = 0;
   }
 }
 
 void sound_suspend(void)
 {
-  #ifdef __WIN32__
-  SDL_LockMutex(flushmutex);
-  suspendplayroutine = TRUE;
-  SDL_UnlockMutex(flushmutex);
-  #endif
 }
 
 void sound_flush(void)
 {
-  #ifdef __WIN32__
-  SDL_LockMutex(flushmutex);
-  flushplayerthread = TRUE;
-  SDL_UnlockMutex(flushmutex);
-  #endif
 }
 
-Uint32 sound_timer(Uint32 interval)
+Uint32 sound_timer(Uint32 interval, void *param)
 {
   if (!initted) return interval;
   sound_playrout();
   return interval;
 }
-
-#ifdef __WIN32__
-int sound_thread(void *userdata)
-{
-  unsigned long flush_cycles_interactive = hardsidbufinteractive * 1000; /* 0 = flush off for interactive mode*/
-  unsigned long flush_cycles_playback = hardsidbufplayback * 1000; /* 0 = flush off for playback mode*/
-  unsigned long cycles_after_flush = 0;
-  boolean interactive;
-
-  while (runplayerthread)
-  {
-    unsigned cycles = 1000000 / framerate; // HardSID should be clocked at 1MHz
-    int c;
-
-    if (flush_cycles_interactive > 0 || flush_cycles_playback > 0)
-    {
-      cycles_after_flush += cycles;
-    }
-
-    // Do flush if starting playback, stopping playback, starting an interactive note etc.
-    if (flushplayerthread)
-    {
-      SDL_LockMutex(flushmutex);
-      if (HardSID_Flush)
-      {
-        HardSID_Flush(usehardsid-1);
-      }
-      // Can clear player suspend now (if set)
-      suspendplayroutine = FALSE;
-      flushplayerthread = FALSE;
-      SDL_UnlockMutex(flushmutex);
-
-      SDL_Delay(0);
-    }
-
-    if (!suspendplayroutine) playroutine();
-
-    interactive = !(boolean)recordmode /* jam mode */ || !(boolean)isplaying();
-
-    for (c = 0; c < NUMSIDREGS; c++)
-    {
-      unsigned o = sid_getorder(c,editorInfo.adparam);
-
-      HardSID_Write(usehardsid-1, SIDWRITEDELAY, o, sidreg[o]);
-      cycles -= SIDWRITEDELAY;
-    }
-
-    // Now wait the rest of frame
-    while (cycles)
-    {
-      unsigned runnow = cycles;
-      if (runnow > 65535) runnow = 65535;
-      HardSID_Delay(usehardsid-1, runnow);
-      cycles -= runnow;
-    }
-
-      if ((flush_cycles_interactive>0 && interactive && cycles_after_flush>=flush_cycles_interactive) ||
-          (flush_cycles_playback>0 && !interactive && cycles_after_flush>=flush_cycles_playback))
-    {
-      if (HardSID_SoftFlush)
-        HardSID_SoftFlush(usehardsid-1);
-          cycles_after_flush = 0;
-    }
-  }
-
-  unsigned r;
-
-  for (r = 0; r < NUMSIDREGS; r++)
-  {
-    HardSID_Write(usehardsid-1, SIDWRITEDELAY, r, 0);
-  }
-  if (HardSID_SoftFlush)
-    HardSID_SoftFlush(usehardsid-1);
-
-  return 0;
-}
-#endif
 
 void sound_playrout(void)
 {
@@ -436,18 +289,13 @@ void sound_playrout(void)
     for (c = 0; c < NUMSIDREGS; c++)
     {
       unsigned o = sid_getorder(c, editorInfo.adparam);
-        if (cycleexacthardsid) {
-            HardSID_Write(usehardsid-1, SIDWRITEDELAY, o, sidreg[o]);
-        }
-        else {
-            WriteToHardSID(usehardsid-1, o, sidreg[o]);
-        }
+      WriteToHardSID(usehardsid-1, o, sidreg[0][o]);
     }
     #else
     for (c = 0; c < NUMSIDREGS; c++)
     {
       unsigned o = sid_getorder(c, editorInfo.adparam);
-      Uint32 dataword = (o << 8) | sidreg[o];
+      Uint32 dataword = (o << 8) | sidreg[0][o];
       write(hardsidfd, &dataword, 4);
     }
     #endif
@@ -463,7 +311,7 @@ void sound_playrout(void)
       unsigned o = sid_getorder(w, editorInfo.adparam);
 
       buf[w*2] = o;
-      buf[w*2+1] = sidreg[o];
+      buf[w*2+1] = sidreg[0][o];
     }
     DeviceIoControl(catweaselhandle, SID_SID_PEEK_POKE, buf, sizeof(buf), 0L, 0UL, &w, 0L);
     #else
@@ -472,7 +320,7 @@ void sound_playrout(void)
       unsigned o = sid_getorder(c, editorInfo.adparam);
 
       lseek(catweaselfd, o, SEEK_SET);
-      write(catweaselfd, &sidreg[o], 1);
+      write(catweaselfd, &sidreg[0][o], 1);
     }
     #endif
   }
@@ -480,18 +328,27 @@ void sound_playrout(void)
 
 void sound_mixer(Sint32 *dest, unsigned samples)
 {
-  int c;
+  unsigned c;
 
   if (!initted) return;
   if (samples > MIXBUFFERSIZE) return;
   if (!buffer) return;
 
-  sid_fillbuffer(buffer, samples,editorInfo.adparam);
-  if (writehandle)
-    fwrite(buffer, samples * sizeof(Uint16), 1, writehandle);
-
-  for (c = 0; c < samples; c++)
-    dest[c] = buffer[c];
+  sid_fillbuffer(buffer, samples, editorInfo.adparam, stereooutput);
+  if (stereooutput)
+  {
+    if (writehandle)
+      fwrite(buffer, samples * 2 * sizeof(Sint16), 1, writehandle);
+    for (c = 0; c < samples * 2; c++)
+      dest[c] = buffer[c];
+  }
+  else
+  {
+    if (writehandle)
+      fwrite(buffer, samples * sizeof(Sint16), 1, writehandle);
+    for (c = 0; c < samples; c++)
+      dest[c] = buffer[c];
+  }
 }
 
 #ifdef __WIN32__
@@ -505,15 +362,6 @@ void InitHardDLL()
   MuteHardSID_Line = (lpMuteHardSID_Line) GetProcAddress(hardsiddll, "MuteHardSID_Line");
 
   if (!WriteToHardSID) return;
-
-  // Try to get cycle-exact interface
-  HardSID_Delay = (lpHardSID_Delay) GetProcAddress(hardsiddll, "HardSID_Delay");
-  HardSID_Write = (lpHardSID_Write) GetProcAddress(hardsiddll, "HardSID_Write");
-  HardSID_Flush = (lpHardSID_Flush) GetProcAddress(hardsiddll, "HardSID_Flush");
-  HardSID_SoftFlush = (lpHardSID_SoftFlush) GetProcAddress(hardsiddll, "HardSID_SoftFlush");
-  HardSID_Lock = (lpHardSID_Lock) GetProcAddress(hardsiddll, "HardSID_Lock");
-  if ((HardSID_Delay) && (HardSID_Write) && (HardSID_Flush) && (HardSID_SoftFlush) && (HardSID_Lock))
-    cycleexacthardsid = TRUE;
 
   InitHardSID_Mapper();
   dll_initialized = TRUE;

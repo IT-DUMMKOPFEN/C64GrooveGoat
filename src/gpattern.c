@@ -108,7 +108,7 @@ void patterncommands(void)
 
     if (newnote > LASTNOTE) newnote = -1;
     if ((rawkey == 0x08) && (!editorInfo.epcolumn)) newnote = REST;
-    if ((rawkey == 0x14) && (!editorInfo.epcolumn)) newnote = KEYOFF;
+    if ((rawkey == KEY_CAPSLOCK) && (!editorInfo.epcolumn)) newnote = KEYOFF;
     if (rawkey == KEY_ENTER)
     {
       switch(editorInfo.epcolumn)
@@ -881,7 +881,7 @@ void patterncommands(void)
         {
           int c;
 
-          for (c = 0; c < MAX_CHN; c++)
+          for (c = 0; c < numchannels; c++)
           {
             if (editorInfo.eseditpos < songlen[editorInfo.esnum][c]) editorUndoInfo.editorInfo[c].espos = editorInfo.eseditpos;
             if (editorUndoInfo.editorInfo[c].esend <= editorUndoInfo.editorInfo[c].espos) editorUndoInfo.editorInfo[c].esend = 0;
@@ -902,7 +902,7 @@ void patterncommands(void)
       {
         editorInfo.epcolumn = 0;
         editorInfo.epchn++;
-        if (editorInfo.epchn >= MAX_CHN) editorInfo.epchn = 0;
+        if (editorInfo.epchn >= numchannels) editorInfo.epchn = 0;
         if (editorInfo.eppos > pattlen[editorUndoInfo.editorInfo[editorInfo.epchn].epnum]) editorInfo.eppos = pattlen[editorUndoInfo.editorInfo[editorInfo.epchn].epnum];
       }
     }
@@ -925,7 +925,7 @@ void patterncommands(void)
       {
         editorInfo.epcolumn = 5;
         editorInfo.epchn--;
-        if (editorInfo.epchn < 0) editorInfo.epchn = MAX_CHN-1;
+        if (editorInfo.epchn < 0) editorInfo.epchn = numchannels-1;
         if (editorInfo.eppos > pattlen[editorUndoInfo.editorInfo[editorInfo.epchn].epnum]) editorInfo.eppos = pattlen[editorUndoInfo.editorInfo[editorInfo.epchn].epnum];
       }
     }
@@ -970,13 +970,13 @@ void patterncommands(void)
     if (!shiftpressed)
     {
       editorInfo.epchn++;
-      if (editorInfo.epchn >= MAX_CHN) editorInfo.epchn = 0;
+      if (editorInfo.epchn >= numchannels) editorInfo.epchn = 0;
       if (editorInfo.eppos > pattlen[editorUndoInfo.editorInfo[editorInfo.epchn].epnum]) editorInfo.eppos = pattlen[editorUndoInfo.editorInfo[editorInfo.epchn].epnum];
     }
     else
     {
       editorInfo.epchn--;
-      if (editorInfo.epchn < 0) editorInfo.epchn = MAX_CHN-1;
+      if (editorInfo.epchn < 0) editorInfo.epchn = numchannels-1;
       if (editorInfo.eppos > pattlen[editorUndoInfo.editorInfo[editorInfo.epchn].epnum]) editorInfo.eppos = pattlen[editorUndoInfo.editorInfo[editorInfo.epchn].epnum];
     }
     break;
@@ -985,7 +985,7 @@ void patterncommands(void)
     case KEY_2:
     case KEY_3:
     if (shiftpressed)
-      mutechannel(rawkey - KEY_1);
+      mutechannel((editorInfo.epchn / 3) * 3 + rawkey - KEY_1);
     break;
   }
   if ((keypreset == KEY_DMC) && (hexnybble >= 0) && (hexnybble <= 7) && (!editorInfo.epcolumn))
@@ -1227,7 +1227,7 @@ void splitpattern(void)
 
     for (editorInfo.esnum = 0; editorInfo.esnum < MAX_SONGS; editorInfo.esnum++)
     {
-      for (editorInfo.eschn = 0; editorInfo.eschn < MAX_CHN; editorInfo.eschn++)
+      for (editorInfo.eschn = 0; editorInfo.eschn < numchannels; editorInfo.eschn++)
       {
         for (editorInfo.eseditpos = 0; editorInfo.eseditpos < songlen[editorInfo.esnum][editorInfo.eschn]; editorInfo.eseditpos++)
         {
@@ -1293,7 +1293,7 @@ void joinpattern(void)
 
     for (editorInfo.esnum = 0; editorInfo.esnum < MAX_SONGS; editorInfo.esnum++)
     {
-      for (editorInfo.eschn = 0; editorInfo.eschn < MAX_CHN; editorInfo.eschn++)
+      for (editorInfo.eschn = 0; editorInfo.eschn < numchannels; editorInfo.eschn++)
       {
         for (editorInfo.eseditpos = 0; editorInfo.eseditpos < songlen[editorInfo.esnum][editorInfo.eschn]; editorInfo.eseditpos++)
         {
