@@ -613,14 +613,20 @@ void showinfo(void)
     }
 
     ly = y + 14;
-    for (c = 0; credits[c]; c++)
     {
-      int col = 8;
-      if (c == 0) col = 15;
-      printtext(x + 3, ly++, MKCOL(col, C_PANEL), credits[c]);
-      // highlight the names column
-      if ((c >= 2) && (strlen(credits[c]) > 37))
-        printfgx(x + 3 + 37, ly - 1, 11, strlen(credits[c]) - 37);
+      int license = 0;
+      for (c = 0; credits[c]; c++)
+      {
+        int col = 8;
+        if (c == 0) col = 15;
+        // the license text after the credits list is shown in light grey
+        if ((c >= 2) && (!credits[c][0])) license = 1;
+        if (license) col = 7;
+        printtext(x + 3, ly++, MKCOL(col, C_PANEL), credits[c]);
+        // highlight the names column
+        if ((c >= 2) && (!license) && (strlen(credits[c]) > 37))
+          printfgx(x + 3 + 37, ly - 1, 11, strlen(credits[c]) - 37);
+      }
     }
     printtext(x + w - 12, y + h - 3, MKCOL(C_BUTTONTEXT, C_BUTTONHI), "   OK   ");
 

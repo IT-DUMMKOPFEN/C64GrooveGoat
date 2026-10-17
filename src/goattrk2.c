@@ -1,5 +1,5 @@
 //
-// C64 GrooveGoat 0.2b
+// C64 GrooveGoat 0.8b
 // A multi-SID (1/2/4/8 SIDs) music editor for the Commodore 64,
 // based on GoatTracker v2.76 (Silver Fork) by Lasse Öörni and contributors.
 //

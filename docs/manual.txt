@@ -1,4 +1,4 @@
-# C64 GrooveGoat 0.2b - Manual
+# C64 GrooveGoat 0.8b - Manual
 
 C64 GrooveGoat is a tracker-style music editor for the SID sound chip of the Commodore 64. It is
 based on GoatTracker 2 by Lasse Oorni (Cadaver) and the "Silver Fork" of Joel Ricci, and adds
@@ -698,7 +698,7 @@ Export without opening a window:
 
 # Credits
 
-C64 GrooveGoat 0.2b by IT-Dummkopfen.
+C64 GrooveGoat 0.8b by IT-Dummkopfen.
 
 |  GoatTracker 2 editor & playroutine   Lasse Oorni (Cadaver), Covert Bitops
 |  GoatTracker 2 "Silver Fork"          Joel Ricci (github.com/joelricci/goattracker2)

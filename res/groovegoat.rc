@@ -3,8 +3,8 @@
 1 ICON "groovegoat.ico"
 
 VS_VERSION_INFO VERSIONINFO
-FILEVERSION 0,2,0,0
-PRODUCTVERSION 0,2,0,0
+FILEVERSION 0,8,0,0
+PRODUCTVERSION 0,8,0,0
 FILEFLAGSMASK 0x3fL
 FILEFLAGS 0x0L
 FILEOS VOS_NT_WINDOWS32
@@ -17,12 +17,12 @@ BEGIN
     BEGIN
       VALUE "CompanyName", "IT-Dummkopfen"
       VALUE "FileDescription", "C64 GrooveGoat - multi-SID music editor"
-      VALUE "FileVersion", "0.2b"
+      VALUE "FileVersion", "0.8b"
       VALUE "InternalName", "GrooveGoat"
       VALUE "LegalCopyright", "GNU GPL v2 - based on GoatTracker 2 by Lasse Oorni"
       VALUE "OriginalFilename", "GrooveGoat.exe"
       VALUE "ProductName", "C64 GrooveGoat"
-      VALUE "ProductVersion", "0.2b"
+      VALUE "ProductVersion", "0.8b"
     END
   END
   BLOCK "VarFileInfo"

@@ -10,7 +10,7 @@
 set -e
 cd "$(dirname "$0")/.."
 
-VERSION=0.2b
+VERSION=0.8b
 NAME="C64-GrooveGoat-$VERSION"
 TOOLS=${TOOLS:-$(cd .. && pwd)/tools}
 INSTRUMENTS=${INSTRUMENTS:-$(cd .. && pwd)/ins_zip/Instrumente}

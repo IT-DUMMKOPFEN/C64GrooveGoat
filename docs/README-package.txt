@@ -1,4 +1,4 @@
-C64 GrooveGoat 0.2b
+C64 GrooveGoat 0.8b
 ===================
 
 A multi-SID music editor for the Commodore 64 by IT-Dummkopfen,
