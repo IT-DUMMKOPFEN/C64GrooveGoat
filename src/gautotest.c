@@ -8,6 +8,7 @@
 //   HOME END PGUP PGDN KPDIV KPMUL KPPLUS KPMINUS GRAVE MINUS PLUS COMMA
 //   PERIOD SLASH        keys, prefix S+ (shift), C+ (ctrl) or A+ (alt)
 //   click:X,Y           left click on text cell X,Y (rclick: right click)
+//   move:X,Y            move the mouse pointer to text cell X,Y
 //   dclick:X,Y          double click
 //   wheel:X,Y,N         mouse wheel N steps over cell X,Y
 //   wait:N              wait N frames
@@ -163,6 +164,19 @@ static int dotoken(const char *tok)
       pushmouse(x, y, button, 0);
       pushmouse(x, y, button, 1);
     }
+    return 1;
+  }
+  if (!strncmp(tok, "move:", 5))
+  {
+    SDL_Event ev;
+    int x = 0, y = 0, wx, wy;
+    sscanf(tok + 5, "%d,%d", &x, &y);
+    cellpos(x, y, &wx, &wy);
+    memset(&ev, 0, sizeof ev);
+    ev.type = SDL_MOUSEMOTION;
+    ev.motion.x = wx;
+    ev.motion.y = wy;
+    SDL_PushEvent(&ev);
     return 1;
   }
   if (!strncmp(tok, "wheel:", 6))
