@@ -32,6 +32,7 @@ void video_addscope(GGVIDEO *v, const short *scope, int stride, int samples);
 // set, the remaining frames up to totalframes are rendered too.
 int video_update(GGVIDEO *v, int final);
 int video_framesdone(GGVIDEO *v);
+const char *video_errortext(GGVIDEO *v);
 // Finish the file. Returns 1 if ok. If "abort" is set, the file is deleted.
 int video_close(GGVIDEO *v, int abort);
 

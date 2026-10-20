@@ -493,8 +493,8 @@ static int rendermp4(const char *name, int frames, int fadeframes, char *error, 
   sid_setscope(NULL, 0);
   if ((!cancelled) && (!video_update(v, 1)))
   {
+    snprintf(error, errorsize, "Video encoding failed: %s", video_errortext(v));
     video_close(v, 1);
-    snprintf(error, errorsize, "Video encoding failed");
     return -1;
   }
   if (!video_close(v, cancelled))

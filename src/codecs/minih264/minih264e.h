@@ -370,9 +370,18 @@ void H264E_set_vbv_state(
 #elif defined(__linux__) || defined(__CYGWIN__)
 #include <endian.h>
 #elif defined(__APPLE__)
-#include <libkern/OSByteOrder.h>
+// C64 GrooveGoat fix: <libkern/OSByteOrder.h> does not define BYTE_ORDER /
+// BIG_ENDIAN, so "BYTE_ORDER == BIG_ENDIAN" became "0 == 0" and the big endian
+// bit writer was used on little endian Apple Silicon -> corrupt H.264 stream.
+// Use the compiler's own byte order macros instead.
+#if defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__)
+#define __BYTE_ORDER __BYTE_ORDER__
+#define __BIG_ENDIAN __ORDER_BIG_ENDIAN__
+#else
+#include <machine/endian.h>
 #define __BYTE_ORDER BYTE_ORDER
 #define __BIG_ENDIAN BIG_ENDIAN
+#endif
 #elif defined(__OpenBSD__) || defined(__NetBSD__) || defined(__FreeBSD__) || defined(__DragonFly__)
 #include <sys/endian.h>
 #else
@@ -5463,9 +5472,9 @@ static void TransformResidual4x4_neon(const int16_t *pSrc, const pix_t *pred, pi
 static int is_zero_neon(const int16_t *dat, int i0, const uint16_t *thr)
 {
     static const uint16x8_t g_ign_first = { 0, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff };
-    int16x8_t v0 = vabsq_s16(*(int16x8_t *)dat);
-    int16x8_t v1 = vabsq_s16(*(int16x8_t *)(dat + 8));
-    int16x8_t t = *(int16x8_t *)thr;
+    int16x8_t v0 = vabsq_s16(vld1q_s16(dat));
+    int16x8_t v1 = vabsq_s16(vld1q_s16(dat + 8));
+    int16x8_t t = vreinterpretq_s16_u16(vld1q_u16(thr));
     uint16x8_t m0 = vcgtq_s16(v0, t);
     uint16x8_t m1 = vcgtq_s16(v1, t);
     if (i0)

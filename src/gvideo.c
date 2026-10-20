@@ -83,6 +83,7 @@ struct GGVIDEO
   int64_t scopewritten;    // samples written per voice
   RECT panel[MAXVOICES];
   int error;
+  char errortext[160];
 };
 
 // ---------------------------------------------------------------------------
@@ -635,8 +636,22 @@ static int encodeframe(GGVIDEO *v)
   io.stride[0] = VIDEO_W;
   io.stride[1] = VIDEO_W / 2;
   io.stride[2] = VIDEO_W / 2;
-  if (H264E_encode(v->enc, v->scratch, &rp, &io, &coded, &size)) return 0;
-  if (mp4_h26x_write_nal(&v->writer, coded, size, 90000 / v->p.fps) != MP4E_STATUS_OK) return 0;
+  {
+    int e = H264E_encode(v->enc, v->scratch, &rp, &io, &coded, &size);
+    if (e)
+    {
+      snprintf(v->errortext, sizeof v->errortext, "H.264 encoder error %d at frame %d", e, v->framesdone);
+      return 0;
+    }
+  }
+  {
+    int e = mp4_h26x_write_nal(&v->writer, coded, size, 90000 / v->p.fps);
+    if (e != MP4E_STATUS_OK)
+    {
+      snprintf(v->errortext, sizeof v->errortext, "MP4 video error %d at frame %d (%d bytes)", e, v->framesdone, size);
+      return 0;
+    }
+  }
   return 1;
 }
 
@@ -645,11 +660,19 @@ static int encodeaudioframe(GGVIDEO *v, const short *pcm, int frames)
   uint32_t written = 0;
   faac_status st;
   st = faac_encoder_encode(v->aac, pcm, frames * v->p.channels, v->aacout, v->aacoutsize, &written);
-  if (st < 0) return 0;
+  if (st < 0)
+  {
+    snprintf(v->errortext, sizeof v->errortext, "AAC encoder error: %s", faac_strerror(st));
+    return 0;
+  }
   if (written)
   {
-    if (MP4E_put_sample(v->mux, v->aactrack, v->aacout, written, v->aacframe, MP4E_SAMPLE_RANDOM_ACCESS) != MP4E_STATUS_OK)
+    int e = MP4E_put_sample(v->mux, v->aactrack, v->aacout, written, v->aacframe, MP4E_SAMPLE_RANDOM_ACCESS);
+    if (e != MP4E_STATUS_OK)
+    {
+      snprintf(v->errortext, sizeof v->errortext, "MP4 audio error %d", e);
       return 0;
+    }
   }
   return 1;
 }
@@ -714,7 +737,8 @@ GGVIDEO *video_open(const VIDEOPARAMS *p, char *error, int errorsize)
   {
     v->threads[i].start = SDL_CreateSemaphore(0);
     v->threads[i].done = SDL_CreateSemaphore(0);
-    v->threads[i].thread = SDL_CreateThread(h264threadfunc, "h264", &v->threads[i]);
+    // explicit stack size: macOS secondary threads only get 512 KB by default
+    v->threads[i].thread = SDL_CreateThreadWithStackSize(h264threadfunc, "h264", 4 * 1024 * 1024, &v->threads[i]);
   }
   cp.max_threads = v->numthreads;
   cp.token = v;
@@ -897,4 +921,9 @@ int video_close(GGVIDEO *v, int abort)
   free(v->aacout);
   free(v);
   return ok && !abort;
+}
+
+const char *video_errortext(GGVIDEO *v)
+{
+  return v->errortext[0] ? v->errortext : "unknown error";
 }
