@@ -464,7 +464,7 @@ instrument could make the next one inaudible). When the library is closed, the e
 and filter settings are restored. The same applies to the preview in the file selector (Load
 Ins, SPACE) and in the random instrument generator.
 
-About 440 instruments of the original SIDGen library had an envelope that was already over
+About 450 instruments of the original SIDGen library had an envelope that was already over
 during the first frame of a note (Attack/Decay $x0 or $x1 with sustain 0), in which the test bit
 of "1stFrame Wave 09" keeps the voice silent - they only produced a click, in the preview and in
 songs. In the library that comes with C64 GrooveGoat their decay was set to the intended value
