@@ -33,6 +33,7 @@ void sid_setvolumeimmediate(int percent);
 void sid_setvoicemask(int s, int mutemask);
 void sid_setscope(short *buf, int stride);
 void sid_setpanning(int nsids, int stereo);
+void sid_setsolosid(int s);
 
 #ifndef GSID_C
 extern unsigned char sidreg[MAX_SIDS][NUMSIDREGS];

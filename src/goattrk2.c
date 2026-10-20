@@ -26,6 +26,9 @@
 #endif
 
 #include "goattrk2.h"
+#include "gexport.h"
+#include "ginslib.h"
+#include "grandins.h"
 #include "gres.h"
 
 int menu = 0;
@@ -80,6 +83,7 @@ char instrpath[MAX_PATHNAME];
 char packedpath[MAX_PATHNAME];
 char appdir[MAX_PATHNAME];
 char instrlibpath[MAX_PATHNAME];
+char examplespath[MAX_PATHNAME];
 
 char *programname = PROGRAMNAME;
 char *patchname = PATCHNAME;
@@ -124,6 +128,13 @@ static char *usage[] = {
   "--export=FILE      Export the song given on the command line and exit",
   "--format=FMT       Export format: sid (default), prg (runnable), prgmusic, bin",
   "--address=XXXX     Player address for the export (hex)",
+  "--render=FILE      Render the song to FILE.wav, FILE.mp3 or FILE.mp4 (video) and exit",
+  "--seconds=N        Render length (default: song length + fade-out)",
+  "--fade=N           Fade-out in seconds",
+  "--subtune=N        Subtune to render (0 = first)",
+  "--mono             Render in mono",
+  "--bitrate=N        MP3 bitrate in kbit/s (default 320)",
+  "--stems            WAV: also render every voice into its own file",
   NULL
 };
 
@@ -152,39 +163,14 @@ static unsigned exportbase = 0;
 static int exportsids = 0;
 static char rendername[MAX_PATHNAME];
 static char savename[MAX_PATHNAME];
-static int renderseconds = 60;
+static int renderseconds = 0;
+static int renderstems = 0;
+static int renderfade = -1;
+static int rendermono = 0;
+static int renderbitrate = 0;
+static int rendersubtune = 0;
 
 // Offline rendering of a subtune to a 44.1kHz 16-bit stereo WAV file
-static int renderwav(const char *name, int subtune, int seconds)
-{
-  FILE *h = fopen(name, "wb");
-  static short buf[4096 * 2];
-  int bpm, frames, f;
-  unsigned datasize = 0;
-  if (!h) return 0;
-  bpm = editorInfo.multiplier ? (editorInfo.ntsc ? 150 : 125) * editorInfo.multiplier : (editorInfo.ntsc ? 75 : 62);
-  sid_init(44100, editorInfo.sidmodel, editorInfo.ntsc, 0, 0, 0, numsids);
-  sid_setpanning(numsids, 1);
-  fwrite("RIFF\0\0\0\0WAVEfmt \x10\0\0\0\x01\0\x02\0\x44\xac\0\0\x10\xb1\x02\0\x04\0\x10\0data\0\0\0\0", 44, 1, h);
-  initsong(subtune, PLAY_BEGINNING);
-  frames = seconds * bpm * 2 / 5;
-  for (f = 0; f < frames; f++)
-  {
-    int n = (44100 * 5 / 2) / bpm;
-    playroutine();
-    sid_fillbuffer(buf, n, editorInfo.adparam, 1);
-    fwrite(buf, n * 4, 1, h);
-    datasize += n * 4;
-  }
-  fseek(h, 4, SEEK_SET);
-  fwritele32(h, datasize + 36);
-  fseek(h, 40, SEEK_SET);
-  fwritele32(h, datasize);
-  fclose(h);
-  printf("Rendered %s (%d seconds)\n", name, seconds);
-  return 1;
-}
-
 int main(int argc, char **argv)
 {
   int c, d;
@@ -261,6 +247,31 @@ int main(int argc, char **argv)
         if (!strncmp(argv[c], "--seconds=", 10))
         {
           renderseconds = atoi(argv[c] + 10);
+          break;
+        }
+        if (!strcmp(argv[c], "--stems"))
+        {
+          renderstems = 1;
+          break;
+        }
+        if (!strcmp(argv[c], "--mono"))
+        {
+          rendermono = 1;
+          break;
+        }
+        if (!strncmp(argv[c], "--fade=", 7))
+        {
+          renderfade = atoi(argv[c] + 7);
+          break;
+        }
+        if (!strncmp(argv[c], "--bitrate=", 10))
+        {
+          renderbitrate = atoi(argv[c] + 10);
+          break;
+        }
+        if (!strncmp(argv[c], "--subtune=", 10))
+        {
+          rendersubtune = atoi(argv[c] + 10);
           break;
         }
         if (!strncmp(argv[c], "--sids=", 7))
@@ -372,6 +383,14 @@ int main(int argc, char **argv)
   if (specialnotenames[1] != '\0')
     setspecialnotenames();
 
+  // Test helper: render all random instrument recipes
+  if (getenv("GG_RANDOMTEST"))
+  {
+    initchannels();
+    clearsong(1, 1, 1, 1, 1);
+    return randominstrument_selftest(getenv("GG_RANDOMTEST")) ? EXIT_SUCCESS : EXIT_FAILURE;
+  }
+
   // Command line export without a window
   if (exportname[0])
   {
@@ -443,7 +462,7 @@ int main(int argc, char **argv)
       return ok ? EXIT_SUCCESS : EXIT_FAILURE;
     }
     if (rendername[0])
-      return renderwav(rendername, getenv("GG_SUBTUNE") ? atoi(getenv("GG_SUBTUNE")) : 0, renderseconds) ? EXIT_SUCCESS : EXIT_FAILURE;
+      return commandlinerender(rendername, rendersubtune, renderseconds, renderstems, renderfade, rendermono, renderbitrate) ? EXIT_SUCCESS : EXIT_FAILURE;
     ok = commandlineexport(exportname, exportformat, exportbase ? (int)(exportbase & 0xff00) : playeradr);
     return ok ? EXIT_SUCCESS : EXIT_FAILURE;
   }
@@ -493,6 +512,7 @@ int main(int argc, char **argv)
 
   // Start editor mainloop
   printmainscreen();
+  backup_init();
   if ((showwelcome) && (!getenv("GG_SCRIPT"))) showwelcomewindow();
   while (!exitprogram)
   {
@@ -500,7 +520,9 @@ int main(int argc, char **argv)
     handledrop();
     docommand();
     updatetitle();
+    backup_tick();
   }
+  backup_shutdown();
 
   // Shutdown sound output now
   if (getenv("GG_AUDIODEBUG")) fprintf(stderr, "audio underruns: %u\n", snd_getunderruns());
@@ -529,6 +551,8 @@ static void initdirectories(void)
   }
   // Instrument library: next to the program, or in the app bundle resources
   snprintf(instrlibpath, MAX_PATHNAME, "%sinstruments", appdir);
+  // Example songs: next to the program, or in the app bundle / AppImage
+  snprintf(examplespath, MAX_PATHNAME, "%sexamples", appdir);
 
 #ifdef __WIN32__
   {
@@ -573,6 +597,20 @@ static void initdirectories(void)
       }
     }
   }
+}
+
+// Path of a file in the configuration folder (next to groovegoat.cfg)
+void configpath(char *dest, const char *file)
+{
+  char dir[MAX_PATHNAME];
+  char *sep;
+  strncpy(dir, configfilename, MAX_PATHNAME - 1);
+  dir[MAX_PATHNAME - 1] = 0;
+  sep = strrchr(dir, '/');
+  if ((!sep) || ((strrchr(dir, '\\')) && (strrchr(dir, '\\') > sep))) sep = strrchr(dir, '\\');
+  if (sep) sep[1] = 0;
+  else dir[0] = 0;
+  snprintf(dest, MAX_PATHNAME, "%s%s", dir, file);
 }
 
 static void loadconfig(void)
@@ -829,6 +867,10 @@ static void runautotest(void)
     if (!strcmp(scr, "sidinfo")) showsidinfo();
     if (!strcmp(scr, "exportsid")) exportsid();
     if (!strcmp(scr, "exportprg")) exportprg();
+    if (!strcmp(scr, "exportaudio")) exportaudio(0);
+    if (!strcmp(scr, "exportvideo")) exportaudio(1);
+    if (!strcmp(scr, "library")) instrumentlibrary();
+    if (!strcmp(scr, "random")) randominstrument();
     if (!strcmp(scr, "load")) load();
     if (!strcmp(scr, "loadins")) { editorInfo.editmode = EDIT_INSTRUMENT; load(); }
     if (!strcmp(scr, "clear")) clear();
@@ -1008,6 +1050,17 @@ void docommand(void)
   // "GUI" operation :)
   mousecommands();
 
+  // CTRL/CMD+R random instrument, CTRL/CMD+L instrument library. Handled
+  // before the editors, where CTRL otherwise works like SHIFT.
+  if (((ctrlpressed) || (metapressed)) && (!altpressed) && ((rawkey == KEY_R) || (rawkey == KEY_L)))
+  {
+    if (rawkey == KEY_R) randominstrument();
+    else instrumentlibrary();
+    editorInfo.editmode = EDIT_INSTRUMENT;
+    key = 0;
+    rawkey = 0;
+  }
+
   GTUNDO_OBJECT *ed = undoCreateEditorInfo();
   int oldundo = undoCounter;
 
@@ -1089,13 +1142,24 @@ static void buttoncommand(int id, int param)
       editorInfo.editmode = oldmode;
     }
     break;
-    case BTN_INSLOAD:
     case BTN_LIBRARY:
+    instrumentlibrary();
+    editorInfo.editmode = EDIT_INSTRUMENT;
+    break;
+    case BTN_RANDOMINS:
+    randominstrument();
+    editorInfo.editmode = EDIT_INSTRUMENT;
+    break;
+    case BTN_ADSRGRAPH:
+    editorInfo.editmode = EDIT_INSTRUMENT;
+    editorInfo.eipos = 0;
+    editorInfo.eicolumn = 0;
+    break;
+    case BTN_INSLOAD:
     {
       int oldmode = editorInfo.editmode;
       editorInfo.editmode = EDIT_INSTRUMENT;
       if (!editorInfo.einum) editorInfo.einum = 1;
-      if (id == BTN_LIBRARY) strcpy(instrpath, instrlibpath);
       load();
       if ((oldmode != EDIT_INSTRUMENT) && (oldmode != EDIT_TABLES)) editorInfo.editmode = EDIT_INSTRUMENT;
     }
@@ -1109,6 +1173,8 @@ static void buttoncommand(int id, int param)
     break;
     case BTN_EXPORTSID: exportsid(); break;
     case BTN_EXPORTPRG: exportprg(); break;
+    case BTN_EXPORTAUDIO: exportaudio(0); break;
+    case BTN_EXPORTVIDEO: exportaudio(1); break;
     case BTN_THEME: togglethemekey(); break;
     case BTN_HELP: onlinehelp(0, 0); break;
     case BTN_MANUAL: showmanual(); break;
@@ -1685,6 +1751,8 @@ void generalcommands(void)
       redoPerform();
     break;
 
+
+
   case KEY_F12:
     onlinehelp(0, shiftpressed);
     break;
@@ -1753,7 +1821,9 @@ void generalcommands(void)
     break;
 
   case KEY_F9:
-    if (!shiftpressed)
+    if ((ctrlpressed) || (metapressed))
+      exportaudio(shiftpressed);
+    else if (!shiftpressed)
       relocator();
     else
       toggle_interpolation_mode();

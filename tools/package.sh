@@ -1,22 +1,26 @@
 #!/bin/bash
-# Builds the release packages of C64 GrooveGoat for Windows, Linux and macOS
-# (Apple Silicon) into dist/.
+# Builds the release packages of C64 GrooveGoat for Windows 11 (x64), Linux
+# (x86-64 AppImage) and macOS (Apple Silicon) into dist/.
 #
 #   tools/package.sh
 #
 # Needs the cross toolchains described in the Makefile, the instrument
 # library (INSTRUMENTS, default ../ins_zip/Instrumente) and rcodesign for
-# signing the macOS app (RCODESIGN).
+# signing the macOS app (RCODESIGN), a static SDL 2 for the AppImage
+# (SDLSTATIC, see the Makefile) and appimagetool with the type 2 runtime
+# (APPIMAGETOOL, APPIMAGERUNTIME).
 set -e
 cd "$(dirname "$0")/.."
 
-VERSION=0.8b
+VERSION=0.9b
 NAME="C64-GrooveGoat-$VERSION"
 TOOLS=${TOOLS:-$(cd .. && pwd)/tools}
 INSTRUMENTS=${INSTRUMENTS:-$(cd .. && pwd)/ins_zip/Instrumente}
 RCODESIGN=${RCODESIGN:-$TOOLS/rcodesign/apple-codesign-0.29.0-x86_64-unknown-linux-musl/rcodesign}
 MINGWBIN=$TOOLS/llvm-mingw-20261006-ucrt-ubuntu-22.04-x86_64/bin
 SDLFW=$TOOLS/sdlmac/SDL2/SDL2.framework
+APPIMAGETOOL=${APPIMAGETOOL:-$TOOLS/appimage/appimagetool.AppImage}
+APPIMAGERUNTIME=${APPIMAGERUNTIME:-$TOOLS/appimage/runtime-x86_64}
 DIST=dist
 
 [ -d "$INSTRUMENTS/6581" ] || { echo "instrument library not found: $INSTRUMENTS"; exit 1; }
@@ -24,6 +28,7 @@ DIST=dist
 echo "== Building"
 python3 tools/mkres.py > /dev/null
 make TARGET=linux -j8 > /dev/null
+make TARGET=appimage -j8 > /dev/null
 make TARGET=win -j8 > /dev/null
 make TARGET=mac -j8 > /dev/null
 
@@ -51,6 +56,11 @@ cp docs/manual.txt $DIST/common/Manual.txt
 cp docs/credits.txt $DIST/common/CREDITS.txt
 cp copying $DIST/common/COPYING.txt
 cp docs/README-package.txt $DIST/common/README.txt
+mkdir -p $DIST/common/licenses
+cp src/codecs/lame/COPYING $DIST/common/licenses/LAME-COPYING.txt
+cp src/codecs/faac/COPYING $DIST/common/licenses/faac-COPYING.txt
+cp src/codecs/minih264/LICENSE $DIST/common/licenses/minih264-LICENSE.txt
+cp src/codecs/minimp4/LICENSE $DIST/common/licenses/minimp4-LICENSE.txt
 
 # Text files with CRLF line endings for Windows
 crlf() { sed 's/$/\r/' "$1" > "$2"; }
@@ -60,18 +70,25 @@ W=$DIST/$NAME-Windows-x64
 mkdir -p $W
 $MINGWBIN/llvm-strip -o $W/GrooveGoat.exe build/win/GrooveGoat.exe
 cp -r $DIST/common/instruments $DIST/common/examples $W/
+mkdir -p $W/licenses
 for f in Manual.txt CREDITS.txt COPYING.txt README.txt; do crlf $DIST/common/$f $W/$f; done
+for f in $DIST/common/licenses/*.txt; do crlf $f $W/licenses/$(basename $f); done
 (cd $DIST && zip -qr9 $NAME-Windows-x64.zip $NAME-Windows-x64)
 
-echo "== Linux"
-L=$DIST/$NAME-Linux-x86_64
-mkdir -p $L
-strip -o $L/groovegoat build/linux/groovegoat
-cp -r $DIST/common/instruments $DIST/common/examples $DIST/common/*.txt $L/
+echo "== Linux (AppImage)"
+A=$DIST/AppDir
+mkdir -p $A/usr/bin $A/usr/share/applications $A/usr/share/icons/hicolor/256x256/apps $A/usr/share/doc/groovegoat
+strip -o $A/usr/bin/groovegoat build/appimage/groovegoat
+# instrument library and examples next to the program (SDL_GetBasePath)
+cp -r $DIST/common/instruments $DIST/common/examples $A/usr/bin/
+cp $DIST/common/*.txt $A/usr/share/doc/groovegoat/
+cp -r $DIST/common/licenses $A/usr/share/doc/groovegoat/
 python3 -c "
 from PIL import Image
-Image.open('res/logo1024.png').resize((256, 256), Image.LANCZOS).save('$L/groovegoat.png')"
-cat > $L/groovegoat.desktop <<'EOF'
+Image.open('res/logo1024.png').resize((256, 256), Image.LANCZOS).save('$A/groovegoat.png')"
+cp $A/groovegoat.png $A/usr/share/icons/hicolor/256x256/apps/groovegoat.png
+ln -s groovegoat.png $A/.DirIcon
+cat > $A/groovegoat.desktop <<'DESKTOP'
 [Desktop Entry]
 Type=Application
 Name=C64 GrooveGoat
@@ -80,20 +97,22 @@ Comment=Multi-SID music editor for the Commodore 64
 Exec=groovegoat %f
 Icon=groovegoat
 Terminal=false
-Categories=AudioVideo;Audio;Music;
-MimeType=application/x-goattracker-song;
-EOF
-cat > $L/install.sh <<'EOF'
+Categories=AudioVideo;Audio;
+Keywords=C64;SID;tracker;chiptune;GoatTracker;music;
+DESKTOP
+cp $A/groovegoat.desktop $A/usr/share/applications/
+cat > $A/AppRun <<'APPRUN'
 #!/bin/sh
-# Adds C64 GrooveGoat to the application menu of the current user.
-DIR="$(cd "$(dirname "$0")" && pwd)"
-mkdir -p "$HOME/.local/share/applications" "$HOME/.local/share/icons/hicolor/256x256/apps"
-cp "$DIR/groovegoat.png" "$HOME/.local/share/icons/hicolor/256x256/apps/groovegoat.png"
-sed "s|^Exec=groovegoat|Exec=\"$DIR/groovegoat\"|" "$DIR/groovegoat.desktop" > "$HOME/.local/share/applications/groovegoat.desktop"
-echo "C64 GrooveGoat was added to the application menu."
-EOF
-chmod +x $L/install.sh $L/groovegoat
-(cd $DIST && tar czf $NAME-Linux-x86_64.tar.gz $NAME-Linux-x86_64)
+# C64 GrooveGoat AppImage start script
+HERE="$(dirname "$(readlink -f "$0")")"
+exec "$HERE/usr/bin/groovegoat" "$@"
+APPRUN
+chmod +x $A/AppRun $A/usr/bin/groovegoat
+APPIMAGE_FILE=$DIST/C64_GrooveGoat-$VERSION-x86_64.AppImage
+ARCH=x86_64 VERSION=$VERSION "$APPIMAGETOOL" --appimage-extract-and-run --no-appstream \
+  --runtime-file "$APPIMAGERUNTIME" $A $APPIMAGE_FILE > $DIST/appimage.log 2>&1 || { cat $DIST/appimage.log; exit 1; }
+chmod +x $APPIMAGE_FILE
+rm -rf $A
 
 echo "== macOS"
 M=$DIST/$NAME-macOS-AppleSilicon
@@ -103,7 +122,7 @@ $MINGWBIN/llvm-strip -o "$APP/Contents/MacOS/GrooveGoat" build/mac/groovegoat
 cp -a "$SDLFW" "$APP/Contents/Frameworks/"
 rm -rf "$APP/Contents/Frameworks/SDL2.framework/Versions/A/Headers" "$APP/Contents/Frameworks/SDL2.framework/Headers"
 cp res/groovegoat.icns "$APP/Contents/Resources/"
-cp -r $DIST/common/instruments "$APP/Contents/Resources/"
+cp -r $DIST/common/instruments $DIST/common/examples "$APP/Contents/Resources/"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 cat > "$APP/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -144,7 +163,7 @@ cat > "$APP/Contents/Info.plist" <<EOF
 EOF
 "$RCODESIGN" sign "$APP" > $DIST/codesign.log 2>&1 || { cat $DIST/codesign.log; exit 1; }
 "$RCODESIGN" verify "$APP/Contents/MacOS/GrooveGoat" >> $DIST/codesign.log 2>&1 || true
-cp -r $DIST/common/examples $DIST/common/*.txt $M/
+cp -r $DIST/common/examples $DIST/common/licenses $DIST/common/*.txt $M/
 (cd $DIST && zip -qry9 $NAME-macOS-AppleSilicon.zip $NAME-macOS-AppleSilicon)
 
 echo "== Source"

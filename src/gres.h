@@ -74,6 +74,8 @@ const RESIMAGE *res_getimage(const char *name);
 #define GS_PAUSE "\x1e"
 #define GL_MENU 31
 #define GS_MENU "\x1f"
+#define GL_ENV 127
+#define GS_ENV "\x7f"
 #define GL_SLIDERON 128
 #define GS_SLIDERON "\x80"
 #define GL_SLIDEROFF 129
@@ -138,5 +140,19 @@ const RESIMAGE *res_getimage(const char *name);
 #define GS_GEAR "\x9e"
 #define GL_UNDO 159
 #define GS_UNDO "\x9f"
+#define GL_WAVE 164
+#define GS_WAVE "\xa4"
+#define GL_FILM 165
+#define GS_FILM "\xa5"
+#define GL_REDO 166
+#define GS_REDO "\xa6"
+#define GL_STAR 168
+#define GS_STAR "\xa8"
+#define GL_STAROFF 172
+#define GS_STAROFF "\xac"
+#define GL_DICE 173
+#define GS_DICE "\xad"
+#define GL_SEARCH 175
+#define GS_SEARCH "\xaf"
 
 #endif

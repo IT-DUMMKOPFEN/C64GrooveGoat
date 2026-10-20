@@ -1,6 +1,7 @@
 # C64 GrooveGoat build
 #
 #   make TARGET=linux     native Linux build (needs SDL2 headers + libSDL2)
+#   make TARGET=appimage  Linux build for the AppImage (static SDL2, see tools/package.sh)
 #   make TARGET=win       Windows x64 cross build (llvm-mingw + SDL2 mingw devel)
 #   make TARGET=mac       macOS Apple Silicon cross build (clang + lld + SDK + SDL2.framework)
 #
@@ -8,14 +9,14 @@
 
 TARGET ?= linux
 TOOLS ?= $(abspath ../tools)
-VERSION = 0.8b
+VERSION = 0.9b
 
 BUILDDIR = build/$(TARGET)
 SRCDIR = src
 
 CSRC = goattrk2.c gsong.c gorder.c gpattern.c ginstr.c gtable.c gplay.c gdisplay.c \
        gfile.c greloc.c ghelp.c gsound.c gconsole.c gundo.c gplatform.c gaudio.c \
-       gfileio.c gdialog.c gres.c gsonglen.c gautotest.c
+       gfileio.c gdialog.c gres.c gsonglen.c gautotest.c gexport.c gvideo.c gadsr.c ginslib.c grandins.c gbackup.c
 CXXSRC = gsid.cpp
 RESIDSRC = resid/envelope.cpp resid/extfilt.cpp resid/filter.cpp resid/pot.cpp resid/sid.cpp \
        resid/wave.cpp resid/wave6581__ST.cpp resid/wave6581_P_T.cpp resid/wave6581_PS_.cpp \
@@ -41,6 +42,19 @@ COMMONFLAGS += -I$(SDLINC) -D_REENTRANT -fno-stack-protector -U_FORTIFY_SOURCE
 LDFLAGS = -Wl,-rpath,'$$ORIGIN/lib' -Wl,--as-needed
 LIBS = $(SDLLIB) -lm -ldl -lpthread
 EXE = $(BUILDDIR)/groovegoat
+endif
+
+# Linux AppImage: SDL 2 linked statically (built with dynamically loaded
+# X11 / ALSA / PulseAudio backends), so the only dependency is glibc
+ifeq ($(TARGET),appimage)
+CC = gcc
+CXX = g++
+SDLSTATIC ?= $(TOOLS)/sdlstatic
+COMMONFLAGS += -I$(SDLSTATIC)/include/SDL2 -D_REENTRANT -fno-stack-protector -U_FORTIFY_SOURCE
+LDFLAGS = -Wl,--as-needed -static-libstdc++ -static-libgcc
+LIBS = $(SDLSTATIC)/lib/libSDL2.a -lm -ldl -lpthread -lrt
+EXE = $(BUILDDIR)/groovegoat
+CSRC += glibccompat.c
 endif
 
 ifeq ($(TARGET),win)
@@ -71,12 +85,31 @@ LIBS = -framework SDL2 -lSystem
 EXE = $(BUILDDIR)/groovegoat
 endif
 
-OBJS = $(addprefix $(BUILDDIR)/,$(CSRC:.c=.o) $(CXXSRC:.cpp=.o) $(RESIDSRC:.cpp=.o) $(ASMSRC:.c=.o))
+# Audio/video codecs: LAME (MP3, LGPL), faac (AAC, LGPL)
+LAMESRC = $(notdir $(wildcard $(SRCDIR)/codecs/lame/*.c))
+FAACSRC = $(notdir $(wildcard $(SRCDIR)/codecs/faac/*.c))
+CODECOBJS = $(addprefix $(BUILDDIR)/codecs/lame/,$(LAMESRC:.c=.o)) $(addprefix $(BUILDDIR)/codecs/faac/,$(FAACSRC:.c=.o)) \
+       $(BUILDDIR)/codecs/h264impl.o $(BUILDDIR)/codecs/mp4impl.o
+
+OBJS = $(addprefix $(BUILDDIR)/,$(CSRC:.c=.o) $(CXXSRC:.cpp=.o) $(RESIDSRC:.cpp=.o) $(ASMSRC:.c=.o)) $(CODECOBJS)
 
 all: $(EXE)
 
 $(SRCDIR)/gres.c: tools/mkres.py tools/mklogo.py $(SRCDIR)/player.s $(SRCDIR)/altplayer.s $(SRCDIR)/mplayer.s $(SRCDIR)/frontend.s docs/manual.txt docs/credits.txt
 	python3 tools/mkres.py
+
+$(BUILDDIR)/codecs/lame/%.o: $(SRCDIR)/codecs/lame/%.c $(SRCDIR)/codecs/lame/config.h
+	@mkdir -p $(dir $@)
+	$(CC) -I$(SRCDIR)/codecs/lame $(COMMONFLAGS) -w -DHAVE_CONFIG_H -c -o $@ $<
+
+$(BUILDDIR)/codecs/faac/%.o: $(SRCDIR)/codecs/faac/%.c $(SRCDIR)/codecs/faac/faac_config.h
+	@mkdir -p $(dir $@)
+	$(CC) -I$(SRCDIR)/codecs/faac $(COMMONFLAGS) -w -include $(SRCDIR)/codecs/faac/faac_config.h -c -o $@ $<
+
+# minih264 (H.264) and minimp4 (MP4 muxer), both CC0, single-header libraries
+$(BUILDDIR)/codecs/%impl.o: $(SRCDIR)/codecs/%impl.c $(SRCDIR)/codecs/minih264/minih264e.h $(SRCDIR)/codecs/minimp4/minimp4.h
+	@mkdir -p $(dir $@)
+	$(CC) $(COMMONFLAGS) -w -c -o $@ $<
 
 $(BUILDDIR)/%.o: $(SRCDIR)/%.c $(wildcard $(SRCDIR)/*.h)
 	@mkdir -p $(dir $@)

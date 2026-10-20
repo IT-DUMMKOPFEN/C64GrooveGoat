@@ -1,23 +1,32 @@
-# C64 GrooveGoat 0.8b - Manual
+# C64 GrooveGoat 0.9b - Manual
 
 C64 GrooveGoat is a tracker-style music editor for the SID sound chip of the Commodore 64. It is
-based on GoatTracker 2 by Lasse Oorni (Cadaver) and the "Silver Fork" of Joel Ricci, and adds
-songs with 1, 2, 4 or 8 SID chips (up to 24 voices), a modern window with mouse support, a day
-and a night theme, an instrument library with preview, SID export for multi-SID players and
-runnable C64 programs with a player screen.
+based on GoatTracker 2 by Lasse Oorni (Cadaver) and the "Silver Fork" of Joel Ricci. It adds:
+
+- songs with 1, 2, 4 or 8 SID chips (up to 24 voices) with free SID addresses
+- a modern, resizable window with mouse support and a day and a night (C64 blue) theme
+- an instrument library with more than 5000 instruments, search, favourites and preview
+- a random instrument generator for bass, drums, woodwinds, guitars, brass, strings and more
+- a graphical ADSR envelope display
+- undo and redo, automatic backup copies and crash recovery
+- export of SID files for multi-SID players and of runnable C64 programs with a player screen
+- export of WAV (also every voice as a single file) and MP3 audio, and of MP4 videos with an
+  oscilloscope for every voice
 
 Author of C64 GrooveGoat: IT-Dummkopfen. Click the Info button in the toolbar for all credits.
+Platforms: Windows 11 (x64), macOS on Apple Silicon (M chips) and Linux (AppImage, x86-64).
 
-This manual is built into the program: press M in the keyboard reference (F12) or click the
-Manual button. Use the cursor keys, Page Up/Down, Home/End or the mouse wheel to scroll, click a
-chapter on the left to jump to it and press ESC to close the manual.
+This manual is built into the program: click Manual in the keyboard reference (F12, Help button)
+or press M there. Use the cursor keys, Page Up/Down, Home/End or the mouse wheel to scroll, LEFT
+and RIGHT jump to the previous / next chapter, click a chapter on the left to go there, press F
+to search for a word (F3 or N finds the next place) and ESC to close the manual.
 
 ## What you need to know
 
 Familiarity with tracker programs, hexadecimal numbers and the SID chip helps a lot. All values
 in the editor are hexadecimal ($00-$FF). The SID chip has three voices; each voice has an
-oscillator (triangle, sawtooth, pulse and noise waveforms), an ADSR envelope, and all voices of
-one SID share a multimode filter and the master volume.
+oscillator (triangle, sawtooth, pulse and noise waveforms) and an ADSR envelope, and all voices
+of one SID share a multimode filter and the master volume.
 
 A song consists of:
 
@@ -30,8 +39,8 @@ A song consists of:
 
 ## Warnings
 
-- Always save your songs as .sng or .ggt files. Exported SID, PRG and BIN files can not be
-  loaded back into the editor.
+- Always save your songs as .sng or .ggt files. Exported SID, PRG, BIN, WAV, MP3 and MP4 files
+  can not be loaded back into the editor.
 - Even the reSID emulation is not identical to a real SID, especially when filters are used.
   Every real 6581 sounds a little different. Test important songs on real hardware or with a
   good emulator.
@@ -46,25 +55,43 @@ A song consists of:
 
 # Getting started
 
+## Installation
+
+|  Windows 11   Unpack the ZIP file and start GrooveGoat.exe. The "instruments" and
+|               "examples" folders must stay next to the program.
+|  macOS        Unpack the ZIP file and move "C64 GrooveGoat.app" to Applications. On the
+|               first start use right click > Open (the app is not notarized by Apple).
+|  Linux        Make the AppImage executable (chmod +x C64_GrooveGoat-0.9b-x86_64.AppImage)
+|               and start it. The instrument library and the examples are inside the
+|               AppImage. If your system lacks FUSE, start it with --appimage-extract-and-run.
+
+No installation of other software is needed; everything (SDL 2, the codecs for MP3/MP4 and the
+instrument library) is included.
+
 ## The screen
 
 The window is divided into these areas:
 
     +------------------------------------------------------------------------------+
-    | Toolbar: New Open Save | Load Ins Save Ins | Export SID Export PRG | Theme...  |
+    | Toolbar: New Open Save | Load Ins Save Ins | SID PRG Audio Video | Help Info |
     | Settings: Play Pos Patt Stop Follow | SIDs 1 2 4 8 | model PAL speed HR ...    |
     +----------------------------------------------+-------------------------------+
     | PATTERNS (one column per voice)              | ORDERLIST                     |
-    |                                              | INSTRUMENT                    |
+    |                                              | INSTRUMENT    (dice) Library  |
+    |                                              | ADSR envelope graph           |
     |                                              | WAVE  PULSE  FILTER  SPEED    |
     |                                              | SONG INFO                     |
     +----------------------------------------------+-------------------------------+
-    | Status: octave, edit/jam mode, advance mode, key mode, step, undo, time, SIDs |
-    | Message line                                                                 |
+    | Status: octave, edit/jam mode, advance, keys, Kbd EN/DE, step, undo, redo     |
+    | Positions of the voices, play time, SID addresses                            |
+    | Message line                                                   Vol slider    |
     +------------------------------------------------------------------------------+
 
 The window can be resized freely; the contents are scaled. ALT+ENTER switches to fullscreen.
 On high resolution ("Retina") screens a sharper font is used automatically.
+
+When the mouse pointer is over a button, the message line at the bottom shows what the button
+does and its keyboard shortcut.
 
 ## Toolbar
 
@@ -73,11 +100,14 @@ On high resolution ("Retina") screens a sharper font is used automatically.
 |  Save         Save the song, F11 (the format depends on the number of SIDs)
 |  Load Ins     Load an instrument (.ins) into the current instrument slot
 |  Save Ins     Save the current instrument (.ins)
-|  Export SID   Export a SID file; you are asked for the player and SID addresses
-|  Export PRG   Export a runnable C64 program with the GrooveGoat player screen
-|  Night / Day  Switch between the night theme (C64 blue) and the day theme
+|  SID          Export a SID file for SID players; you are asked for the SID addresses (F9)
+|  PRG          Export a runnable C64 program with the GrooveGoat player screen
+|  Audio        Export a WAV or MP3 file, optionally every voice as its own WAV (CTRL+F9)
+|  Video        Export an MP4 video (1280x720) with an oscilloscope for every voice
+|               (CTRL+SHIFT+F9)
+|  Moon / Sun   Switch between the night theme (C64 blue) and the day theme
 |  Help         Keyboard reference, F12
-|  Info         Version, author and credits
+|  Info         Version, author, credits and licenses
 
 ## Settings bar
 
@@ -103,13 +133,15 @@ octave, subtune and so on).
 
 ## Status bar and volume
 
-The bottom lines show the octave, edit/jam mode, autoadvance and key mode, the step size, the
-Undo button, the play state and time, the positions of the visible voices and the SID addresses.
+The bottom lines show the octave, edit/jam mode, autoadvance mode, note entry mode (Keys),
+keyboard layout (Kbd), the step size, the Undo and Redo buttons, the play state and time, the
+positions of the visible voices and the SID addresses.
 
 The volume slider at the bottom right sets the output volume of the editor from 0% to 100%
 (default 80%). Click or drag on the slider, or use the mouse wheel over it; a click on the
 speaker symbol mutes and unmutes. The volume only affects listening in the editor, not exported
-files. It is saved with the other settings.
+files. It is saved with the other settings. Volume changes are faded smoothly, so moving the
+slider does not click.
 
 ## Welcome window
 
@@ -117,23 +149,41 @@ At startup a welcome window with the most important keys is shown. Close it with
 button, ENTER, SPACE or ESC. Uncheck "Show at startup" (click it or press S) if you do not want
 to see it again.
 
+## Keyboard layout (Kbd: EN / DE)
+
+C64 GrooveGoat reads the notes from the position of the keys, like a piano, so note entry works
+the same on every keyboard. Shortcuts, however, should follow the letters printed on the keys.
+On a German (QWERTZ) keyboard the keys Z and Y are swapped compared to an English (QWERTY)
+keyboard. The "Kbd" button in the status bar selects the layout:
+
+|  Kbd: EN     English / international keyboards (QWERTY)
+|  Kbd: DE     German keyboards (QWERTZ): Z and Y are swapped for all shortcuts
+
+With "Kbd: DE" CTRL+Z (undo) is the key labelled Z, CTRL+Y (redo) the key labelled Y, and
+SHIFT+Z (autoadvance mode) the key labelled Z - exactly as printed on the keyboard. The notes are
+not affected: the lowest note row starts with the key left of X, which is labelled Y on a German
+keyboard (Y S X D C V G B H N J M). The keyboard reference (F12) and the welcome window show the
+note keys for the selected layout.
+
+On the first start the layout is detected from the keyboard settings of the system. The choice
+is saved with the other settings.
+
 ## A first song in five minutes
 
 0. To hear what two SIDs sound like, open examples/solar_voyage_2sid.sng (Open or F10) and press
    F1. F4 stops.
-1. Click New and choose the number of SIDs. Press F7 to go to the instrument editor, or click the Library button and choose a ready-made
-   instrument (SPACE plays a preview, ENTER loads it).
+1. Click New and choose the number of SIDs. Press F7 to go to the instrument editor. Click the
+   Library button and choose a ready-made instrument (type a word to search, SPACE plays a
+   preview, ENTER loads it), or click the dice button (CTRL+R) to create a random instrument.
 2. Press F5 (or click into a pattern). The cursor is on the note column of voice 1.1.
 3. Check that the status bar shows EDIT MODE (SPACE switches between edit and jam mode; in jam
    mode notes are only played, not written).
-4. Type notes on the computer keyboard like on a piano: Z S X D C V G B H N J M for the lower
-   octave and Q 2 W 3 E R 5 T 6 Y 7 U for the upper octave. "/" and "*" on the keypad change the
-   octave.
-5. Press F1 to play and F4 to stop.
+4. Type notes on the computer keyboard like on a piano: Z S X D C V G B H N J M (German
+   keyboard: Y S X D C V G B H N J M) for the lower octave and Q 2 W 3 E R 5 T 6 Y 7 U (German:
+   Q 2 W 3 E R 5 T 6 Z 7 U) for the upper octave. "/" and "*" on the keypad change the octave.
+5. Press F1 to play and F4 to stop. CTRL+Z undoes a mistake, CTRL+Y redoes it.
 6. Press F6 to edit the orderlist and add more patterns, F11 to save.
-
-Note keys are taken from the physical key position, so the piano layout works with QWERTY,
-QWERTZ (German) and AZERTY keyboards alike.
+7. Click Audio to make a WAV or MP3 file, or Video for an MP4 video to share your song.
 
 # Multi-SID songs
 
@@ -150,7 +200,8 @@ it. Each SID adds three voices:
 
 The channel name s.v means SID s, voice v. When the number of SIDs is reduced, the voices of
 the removed SIDs are deleted (you are asked first if they contain data). New voices start with
-an empty pattern in every subtune.
+an empty pattern in every subtune. With one SID the three voices are shown in the middle of the
+pattern area.
 
 The pattern editor shows six voices at a time. With 4 or 8 SIDs, use the SID tabs above the
 patterns (SID 1-2, SID 3-4 ...) or BACKQUOTE to move to the other voices. The orderlist editor
@@ -206,25 +257,43 @@ hardware.
 |  F7           Go to the instrument editor / toggle instrument and table editor
 |  SHIFT+F7     Edit the hard restart ADSR parameter
 |  F8           Go to the song name editor; SHIFT+F8 switches between 6581 and 8580
-|  F9           Export (pack, relocate & save SID/PRG/BIN); SHIFT+F9 toggles interpolation
+|  F9           Export SID/PRG/BIN (pack, relocate & save); SHIFT+F9 toggles interpolation
+|  CTRL+F9      Export audio (WAV / MP3); CTRL+SHIFT+F9 exports an MP4 video
 |  F10          Load song (pattern/orderlist/names) or instrument (instrument/table editor)
 |  SHIFT+F10    Merge-load a song (adds its subtunes, patterns, instruments and tables)
 |  F11          Save song or instrument
-|  F12          Keyboard reference (SHIFT+F12 shows the part for the current editor)
+|  F12          Keyboard reference (with the button to this manual)
 |  TAB          Next editor (SHIFT+TAB previous)
 |  INS / DEL    Insert / delete row (on the end mark: change the pattern/orderlist length)
 |  SHIFT+, .    Move the song start position on all voices and restart
 |  CTRL+Z       Undo (CMD+Z on a Mac)
+|  CTRL+Y       Redo (also CTRL+SHIFT+Z; CMD+Y / CMD+SHIFT+Z on a Mac)
+|  CTRL+R       Random instrument generator for the current instrument slot
+|  CTRL+L       Instrument library
 |  SHIFT+ESC    Optimize music data, or clear music data and set the default pattern length
 |  ESC          Exit the program (asks to save changes)
 |  ALT+ENTER    Toggle fullscreen
 
-SHIFT and CTRL can be used in place of each other in the commands. [ ] or ( ) work in place of
-< >.
+SHIFT and CTRL can be used in place of each other in the editor commands (SHIFT+X and CTRL+X
+both cut). [ ] or ( ) work in place of < >. On a Mac, CMD works like CTRL and FN+F1..F12 gives
+the function keys.
+
+## Undo and redo
+
+Every change of patterns, orderlists, instruments, tables and editor settings can be undone with
+CTRL+Z or the Undo button in the status bar. The last 20 steps are kept. CTRL+Y (or
+CTRL+SHIFT+Z, or the Redo button) brings back what was undone. A new change after an undo clears
+the redo steps, as in other programs.
+
+Loading an instrument from the library or creating a random instrument is one undo step,
+including the table data. Loading a song clears the undo history.
+
+With a German keyboard switch the status bar button to "Kbd: DE" so that CTRL+Z and CTRL+Y are
+the keys labelled Z and Y (see "Keyboard layout").
 
 ## Pattern editor (F5)
 
-|  Z-M, Q-P     Enter notes (piano layout, see "A first song")
+|  Z-M, Q-P     Enter notes (piano layout, see "A first song"; German keyboard: Y-M, Q-P)
 |  0-9, A-F     Enter instrument numbers, commands and data bytes
 |  - +          Select instrument
 |  / *          Select octave (keypad)
@@ -259,7 +328,8 @@ The pattern row display is: note, octave, instrument, command, data byte, for ex
 The key mode (Keys: button in the status bar, or -K command line option) selects how notes are
 entered:
 
-- Tracker (default): two piano octaves on the keyboard.
+- Tracker (default): two piano octaves on the keyboard (key positions of an English keyboard;
+  on a German keyboard the key left of X is labelled Y).
       Lower octave: S D  G H J  L       Upper octave: 2 3  5 6 7  9 0
                    Z X CV B N M , .                 Q W ER T Y UI O P
 - DMC: one octave (A W S E D F T G Y H U J K O L P); the number keys 0-7 select the octave.
@@ -302,6 +372,8 @@ not when it loops.
 |  SHIFT+U      Unlock / lock table scrolling
 |  SHIFT+X C V  Cut, copy, paste instrument (without table data)
 |  SHIFT+DEL    Delete the instrument and its table data
+|  CTRL+R       Random instrument generator (dice button in the instrument header)
+|  CTRL+L       Instrument library (Library button in the instrument header)
 
 The test note plays on the voice where the cursor was last in the pattern editor. To hear a
 filter, play the test note on a voice that is selected in the filter control.
@@ -320,7 +392,9 @@ filter, play the test note on a voice that is selected in the filter control.
 |  1stFrame Wave    Waveform of the first frame of a note, usually $09 (gate + test bit).
 |                   $00, $FE and $FF keep the waveform and set the gate unchanged / off / on
 
-The ADSR envelope:
+### ADSR envelope graph
+
+Below the instrument parameters the volume envelope of the instrument is drawn as a graph:
 
       V      /\            |<- gate bit cleared (key off) here
       O     /  \           |
@@ -330,6 +404,25 @@ The ADSR envelope:
       E /                  |  \
     TIME ---------------------------->
           A   D      S       R
+
+The rising line is the attack, the falling curve the decay down to the sustain level, the flat
+part the sustain (as long as the note is held) and the dotted line marks the key off, after
+which the release fades the sound out. The horizontal scale grows with the parameter values (the
+real SID times grow roughly exponentially), so longer times are shown wider. Next to the graph
+the real times of the SID are shown:
+
+|  Value  Attack   Decay/Release       Value  Attack   Decay/Release
+|  0      2 ms     6 ms                8      100 ms   300 ms
+|  1      8 ms     24 ms               9      250 ms   750 ms
+|  2      16 ms    48 ms               A      500 ms   1.5 s
+|  3      24 ms    72 ms               B      800 ms   2.4 s
+|  4      38 ms    114 ms              C      1 s      3 s
+|  5      56 ms    168 ms              D      3 s      9 s
+|  6      68 ms    204 ms              E      5 s      15 s
+|  7      80 ms    240 ms              F      8 s      24 s
+
+Click on the graph to edit the Attack/Decay value. The same graph is shown in the instrument
+library and in the random instrument generator.
 
 Examples: A/D 09 S/R 00 starts at full volume and fades out. A/D 00 S/R 8A drops quickly to
 sustain level 8 and fades with release A after key off. A/D CC S/R AF rises slowly, decays
@@ -342,18 +435,89 @@ Wave $00 the gate is also left untouched, but the table pointers and ADSR are in
 
 C64 GrooveGoat comes with a library of more than 5000 ready-made instruments ("SIDGen
 instruments for GoatTracker 2") in two sets, one for the old SID (6581) and one for the new SID
-(8580), sorted into categories such as bass, lead, drums, pads and effects.
+(8580), sorted into categories such as bass, lead, drums, pads, strings and effects.
 
-Open the library with the Library button in the instrument panel or with Load Ins in the
-toolbar. The file selector shows the instrument names. Press SPACE (or click the play symbol)
-to hear a preview with the current octave, and ENTER or double click to load the instrument
-into the current instrument slot. Its table data is added to the song's tables.
+Open the library with the Library button in the instrument header or with CTRL+L. The library
+window has three parts: the categories on the left, the instruments in the middle and the
+selected instrument with its ADSR graph on the right.
 
-Instruments are saved and loaded in the GoatTracker 2 .ins format, so they can be exchanged with
-GoatTracker. You can also drop .ins files onto the window to load them into the current slot.
+|  Typing        Search: all words must appear in the name or the category ("acid bass")
+|  BACKSPACE     Delete the last character of the search text
+|  ESC           Clear the search text; ESC again closes the library
+|  UP / DOWN     Select an instrument (also PAGE UP/DOWN, HOME, END, mouse wheel)
+|  LEFT / RIGHT  Previous / next category ("All instruments", "Favourites", categories)
+|  TAB           Switch between the 6581 and the 8580 set (or click 6581 / 8580)
+|  SPACE         Preview: plays the instrument on the cursor voice (right click on a name)
+|  INS or *      Mark / unmark as favourite (or click the star in front of the name)
+|  ENTER         Load the instrument into the current instrument slot (or double click)
 
-The library folder ("instruments") is next to the program (Windows, Linux) or inside the
-application bundle (macOS). Your own instruments can be stored anywhere.
+The set of the SID model selected in the settings bar is shown first. Favourites are marked with
+a star and collected in the "Favourites" category; they are saved in the configuration folder
+(favourites.txt) and kept for the next start. The preview only works while the music is stopped,
+so it never disturbs a playing song.
+
+Loading an instrument adds its table data to the song's tables (unused table data of the old
+instrument in the slot is removed). This is one undo step.
+
+Instruments can also be loaded with Load Ins (file selector, SPACE previews), and you can drop
+.ins files onto the window to load them into the current slot. Instruments are saved and loaded
+in the GoatTracker 2 .ins format, so they can be exchanged with GoatTracker.
+
+The library folder ("instruments") is next to the program (Windows), inside the application
+bundle (macOS) or inside the AppImage (Linux). Your own instruments can be stored anywhere.
+
+## Random instrument generator
+
+The dice button in the instrument header (or CTRL+R) opens the random instrument generator. It
+builds complete instruments - ADSR, wavetable, pulsetable, filtertable and vibrato - from
+recipes for typical C64 sounds. Every click on Generate creates a new variation.
+
+### Sounds
+
+|  Bass            Pulse bass with width sweep, slap bass, saw bass, octave "pop" bass
+|  Acid bass       Saw or pulse through a resonant low-pass with a fast filter sweep
+|  Bass drum       Noise click plus a fast falling triangle/pulse (absolute notes)
+|  Snare           Noise, a short pulse "body" and a noise tail
+|  Hi-hat          Closed or open hi-hat with high noise (optionally high-pass filtered)
+|  Tom             Falling triangle or pulse tone
+|  Woodwind        Flute (triangle with breath), clarinet (square wave), oboe (narrow pulse
+|                  through a band-pass), with delayed vibrato
+|  Guitar          Clean pluck, distorted lead guitar or a fast power chord
+|  Brass           Sawtooth with a filter "swell" that opens at the start of the note
+|  Strings         Slow attack, sawtooth or pulse width modulation, gentle filter movement
+|  Lead            PWM lead, saw lead with filter, chip lead with octave start
+|  Pad             Very slow attack and release, slow filter wobble
+|  Arpeggio        Looping chords: major, minor, sus4, maj7, min7, fifth, octave
+|  Bell / mallet   Bright start two octaves up, falling into a soft triangle
+|  Effect          Laser, warble/siren, noise sweep
+
+### SID filter options
+
+|  SID filter       Auto uses the filter that fits the sound (or none). You can force: Off,
+|                   Low-pass, Band-pass, High-pass, Low+band-pass, Notch (low+high-pass),
+|                   Band+high-pass or all three.
+|  Resonance        Auto or $0-$F
+|  Cutoff           Auto, Low, Middle or High
+|  Filter movement  Auto, Static, Sweep down, Sweep up or Wobble (up and down in a loop)
+|  Filtered voice   The voice bit of the filter routing (1-3). It is set to the voice of
+|                   the pattern cursor; use the instrument on that voice of a SID.
+
+The generator knows the SID model selected in the settings bar: the 6581 filter is darker and
+opens at much lower cutoff values than the 8580, and combined waveforms (e.g. pulse+saw) are
+only used for the 8580, because they are very quiet on the 6581.
+
+### Keys
+
+|  UP / DOWN     Select a line (sound, filter options, buttons)
+|  LEFT / RIGHT  Change the selected option (a new instrument is generated)
+|  R             Generate a new variation
+|  SPACE         Preview (plays a typical note for the sound on the cursor voice)
+|  ENTER         Use it: keep the instrument in the current slot (one undo step)
+|  ESC           Cancel: the slot is restored as it was
+
+The preview only works while the music is stopped. The result area shows the name, the ADSR
+values with the envelope graph and the generated table rows (left:right values). If the tables
+are full, a message tells you to delete unused table data first (SHIFT+O in the table editor).
 
 ## Table editor (F7 twice)
 
@@ -373,11 +537,13 @@ application bundle (macOS). Your own instruments can be stored anywhere.
 ## Song name editor (F8)
 
 Use cursor up/down to move between the song name, author and released (copyright) fields. These
-texts are stored in the song and in exported SID files, and shown by the PRG player.
+texts are stored in the song and in exported SID files, shown by the PRG player, written into
+MP3 tags and shown in exported videos.
 
 ## Mouse
 
 |  Click            Move the cursor, press buttons
+|  Hover            The message line explains the button under the mouse pointer
 |  Right click      Decrease a value; on a Mac CTRL+click works as right click
 |  Right drag       Mark pattern, orderlist or table data
 |  Wheel            Scroll the panel under the mouse pointer
@@ -543,6 +709,23 @@ ADSR, the SID addresses, followed by the GoatTracker 2 song data with one orderl
 Instruments use the GoatTracker 2 .ins format (GTI5). Older GoatTracker instruments are
 converted on loading.
 
+## Backup copies
+
+C64 GrooveGoat protects your work in three ways:
+
+- Saving keeps the previous version: before a song file is overwritten, the old file is copied
+  to NAME.bak (for example mysong.sng.bak) in the same folder. To go back to it, rename it
+  (remove ".bak") and load it.
+- Automatic backup: while a song has unsaved changes, a copy is written every 2 minutes into
+  the "autosave" folder in the configuration folder (see below). The file names start with the
+  date and time (for example 20261020-143012_mysong.sng). The newest 10 copies are kept, older
+  ones are deleted. The message line shows when a copy was made. Your song file itself is not
+  touched by the automatic backup.
+- Crash recovery: if the program was not closed properly (crash, power failure, killed
+  process), the next start offers to restore the newest automatic backup. "Restore" loads it;
+  saving then writes to the original file name again. "Ignore" starts normally - the backup
+  stays in the autosave folder, so you can still load it later with Open.
+
 ## Configuration
 
 Settings are saved when the program exits:
@@ -551,11 +734,18 @@ Settings are saved when the program exits:
 |  macOS    ~/.groovegoat/groovegoat.cfg
 |  Linux    ~/.groovegoat/groovegoat.cfg
 
+The same folder contains favourites.txt (instrument library favourites) and the autosave folder
+with the automatic backup copies.
+
 # Export
 
-## Export dialog
+C64 GrooveGoat can export your song for C64 players and emulators (SID file, runnable PRG,
+music data for your own programs) and as audio or video files for everybody else (WAV, MP3,
+MP4). All exports use the song exactly as it is in the editor; nothing is changed.
 
-Export SID, Export PRG (toolbar) and F9 open the export dialog:
+## Export dialog (SID, PRG, BIN)
+
+The SID and PRG buttons (toolbar) and F9 open the export dialog:
 
 |  Format           SID file, runnable PRG with player screen, PRG with music only, or BIN
 |  Player address   Start address of the music (page aligned, default $1000)
@@ -657,6 +847,89 @@ placed at the end of the music data.
 If the hard restart attack is $F, the alternative SID register write order is used (waveform
 before ADSR), as in GoatTracker.
 
+## Audio export (WAV, MP3)
+
+The Audio button (or CTRL+F9) renders the song with the SID emulation into an audio file. The
+rendering is done offline - much faster than real time - with exactly the settings of the editor
+(SID model, PAL/NTSC, number of SIDs, stereo placement, reSID/reSID-fp and interpolation).
+
+|  Format         WAV audio (16 bit PCM), MP3 audio or MP4 video
+|  Subtune        Which subtune to render
+|  Length         "Song length": until all voices reach their loop point (calculated
+|                 automatically) plus the fade-out; or "Custom" with your own length
+|  Custom length  LEFT/RIGHT change by 1 second (SHIFT: 10 seconds), ENTER lets you type
+|                 the length as m:ss or in seconds (at most 60 minutes)
+|  Fade-out       Off, 2, 3, 5, 8 or 10 seconds. The song keeps playing (it loops) while
+|                 it fades out softly. Not used when the song ends by itself.
+|  Channels       Stereo or mono
+|  Sample rate    44100 Hz (CD) or 48000 Hz
+|  MP3 bitrate    128, 160, 192, 256 or 320 kbit/s (constant bitrate)
+|  Single voices  WAV only: also save every voice as its own mono WAV file
+|  Keep muted     Normally all voices are exported. With this option voices that are muted
+|                 in the editor (M in the voice header, SHIFT+F4) stay silent.
+
+The summary at the bottom shows the length, the format and the estimated file size. ENTER or
+Export asks for the file name; a progress window is shown while rendering and ESC cancels (the
+unfinished file is deleted).
+
+Single voice files: with "Also save every voice as its own mono WAV" C64 GrooveGoat writes the
+normal mix and one extra file per voice: NAME_voice1.wav ... NAME_voice3.wav for one SID, and
+NAME_sid1_voice1.wav ... NAME_sid8_voice3.wav for several SIDs. Every voice file has the same
+length, so they line up perfectly in an audio editor or DAW (for remixing, mastering or
+analysing a song). Voice files are mono, at full level and without stereo placement. The
+filter of each SID is applied to its voices as in the mix; voice 3 "off" and sync/ring
+modulation keep working, because the other voices of the SID still run - they are only silenced
+at the output.
+
+MP3 files get ID3 tags with the song name (title), the author (artist), the year from the
+"released" text, the genre "Electronic" and a comment "Made with C64 GrooveGoat". The MP3
+encoder is LAME (quality setting 2, joint stereo).
+
+Tip: exported audio is not affected by the volume slider. The levels of the SIDs are the same
+as in the editor at 100% volume, with a soft limiter that prevents hard clipping.
+
+## Video export (MP4)
+
+The Video button (or CTRL+SHIFT+F9) renders an MP4 video of the song, ready for YouTube, social
+media or a presentation:
+
+- 1280 x 720 pixels (720p), 50 frames per second (PAL) or 60 (NTSC), H.264 video
+- AAC audio (48 kHz, stereo or mono, about 192 kbit/s)
+- a header with the logo, the song name, author, SID model, PAL/NTSC, subtune, the play time
+  and the total length, and a progress bar in the C64 rainbow colours
+- one oscilloscope for every voice, arranged to fit the number of SIDs:
+
+|  1 SID    3 oscilloscopes, one per row (full width)
+|  2 SIDs   6 oscilloscopes: SID 1 left, SID 2 right, one voice per row
+|  4 SIDs   12 oscilloscopes: one SID per row, voices 1-3 side by side
+|  8 SIDs   24 oscilloscopes: 4 rows with two SIDs (2 x 3 voices) each
+
+Every oscilloscope shows the waveform of its voice (after the envelope, before the filter), its
+name (SID 1 - Voice 1 or S1 - V1), the current waveform (TRI, SAW, PUL with pulse width, NOISE,
+combinations), whether the voice is filtered, a gate indicator and a bar with the envelope level.
+The display is triggered on the rising zero crossing, so periodic waveforms stand still. Voice 1
+is drawn in red, voice 2 in yellow and voice 3 in blue.
+
+The dialog offers the same options as the audio export (subtune, length, fade-out, stereo/mono,
+muted voices) plus the video colours: "Night" (C64 blue, the default) or "Day" (light). The
+song name and author come from the song name editor (F8). Rendering a video takes roughly half
+the playing time on a modern computer (more with 8 SIDs); the progress window shows the state,
+ESC cancels.
+
+The video is stored with BT.709 colour information, so the colours look the same in every
+player. The MP4 files play in all common players, web browsers and on phones.
+
+## Command line rendering
+
+Audio and video files can also be made without opening a window:
+
+    groovegoat song.sng --render=song.wav
+    groovegoat song.sng --render=song.mp3 --bitrate=256
+    groovegoat song.ggt --render=song.mp4 --fade=8
+    groovegoat song.sng --render=song.wav --stems --seconds=90
+
+The format is chosen by the extension (.wav, .mp3 or .mp4). See "Command line".
+
 # Command line
 
     groovegoat [options] [songfile]
@@ -671,7 +944,7 @@ before ADSR), as in GoatTracker.
 |  -Jxx   Special note names
 |  -Kxx   Note entry mode (0 tracker, 1 DMC, 2 Janko)
 |  -Lxx   SID address of 1-SID songs in hex (default D400)
-|  -Mxx   Mixing rate (default 44100)
+|  -Mxx   Mixing rate (default 48000)
 |  -Oxx   Pulse optimization (0 off, 1 on)
 |  -Qxx   Equal divisions per octave (12 default)
 |  -Rxx   Realtime command optimization (0 off, 1 on)
@@ -685,20 +958,38 @@ before ADSR), as in GoatTracker.
 |  -W     Write the sound output to sidaudio.raw
 |  -?     Show the options
 
-Export without opening a window:
+Export and rendering without opening a window:
 
     groovegoat song.sng --export=song.sid
     groovegoat song.ggt --export=song.prg --format=prg --address=1000
+    groovegoat song.sng --render=song.mp3
 
 |  --export=FILE      Export the song and exit
 |  --format=FMT       sid (default), prg (runnable), prgmusic, bin
 |  --address=XXXX     Player address (hex)
 |  --options=N        Playroutine options as a number (8 buffered, 16 sound effects,
 |                     32 volume, 64 author-info, 256 no optimization, 512 full buffering)
+|  --sids=N           Change the number of SIDs before exporting
+|  --render=FILE      Render FILE.wav, FILE.mp3 or FILE.mp4 and exit
+|  --seconds=N        Render length in seconds (default: song length + fade-out)
+|  --fade=N           Fade-out in seconds (default 5 with the song length, 0 otherwise)
+|  --subtune=N        Subtune to render (0 = the first one)
+|  --mono             Render in mono
+|  --bitrate=N        MP3 bitrate in kbit/s (default 320)
+|  --stems            WAV: also render every voice into its own file
+|  --save=FILE        Load the song and save it again (converts formats) and exit
+
+## Sound output
+
+The editor plays the sound through the default audio device of the system. The SID emulation
+runs in its own thread, a little ahead of the sound card, so other programs (a web browser with
+a video, an image viewer) do not cause crackling. If you still hear dropouts on a very slow or
+busy computer, start the program with a bigger buffer, for example -B200 (200 milliseconds).
+The default sample rate is 48000 Hz; -M44100 selects 44100 Hz.
 
 # Credits
 
-C64 GrooveGoat 0.8b by IT-Dummkopfen.
+C64 GrooveGoat 0.9b by IT-Dummkopfen.
 
 |  GoatTracker 2 editor & playroutine   Lasse Oorni (Cadaver), Covert Bitops
 |  GoatTracker 2 "Silver Fork"          Joel Ricci (github.com/joelricci/goattracker2)
@@ -713,10 +1004,19 @@ C64 GrooveGoat 0.8b by IT-Dummkopfen.
 |  Microtonal support                   Birgit Jauernig
 |  SDL 2                                libsdl.org (zlib license)
 |  Fira Code font                       Nikita Prokopov (SIL Open Font License 1.1)
+|  LAME MP3 encoder 3.100               The LAME project (GNU LGPL 2)
+|  faac AAC encoder 2.2.0               M. Bakker, K. Nikiel, N. Schimmelmann et al. (LGPL 2.1)
+|  minih264 H.264 encoder               lieff, github.com/lieff (CC0, public domain)
+|  minimp4 MP4 muxer                    lieff, github.com/lieff (CC0, public domain)
 |  SIDGen instrument library            6581 & 8580 instrument sets
 |  SID file format (PSID v2/v3/v5)      High Voltage SID Collection
 
 License: C64 GrooveGoat is free software under the GNU General Public License version 2 or
 later, like GoatTracker 2. The C64 playroutines (player.s, altplayer.s, mplayer.s and the PRG
 player frontend) do not fall under the GPL: the music files you create with them are yours and
-can be used freely for any purpose, commercial or noncommercial.
+can be used freely for any purpose, commercial or noncommercial. The same applies to the audio
+and video files you export.
+
+The LAME and faac encoders are licensed under the GNU Lesser General Public License; their
+complete source code is part of the C64 GrooveGoat source code (src/codecs). minih264 and
+minimp4 are public domain (CC0).

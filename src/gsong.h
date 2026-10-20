@@ -30,6 +30,7 @@ void loadsong(void);
 void mergesong(void);
 void loadinstrument(void);
 int savesong(void);
+int writesongfile(const char *name, int ggt);
 int saveinstrument(void);
 void clearsong(int cs, int cp, int ci, int cf, int cn);
 void countpatternlengths(void);

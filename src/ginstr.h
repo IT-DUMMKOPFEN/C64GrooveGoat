@@ -14,5 +14,7 @@ void previnstr(void);
 void clearinstr(int num);
 void gotoinstr(int i);
 void showinstrtable(void);
+void *undoinstrbegin(void);
+void undoinstrend(void *ed);
 
 #endif

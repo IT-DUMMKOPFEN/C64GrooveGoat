@@ -286,6 +286,31 @@ static void setextension(char *name, const char *ext)
 
 // Save the song. 1 or 2 SIDs: GoatTracker (Stereo) compatible .sng,
 // 4 or 8 SIDs (or a .ggt name): C64 GrooveGoat format.
+// Write the song into a file (GTS5 = GoatTracker 2 / Stereo format, or GGT1
+// for more than 2 SIDs). Does not change any editor state.
+int writesongfile(const char *name, int ggt)
+{
+  int c;
+  FILE *handle = fopen(name, "wb");
+  if (!handle) return 0;
+  if (ggt)
+  {
+    fwrite("GGT1", 4, 1, handle);
+    fwrite8(handle, numsids);
+    fwrite8(handle, (editorInfo.ntsc ? 1 : 0) | (editorInfo.sidmodel ? 2 : 0));
+    fwrite8(handle, editorInfo.multiplier);
+    fwritele16(handle, editorInfo.adparam);
+    for (c = 0; c < numsids; c++) fwritele16(handle, sidaddr[c]);
+    fwrite8(handle, 0); // amount of extra bytes (reserved for future use)
+  }
+  else
+  {
+    fwrite("GTS5", 4, 1, handle);
+  }
+  writesongbody(handle, numchannels);
+  return fclose(handle) == 0;
+}
+
 int savesong(void)
 {
   int c;
@@ -308,26 +333,12 @@ int savesong(void)
     ggt = 1;
   }
 
-  handle = fopen(songfilename, "wb");
-  if (handle)
+  // keep the previous version of the file as NAME.bak
+  backup_copybeforesave(songfilename);
+  if (writesongfile(songfilename, ggt))
   {
-    if (ggt)
-    {
-      fwrite("GGT1", 4, 1, handle);
-      fwrite8(handle, numsids);
-      fwrite8(handle, (editorInfo.ntsc ? 1 : 0) | (editorInfo.sidmodel ? 2 : 0));
-      fwrite8(handle, editorInfo.multiplier);
-      fwritele16(handle, editorInfo.adparam);
-      for (c = 0; c < numsids; c++) fwritele16(handle, sidaddr[c]);
-      fwrite8(handle, 0); // amount of extra bytes (reserved for future use)
-    }
-    else
-    {
-      fwrite("GTS5", 4, 1, handle);
-    }
-    writesongbody(handle, numchannels);
-    fclose(handle);
     strcpy(loadedsongfilename, songfilename);
+    backup_saved();
     songmodified = 0;
     if (ggt)
       snprintf(statusmessage, sizeof statusmessage, "Saved %s (%d SIDs, C64 GrooveGoat format)", songfilename, numsids);
@@ -1211,6 +1222,7 @@ void loadsong(void)
   {
     songmodified = 0;
     strcpy(loadedsongfilename, songfilename);
+    backup_saved();
 
     // Reset table views
     for (c = 0; c < MAX_TABLES; c++) settableview(c, 0);
@@ -1676,6 +1688,7 @@ void clearsong(int cs, int cp, int ci, int ct, int cn)
   if (cs)
   {
     songmodified = 0;
+    backup_saved();
     editorInfo.esview = 0;
     editorInfo.eseditpos = 0;
     editorInfo.escolumn = 0;

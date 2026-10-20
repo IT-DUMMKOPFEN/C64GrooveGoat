@@ -63,6 +63,9 @@ static int scopestride = 0;           // samples per SID in scopeout
 static short *scopetmp = NULL;
 static int scopetmpsize = 0;
 
+// Render only one SID, centred and at full level (-1 = normal mix)
+static int solosid = -1;
+
 // Output volume of the editor in percent (0-100)
 void sid_setvolume(int percent)
 {
@@ -129,6 +132,11 @@ void sid_setscope(short *buf, int stride)
       scopesid[s] = NULL;
     }
   }
+}
+
+void sid_setsolosid(int s)
+{
+  solosid = (s >= 0) && (s < MAX_SIDS) ? s : -1;
 }
 
 void sid_setpanning(int nsids, int stereo)
@@ -418,14 +426,20 @@ int sid_fillbuffer(short *ptr, int samples, unsigned int adparam, int stereo)
     memset(mix, 0, samples * 2 * sizeof(float));
     for (s = 0; s < sidcount; s++)
     {
+      float gl = pangainl[s], gr = pangainr[s];
       if ((!sid[s]) && (!sidfp[s])) continue;
+      if (solosid >= 0)
+      {
+        if (s != solosid) continue;
+        gl = gr = 1.0f;
+      }
       fillone(s, sidbuf, samples, adparam);
       if ((scopeout) && (scopesid[s]) && (samples <= scopestride)) fillscope(s, samples, adparam);
       for (c = 0; c < samples; c++)
       {
         float v = sidbuf[c];
-        mix[c * 2] += v * pangainl[s];
-        mix[c * 2 + 1] += v * pangainr[s];
+        mix[c * 2] += v * gl;
+        mix[c * 2 + 1] += v * gr;
       }
     }
     // Volume changes are faded in over about 20 ms to avoid "zipper" clicks

@@ -19,6 +19,13 @@ static int printrows(int column, int row, int color, const char *strings[])
   {
     // Keys (text before two spaces) are shown highlighted
     const char *s = strings[n];
+    char de[200];
+    // German keyboards: the lowest note row starts with Y
+    if ((kbdlayout == 1) && (!strncmp(s, "Z-M, Q-P", 8)))
+    {
+      snprintf(de, sizeof de, "Y-M, Q-P%s", s + 8);
+      s = de;
+    }
     const char *sep = strstr(s, "  ");
     if ((sep) && (sep - s < 24))
     {
@@ -45,7 +52,8 @@ static const char *genkeys[] = {
   "F6            Go to orderlist editor",
   "F7            Instrument/table editor",
   "F8            Go to songname editor",
-  "F9            Pack, relocate & export",
+  "F9            Export SID/PRG (pack & relocate)",
+  "CTRL+F9       Export WAV/MP3 (+SHIFT: video)",
   "F10           Load song/instrument",
   "F11           Save song/instrument",
   "F12           This screen",
@@ -61,6 +69,9 @@ static const char *genkeys[] = {
   "INS           Insert row (on endmark:",
   "DEL           Delete row  change length)",
   "CTRL/CMD+Z    Undo",
+  "CTRL/CMD+Y    Redo (also CTRL+SHIFT+Z)",
+  "CTRL/CMD+R    Random instrument generator",
+  "CTRL/CMD+L    Instrument library",
   "SHIFT+ESC     Clear/optimize musicdata",
   "ESC           Exit program",
   "ALT+ENTER     Toggle fullscreen",
@@ -84,6 +95,7 @@ static const char *mousekeys[] = {
   "Click P00     Next pattern (right: prev.)",
   "Click M / S   Mute / solo a channel",
   "Drop a file   Load song or instrument",
+  "Hover         Button help in the message line",
   NULL
 };
 
@@ -165,6 +177,18 @@ static const char *multisid[] = {
   ".sng          GoatTracker 2 (1 SID) and",
   "              GoatTracker Stereo (2 SIDs)",
   ".ggt          GrooveGoat format (4/8 SIDs)",
+  NULL
+};
+
+static const char *newkeys[] = {
+  "Kbd: EN/DE    Shortcut layout (DE: Z/Y swap)",
+  "Library       Search by typing, TAB 6581/8580",
+  "              SPACE preview, INS/* favourite",
+  "Dice button   Random instrument: R generate,",
+  "              SPACE preview, ENTER use it",
+  "Audio/Video   Export WAV, MP3 or MP4 video",
+  "Backups       .bak on save, autosave every",
+  "              2 min., restore after a crash",
   NULL
 };
 
@@ -261,6 +285,9 @@ void onlinehelp(int standalone, int context)
     printtext(95, third++, HELP_HEADER, "MULTI-SID");
     third = printrows(95, third, HELP_NORMAL, multisid);
     third++;
+    printtext(95, third++, HELP_HEADER, "NEW IN C64 GROOVEGOAT");
+    third = printrows(95, third, HELP_NORMAL, newkeys);
+    third++;
 
     printtext(48, right++, HELP_HEADER, "MOUSE");
     right = printrows(48, right, HELP_NORMAL, mousekeys);
@@ -281,7 +308,7 @@ void onlinehelp(int standalone, int context)
     printtext(1, left++, HELP_HEADER, "TABLES");
     left = printrows(1, left, HELP_NORMAL, tables);
     left++;
-    printtext(1, left++, MKCOL(7, C_PANEL), "The complete manual is available with the \"Manual\" button above or the M key in this screen.");
+    printtext(1, left++, MKCOL(7, C_PANEL), "The complete manual (all functions in detail, with search) opens with the \"Manual\" button above or the M key in this screen.");
     lastrow = left + hview;
 
     printblankc(0, 0, MKCOL(C_HEADERTEXT, C_HEADER), MAX_COLUMNS);
@@ -388,7 +415,7 @@ static void buildmanual(void)
     if ((l >= 2) && (!strncmp(p, "# ", 2))) { style = 1; p += 2; l -= 2; }
     else if ((l >= 3) && (!strncmp(p, "## ", 3))) { style = 2; p += 3; l -= 3; }
     else if ((l >= 4) && (!strncmp(p, "### ", 4))) { style = 3; p += 4; l -= 4; }
-    else if ((l >= 1) && (p[0] == '|')) { style = 4; }
+    else if ((l >= 1) && (p[0] == '|')) { style = 4; p++; l--; }
     else if ((l >= 4) && (!strncmp(p, "    ", 4))) { style = 4; }
 
     // word wrap normal text
@@ -430,10 +457,32 @@ static void buildmanual(void)
   }
 }
 
+// Case-insensitive search for "what" from line "from" on (wraps around)
+static int findmanline(const char *what, int from)
+{
+  int n, c;
+  char low[64];
+  if (!what[0]) return -1;
+  for (c = 0; what[c] && c < 63; c++) low[c] = tolower((unsigned char)what[c]);
+  low[c] = 0;
+  for (n = 0; n < nummanlines; n++)
+  {
+    int l = (from + n) % nummanlines;
+    char line[512];
+    int i;
+    for (i = 0; manlines[l][i] && i < 511; i++) line[i] = tolower((unsigned char)manlines[l][i]);
+    line[i] = 0;
+    if (strstr(line, low)) return l;
+  }
+  return -1;
+}
+
 void showmanual(void)
 {
   int view = 0;
   int textrows = MAX_ROWS - 3;
+  static char search[64];
+  int hitline = -1;
   buildmanual();
 
   for (;;)
@@ -495,6 +544,7 @@ void showmanual(void)
         printtext(MAN_TEXT_X, y, MKCOL(8, C_PANEL), manlines[l]);
         break;
       }
+      if (l == hitline) printbgx(MAN_TEXT_X - 1, y, C_SELECT, MAN_TEXT_W + 1);
     }
     // scrollbar
     if (nummanlines > textrows)
@@ -506,7 +556,13 @@ void showmanual(void)
         printglyph(MAX_COLUMNS - 1, 2 + c, MKCOL((c >= bary) && (c < bary + barh) ? 9 : C_LINE, C_PANEL), GL_FULL);
     }
     printblankc(0, MAX_ROWS - 1, MKCOL(C_HEADERTEXT, C_HEADER), MAX_COLUMNS);
-    printtext(1, MAX_ROWS - 1, MKCOL(C_HEADERTEXT, C_HEADER), "Arrows / PgUp / PgDn / Home / End / mouse wheel scroll, click a chapter to jump, ESC closes");
+    printtext(1, MAX_ROWS - 1, MKCOL(C_HEADERTEXT, C_HEADER), "Arrows / PgUp / PgDn / Home / End / wheel scroll, LEFT/RIGHT chapter, F search, F3 or N find next, ESC closes");
+    if (search[0])
+    {
+      char sb[100];
+      snprintf(sb, sizeof sb, "Search: %s%s", search, hitline < 0 ? " (not found)" : "");
+      printtext(MAX_COLUMNS - 2 - (int)strlen(sb), MAX_ROWS - 1, MKCOL(C_RB3, C_HEADER), sb);
+    }
 
     fliptoscreen();
     getkey();
@@ -540,7 +596,29 @@ void showmanual(void)
       for (c = 0; c < numtoc; c++)
         if (mantoc[c] > view) { view = mantoc[c]; break; }
       break;
+      case KEY_F:
+      if (dlg_edittext("Search the manual", "Find:", search, 40, 0))
+      {
+        hitline = findmanline(search, view);
+        if (hitline >= 0) view = hitline - 3;
+      }
+      break;
+      case KEY_F3:
+      case KEY_N:
+      if (search[0])
+      {
+        hitline = findmanline(search, hitline >= 0 ? hitline + 1 : view);
+        if (hitline >= 0) view = hitline - 3;
+      }
+      break;
       case KEY_ESC:
+      if (hitline >= 0)
+      {
+        hitline = -1;
+        search[0] = 0;
+        break;
+      }
+      // fallthrough
       case KEY_F12:
       goto EXITMAN;
     }
@@ -573,18 +651,22 @@ static const char *credits[] = {
   "Microtonal support                   Birgit Jauernig",
   "SDL 2 (Simple DirectMedia Layer)     libsdl.org - zlib license",
   "Fira Code font                       Nikita Prokopov - SIL Open Font License 1.1",
+  "LAME MP3 encoder 3.100               The LAME project - GNU LGPL 2",
+  "faac AAC encoder 2.2.0               M. Bakker, K. Nikiel, N. Schimmelmann - LGPL 2.1",
+  "minih264 / minimp4 (H.264, MP4)      lieff (github.com/lieff) - CC0 public domain",
   "SIDGen instrument library            6581 & 8580 instrument sets",
   "SID file format (PSID v2/v3/v5)      High Voltage SID Collection",
   "",
   "License: GNU General Public License v2 or later. The C64 playroutine and",
-  "the songs/SID files you create are free to use for any purpose.",
+  "the songs, SID, PRG, audio and video files you create are free to use for",
+  "any purpose. The LGPL encoders are included as source code (src/codecs).",
   NULL
 };
 
 void showinfo(void)
 {
   int w = 92;
-  int h = 38;
+  int h = 44;
   int x = (MAX_COLUMNS - w) / 2;
   int y = (MAX_ROWS - h) / 2 - 1;
 
@@ -666,15 +748,13 @@ void showwelcomewindow(void)
     "F1 / F4      play / stop",
     "TAB          next editor panel",
     "F12          keyboard help, Manual button: manual",
-    "CTRL/CMD+Z   undo",
+    "CTRL+Z / Y   undo / redo (Kbd: EN/DE in the status bar)",
     "",
-    "Need more voices? Choose 2, 4 or 8 SIDs in the",
-    "toolbar (up to 24 voices).",
-    "",
-    "Instrument library: Load Ins or Library button",
-    "(6581 and 8580 instrument sets, SPACE = preview).",
-    "",
-    "Volume: slider at the bottom right.",
+    "More voices: choose 2, 4 or 8 SIDs (up to 24 voices).",
+    "Instruments: Library button (search, favourites,",
+    "preview) or the dice button for a random instrument.",
+    "Share your song: Audio (WAV/MP3) and Video (MP4).",
+    "Your work is backed up automatically every 2 minutes.",
     NULL
   };
 
@@ -701,7 +781,13 @@ void showwelcomewindow(void)
     printtext(x + 3, ly++, MKCOL(14, C_PANEL), "Quick start");
     ly++;
     for (c = 0; tips[c]; c++)
-      printtext(x + 3, ly++, MKCOL(7, C_PANEL), tips[c]);
+    {
+      // German keyboards: the lowest note row starts with Y
+      if ((kbdlayout == 1) && (c == 0))
+        printtext(x + 3, ly++, MKCOL(7, C_PANEL), "Y-M, Q-P     enter notes (piano layout)");
+      else
+        printtext(x + 3, ly++, MKCOL(7, C_PANEL), tips[c]);
+    }
 
     printtext(x + 3, by, MKCOL(showwelcome ? 15 : 8, C_PANEL), showwelcome ? "[x] Show at startup" : "[ ] Show at startup");
     printtext(bx, by, MKCOL(C_BUTTONTEXT, C_BUTTONHI), "   Close   ");

@@ -260,3 +260,28 @@ void showinstrtable(void)
   }
 }
 
+
+// Undo support for operations that replace an instrument including its table
+// data (library, random generator): table rows may move, which also changes
+// other instruments and pattern commands, so all of them are checked.
+void *undoinstrbegin(void)
+{
+  int c;
+  for (c = 0; c < MAX_INSTR; c++)
+    undoAreaSetCheckForChange(UNDO_AREA_INSTRUMENTS, c, UNDO_AREA_DIRTY_CHECK);
+  for (c = 0; c < MAX_TABLES; c++)
+  {
+    undoAreaSetCheckForChange(UNDO_AREA_TABLES + c, 0, UNDO_AREA_DIRTY_CHECK);
+    undoAreaSetCheckForChange(UNDO_AREA_TABLES + c, 1, UNDO_AREA_DIRTY_CHECK);
+  }
+  for (c = 0; c < MAX_PATT; c++)
+    undoAreaSetCheckForChange(UNDO_AREA_PATTERN, c, UNDO_AREA_DIRTY_CHECK);
+  return undoCreateEditorInfo();
+}
+
+void undoinstrend(void *ed)
+{
+  if (!ed) return;
+  if (undoValidateUndoAreas((GTUNDO_OBJECT *)ed) == 0)
+    undoFreeUndoObject((GTUNDO_OBJECT *)ed);
+}

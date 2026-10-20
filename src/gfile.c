@@ -408,9 +408,11 @@ int fileselector(char *name, char *path, char *filter, char *title, int filemode
     // Buttons
     bx = FS_X + 2;
     {
-      const char *labels[6] = {" Home ", " Library ", " Up ", "  OK  ", " Cancel ", NULL};
-      int ids[6] = {1, 2, 3, 4, 5, 0};
-      int nb = 5;
+      const char *labels[7] = {" Home ", " Library ", " Examples ", " Up ", "  OK  ", " Cancel ", NULL};
+      int ids[7] = {1, 2, 6, 3, 4, 5, 0};
+      int nb = 6;
+      struct stat exst;
+      int haveexamples = (!stat(examplespath, &exst)) && (exst.st_mode & S_IFDIR);
       int by = FS_LIST_Y + VISIBLEFILES + 4;
       for (c = 0; c < nb; c++)
       {
@@ -418,10 +420,11 @@ int fileselector(char *name, char *path, char *filter, char *title, int filemode
         int x = bx;
         if (ids[c] == 4) x = FS_X + FS_W - 22;
         if (ids[c] == 5) x = FS_X + FS_W - 12;
-        if ((ids[c] == 2) && (!instrmode)) { bx += 0; continue; }
+        if ((ids[c] == 2) && (!instrmode)) continue;
+        if ((ids[c] == 6) && ((instrmode) || (!haveexamples))) continue;
         printtext(x, by, MKCOL(C_BUTTONTEXT, (mousey == by) && (mousex >= x) && (mousex < x + w) ? C_SELECT : C_BUTTON), labels[c]);
         if ((mousey == by) && (mousex >= x) && (mousex < x + w)) hitbutton = ids[c];
-        if (ids[c] < 4) bx += w + 2;
+        if ((ids[c] < 4) || (ids[c] == 6)) bx += w + 2;
       }
       if (instrmode)
         printtext(bx + 2, by, MKCOL(3, C_PANEL), "SPACE = preview, ENTER = load");
@@ -474,6 +477,9 @@ int fileselector(char *name, char *path, char *filter, char *title, int filemode
           }
           case 2:
           chdir(instrlibpath);
+          goto NEWPATH;
+          case 6:
+          chdir(examplespath);
           goto NEWPATH;
           case 3:
           chdir("..");

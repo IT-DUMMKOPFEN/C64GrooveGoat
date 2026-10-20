@@ -12,6 +12,13 @@
 
 int calcsonglength(int subtune)
 {
+  return calcsonglengthex(subtune, NULL);
+}
+
+// As calcsonglength(); *stopped is set to 1 if the song ends with a stop
+// command instead of looping
+int calcsonglengthex(int subtune, int *stopped)
+{
   CHN chnbackup[MAX_CHN];
   SIDFILT filtbackup[MAX_SIDS];
   unsigned char regbackup[MAX_SIDS][NUMSIDREGS];
@@ -23,6 +30,7 @@ int calcsonglength(int subtune)
   int maxframes;
   int mult = editorInfo.multiplier ? editorInfo.multiplier : 1;
 
+  if (stopped) *stopped = 0;
   if (!songvalid(subtune)) return 0;
 
   snd_lock();
@@ -49,7 +57,11 @@ int calcsonglength(int subtune)
     int done = 1;
     playroutine();
     frames++;
-    if (songinit == PLAY_STOPPED) break;
+    if (songinit == PLAY_STOPPED)
+    {
+      if (stopped) *stopped = 1;
+      break;
+    }
     for (c = 0; c < numchannels; c++)
     {
       if ((looped[c] < 0) && (chn[c].looped)) looped[c] = frames;

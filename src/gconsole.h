@@ -58,6 +58,12 @@ void fillarea(int x, int y, int w, int h, int color, int glyph);
 void drawpanel(int x, int y, int w, int h, const char *title, int active);
 void drawimage(int x, int y, const char *name, int cellsw, int cellsh);
 void drawrainbow(int x, int y, int length);
+#define MAX_CANVAS 2
+#define CANVAS_MAXCW 48
+#define CANVAS_MAXCH 8
+#define CANVAS_STRIDE (CANVAS_MAXCW * 16)
+unsigned char *canvas_begin(int id, int cw, int ch);
+void canvas_draw(int id, int x, int y, int color);
 void getkey(void);
 int savescreenshot(const char *filename);
 extern char autoshotname[1024];

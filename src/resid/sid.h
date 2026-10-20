@@ -59,7 +59,7 @@ public:
   // (only in the SAMPLE_FAST mode)
   short *scopebuf;
   // Unmodulated voice signal for oscilloscopes
-  int voice_scope(int v) { return (voice[v].wave.output() - voice[v].wave_zero) * (int)voice[v].envelope.output() >> 8; }
+  int voice_scope(int v) { return ((int)voice[v].wave.output() - 0x800) * (int)voice[v].envelope.output() >> 8; }
   void write(reg8 offset, reg8 value);
 
   // Read/write state.

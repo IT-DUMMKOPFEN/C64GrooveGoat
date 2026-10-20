@@ -2,7 +2,7 @@
 #define GOATTRK2_H
 
 #define PROGRAMNAME "C64 GrooveGoat"
-#define PROGRAMVERSION "0.8b"
+#define PROGRAMVERSION "0.9b"
 #define PROGRAMAUTHOR "IT-Dummkopfen"
 #define PATCHNAME "based on GoatTracker v2.76 (Silver Fork)"
 
@@ -34,6 +34,8 @@
 #include "gtable.h"
 #include "glayout.h"
 #include "gdialog.h"
+#include "gadsr.h"
+#include "gbackup.h"
 
 #define EDIT_PATTERN 0
 #define EDIT_ORDERLIST 1
@@ -47,7 +49,7 @@
 
 #define VISIBLEPATTROWS 42
 #define VISIBLEORDERLIST 13
-#define VISIBLETABLEROWS 23
+#define VISIBLETABLEROWS 20
 #define VISIBLEFILES 30
 
 #define PGUPDNREPEAT 8
@@ -106,6 +108,7 @@ extern char textbuffer[MAX_PATHNAME];
 extern unsigned stereomode;
 extern char appdir[MAX_PATHNAME];
 extern char instrlibpath[MAX_PATHNAME];
+extern char examplespath[MAX_PATHNAME];
 extern unsigned char hexkeytbl[16];
 extern unsigned prgfrontend;
 extern unsigned themesetting;
@@ -148,9 +151,11 @@ void exportprg(void);
 void showinfo(void);
 void showmanual(void);
 void showwelcomewindow(void);
+void configpath(char *dest, const char *file);
 void showsidinfo(void);
 void helpscreenshot(const char *filename);
 int calcsonglength(int subtune);
+int calcsonglengthex(int subtune, int *stopped);
 void toggle_interpolation_mode(void);
 
 #endif

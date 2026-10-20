@@ -37,8 +37,11 @@
 #define INS_COL2_X (RP_X + 23)
 #define INS_VAL_OFS 16                // offset of the hex value inside a column
 
-#define TBL_Y 17                      // table header
-#define TBL_ROWS_Y 18
+#define ADSR_Y 16                     // ADSR graph (3 rows) below the instrument
+#define ADSR_W 31                     // graph width in cells
+
+#define TBL_Y 20                      // table header
+#define TBL_ROWS_Y 21
 #define TBL_X(t) (RP_X + 1 + (t) * 11)
 
 #define NAMES_Y 42                    // song info header

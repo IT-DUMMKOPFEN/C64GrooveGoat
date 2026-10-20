@@ -31,6 +31,9 @@ G = {
     'BAR2': 145, 'BAR3': 146, 'BAR4': 147, 'BAR5': 148, 'BAR6': 149, 'BAR7': 150,
     'BAR8': 151, 'SPEAKER': 152, 'MUTE': 153, 'SOLO': 154, 'PREV': 155, 'NEXT': 156,
     'PRG': 157, 'GEAR': 158, 'UNDO': 159,
+    # rarely used Latin-1 symbols replaced by UI glyphs
+    'WAVE': 164, 'FILM': 165, 'REDO': 166, 'STAR': 168, 'STAROFF': 172, 'DICE': 173,
+    'SEARCH': 175, 'ENV': 127,
 }
 
 def glyph_custom(code, cw, ch):
@@ -229,6 +232,47 @@ def glyph_custom(code, cw, ch):
     elif name == 'UNDO':
         d.arc([W * 0.2, H * 0.32, W * 0.85, H * 0.72], 180, 90 + 360, fill=255, width=lw)
         d.polygon([(W * 0.05, H * 0.50), (W * 0.35, H * 0.50), (W * 0.2, H * 0.36)], fill=255)
+    elif name == 'REDO':
+        d.arc([W * 0.15, H * 0.32, W * 0.8, H * 0.72], 90, 360, fill=255, width=lw)
+        d.polygon([(W * 0.95, H * 0.50), (W * 0.65, H * 0.50), (W * 0.8, H * 0.36)], fill=255)
+    elif name == 'WAVE':
+        # sound wave
+        pts = []
+        for k in range(41):
+            t = k / 40.0
+            pts.append((W * (0.06 + 0.88 * t), cy - H * 0.17 * math.sin(t * math.pi * 3) * (1 - abs(t - 0.5))))
+        d.line(pts, fill=255, width=lw, joint='curve')
+    elif name == 'FILM':
+        d.rectangle([W * 0.08, H * 0.32, W * 0.92, H * 0.68], fill=255)
+        for k in range(4):
+            x = W * (0.14 + k * 0.2)
+            d.rectangle([x, H * 0.35, x + W * 0.1, H * 0.39], fill=0)
+            d.rectangle([x, H * 0.61, x + W * 0.1, H * 0.65], fill=0)
+        d.rectangle([W * 0.14, H * 0.43, W * 0.86, H * 0.57], fill=0)
+    elif name in ('STAR', 'STAROFF'):
+        pts = []
+        for k in range(10):
+            a = -math.pi / 2 + k * math.pi / 5
+            r = W * (0.44 if k % 2 == 0 else 0.18)
+            pts.append((cx + math.cos(a) * r, cy + 0.02 * H + math.sin(a) * r))
+        if name == 'STAR':
+            d.polygon(pts, fill=255)
+        else:
+            d.polygon(pts, outline=255, width=max(SS, lw * 2 // 3))
+    elif name == 'DICE':
+        d.rounded_rectangle([W * 0.1, cy - W * 0.4, W * 0.9, cy + W * 0.4], radius=W * 0.14, fill=255)
+        r = W * 0.08
+        for (px, py) in ((0.3, -0.2), (0.7, -0.2), (0.5, 0.0), (0.3, 0.2), (0.7, 0.2)):
+            x, y = W * px, cy + W * py
+            d.ellipse([x - r, y - r, x + r, y + r], fill=0)
+    elif name == 'SEARCH':
+        r = W * 0.26
+        ox, oy = cx - W * 0.08, cy - W * 0.08
+        d.ellipse([ox - r, oy - r, ox + r, oy + r], outline=255, width=lw)
+        d.line([ox + r * 0.7, oy + r * 0.7, W * 0.92, cy + W * 0.4], fill=255, width=lw * 2)
+    elif name == 'ENV':
+        # ADSR envelope shape
+        d.line([(W * 0.05, H * 0.7), (W * 0.3, H * 0.3), (W * 0.48, H * 0.5), (W * 0.72, H * 0.5), (W * 0.95, H * 0.7)], fill=255, width=lw)
     else:
         return None
     return im.resize((cw, ch), Image.LANCZOS)
@@ -246,7 +290,9 @@ def render_font(cw, ch, fontfile, size):
     glyphs = []
     for code in range(256):
         g = None
-        if (32 <= code < 127) or (160 <= code < 256):
+        if code in G.values():
+            g = glyph_custom(code, cw, ch)
+        elif (32 <= code < 127) or (160 <= code < 256):
             c = chr(code)
             SS = 1
             g = Image.new('L', (cw, ch), 0)
@@ -254,8 +300,6 @@ def render_font(cw, ch, fontfile, size):
             adv = f.getlength(c)
             x = (cw - adv) / 2.0
             d.text((x, baseline), c, font=f, fill=255, anchor='ls')
-        else:
-            g = glyph_custom(code, cw, ch)
         if g is None:
             g = Image.new('L', (cw, ch), 0)
         glyphs.append(bytes(g.tobytes()))

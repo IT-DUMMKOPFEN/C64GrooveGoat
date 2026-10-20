@@ -218,3 +218,78 @@ int dlg_edithex(const char *title, const char *label, unsigned *value, int digit
   printmainscreen();
   return result == 1;
 }
+
+// Edit a line of text. Returns 1 if accepted. "decimal" allows only digits
+// and ':' (for times like 3:25).
+int dlg_edittext(const char *title, const char *label, char *text, int maxlen, int decimal)
+{
+  char buf[256];
+  int w, h = 7;
+  int x, y;
+  int result = -2;
+  int fieldw = maxlen < 40 ? maxlen + 1 : 40;
+
+  if (maxlen > 255) maxlen = 255;
+  strncpy(buf, text, maxlen);
+  buf[maxlen] = 0;
+  w = strlen(label) + fieldw + 10;
+  if ((title) && ((int)strlen(title) + 14 > w)) w = strlen(title) + 14;
+  if (w < 44) w = 44;
+  x = (MAX_COLUMNS - w) / 2;
+  y = (MAX_ROWS - h) / 2 - 2;
+  key = 0;
+  rawkey = 0;
+
+  while (result == -2)
+  {
+    int len = strlen(buf);
+    int ofs = len >= fieldw ? len - fieldw + 1 : 0;
+    char vis[64];
+    printstatus();
+    dlg_drawframe(x, y, w, h, title);
+    printtext(x + 3, y + 2, MKCOL(7, C_PANEL), label);
+    printblankc(x + 4 + strlen(label), y + 2, MKCOL(15, C_BEATROW), fieldw);
+    strncpy(vis, buf + ofs, fieldw);
+    vis[fieldw] = 0;
+    printtext(x + 4 + strlen(label), y + 2, MKCOL(15, C_BEATROW), vis);
+    printcursor(x + 4 + strlen(label) + len - ofs, y + 2, 1);
+    printtext(x + 3, y + 4, MKCOL(3, C_PANEL), "ENTER = OK, ESC = cancel");
+    fliptoscreen();
+    getkey();
+    if (win_quitted)
+    {
+      result = 0;
+      break;
+    }
+    if ((key >= 32) && (key < 256) && (len < maxlen) && (rawkey != KEY_ENTER) && (rawkey != KEY_ESC))
+    {
+      if ((!decimal) || ((key >= '0') && (key <= '9')) || (key == ':') || (key == '.'))
+      {
+        buf[len] = key;
+        buf[len + 1] = 0;
+      }
+    }
+    switch (rawkey)
+    {
+      case KEY_BACKSPACE:
+      if (len > 0) buf[len - 1] = 0;
+      break;
+      case KEY_DEL:
+      buf[0] = 0;
+      break;
+      case KEY_ENTER:
+      result = 1;
+      break;
+      case KEY_ESC:
+      result = 0;
+      break;
+    }
+    if ((mouseb & MOUSEB_LEFT) && (!prevmouseb) && ((mousex < x) || (mousex >= x + w) || (mousey < y) || (mousey >= y + h)))
+      result = 0;
+  }
+  key = 0;
+  rawkey = 0;
+  if (result == 1) strcpy(text, buf);
+  printmainscreen();
+  return result == 1;
+}

@@ -62,10 +62,40 @@ int ui_hitbutton(int mx, int my, int *param)
 }
 
 // A button: label drawn with button colors; "active" shows it highlighted
+static int hoverbtn = 0;
+
+// Short help for buttons, shown in the message line while the mouse is over them
+static const char *buttonhint(int id)
+{
+  switch (id)
+  {
+    case BTN_NEW: return "New song (clears everything)";
+    case BTN_OPEN: return "Load a song (.sng, .ggt) - F10";
+    case BTN_SAVE: return "Save the song - F11 (a .bak copy of the previous version is kept)";
+    case BTN_INSLOAD: return "Load an instrument (.ins)";
+    case BTN_INSSAVE: return "Save the current instrument (.ins)";
+    case BTN_EXPORTSID: return "Export a .sid file for SID players (PSID v2/v3/v5) - F9";
+    case BTN_EXPORTPRG: return "Export a C64 program (.prg), optionally with a player screen";
+    case BTN_EXPORTAUDIO: return "Export audio: WAV (also single voices) or MP3 - Ctrl+F9";
+    case BTN_EXPORTVIDEO: return "Export an MP4 video (720p) with an oscilloscope for every voice";
+    case BTN_THEME: return "Switch between the night (C64 blue) and the day theme";
+    case BTN_HELP: return "Help: keys and commands - F12";
+    case BTN_INFO: return "Version, author, credits and licenses";
+    case BTN_UNDO: return "Undo the last change - Ctrl+Z";
+    case BTN_REDO: return "Redo - Ctrl+Y or Ctrl+Shift+Z";
+    case BTN_KBDLAYOUT: return "Keyboard layout for shortcuts (EN: QWERTY, DE: QWERTZ - Z and Y swapped)";
+    case BTN_LIBRARY: return "Instrument library: search, favourites, preview and load";
+    case BTN_RANDOMINS: return "Random instrument generator (bass, drums, leads, pads, strings ...)";
+    case BTN_ADSRGRAPH: return "ADSR envelope of the instrument (Attack/Decay and Sustain/Release)";
+  }
+  return NULL;
+}
+
 void ui_drawbutton(int x, int y, const char *label, int id, int param, int active)
 {
   int w = strlen(label);
   int hover = (mousey == y) && (mousex >= x) && (mousex < x + w);
+  if (hover) hoverbtn = id;
   int bg = active ? C_BUTTONHI : C_BUTTON;
   if ((hover) && (!active)) bg = C_SELECT;
   printtext(x, y, MKCOL(C_BUTTONTEXT, bg), label);
@@ -159,16 +189,18 @@ static void drawtoolbar(void)
   ui_drawbutton(x, TOOLBAR_Y, " " GS_DISK " Save ", BTN_SAVE, 0, 0); x += 9;
   ui_drawbutton(x, TOOLBAR_Y, " " GS_LOADINS " Load Ins ", BTN_INSLOAD, 0, 0); x += 13;
   ui_drawbutton(x, TOOLBAR_Y, " " GS_SAVEINS " Save Ins ", BTN_INSSAVE, 0, 0); x += 13;
-  ui_drawbutton(x, TOOLBAR_Y, " " GS_CHIP " Export SID ", BTN_EXPORTSID, 0, 0); x += 15;
-  ui_drawbutton(x, TOOLBAR_Y, " " GS_PRG " Export PRG ", BTN_EXPORTPRG, 0, 0); x += 15;
+  ui_drawbutton(x, TOOLBAR_Y, " " GS_CHIP " SID ", BTN_EXPORTSID, 0, 0); x += 8;
+  ui_drawbutton(x, TOOLBAR_Y, " " GS_PRG " PRG ", BTN_EXPORTPRG, 0, 0); x += 8;
+  ui_drawbutton(x, TOOLBAR_Y, " " GS_WAVE " Audio ", BTN_EXPORTAUDIO, 0, 0); x += 10;
+  ui_drawbutton(x, TOOLBAR_Y, " " GS_FILM " Video ", BTN_EXPORTVIDEO, 0, 0); x += 10;
 
-  x = MAX_COLUMNS - 30;
+  x = MAX_COLUMNS - 21;
   if (theme == THEME_NIGHT)
-    ui_drawbutton(x, TOOLBAR_Y, " " GS_MOON " Night ", BTN_THEME, 0, 0);
+    ui_drawbutton(x, TOOLBAR_Y, " " GS_MOON " ", BTN_THEME, 0, 0);
   else
-    ui_drawbutton(x, TOOLBAR_Y, " " GS_SUN " Day   ", BTN_THEME, 0, 0);
-  x += 11;
-  ui_drawbutton(x, TOOLBAR_Y, " " GS_HELP " Help ", BTN_HELP, 0, 0); x += 10;
+    ui_drawbutton(x, TOOLBAR_Y, " " GS_SUN " ", BTN_THEME, 0, 0);
+  x += 4;
+  ui_drawbutton(x, TOOLBAR_Y, " " GS_HELP " Help ", BTN_HELP, 0, 0); x += 9;
   ui_drawbutton(x, TOOLBAR_Y, " " GS_INFO " Info ", BTN_INFO, 0, 0);
 
   (void)buf;
@@ -556,7 +588,8 @@ static void drawinstrument(void)
   ui_addbutton(RP_X + 12, INS_Y, 4, BTN_INSTRNUM, 0);
   sprintf(buf, "%-16s", instr[editorInfo.einum].name);
   printtext(RP_X + 17, INS_Y, MKCOL(C_RB3, active ? C_BUTTONHI : C_HEADER), buf);
-  ui_drawbutton(RP_X + RP_W - 10, INS_Y, " Library ", BTN_LIBRARY, 0, 0);
+  ui_drawbutton(RP_X + RP_W - 12, INS_Y, " " GS_DICE " ", BTN_RANDOMINS, 0, 0);
+  ui_drawbutton(RP_X + RP_W - 9, INS_Y, " Library ", BTN_LIBRARY, 0, 0);
 
   fillarea(RP_X, INS_ROWS_Y, RP_W, 5, MKCOL(8, C_PANEL), ' ');
   vals[0] = instr[editorInfo.einum].ad;
@@ -576,6 +609,25 @@ static void drawinstrument(void)
     printtext(x, y, MKCOL(sel ? CEDIT : 7, C_PANEL), names[c]);
     sprintf(buf, "%02X", vals[c]);
     printtext(x + INS_VAL_OFS, y, MKCOL(sel ? CEDIT : 15, C_PANEL), buf);
+  }
+
+  // ADSR envelope graph
+  {
+    int ad = instr[editorInfo.einum].ad, sr = instr[editorInfo.einum].sr;
+    char t[16];
+    int tx = RP_X + ADSR_W + 2;
+    fillarea(RP_X, ADSR_Y, RP_W, 3, MKCOL(8, C_PANEL), ' ');
+    drawadsrgraph(0, RP_X + 1, ADSR_Y, ADSR_W, 3, ad, sr, MKCOL(11, C_PANEL));
+    adsr_timestr(t, adsr_attackms(ad >> 4));
+    sprintf(buf, "A %8s", t);
+    printtext(tx, ADSR_Y, MKCOL(7, C_PANEL), buf);
+    adsr_timestr(t, adsr_decayms(ad & 15));
+    sprintf(buf, "D %8s", t);
+    printtext(tx, ADSR_Y + 1, MKCOL(7, C_PANEL), buf);
+    adsr_timestr(t, adsr_decayms(sr & 15));
+    sprintf(buf, "S%X R%7s", sr >> 4, t);
+    printtext(tx, ADSR_Y + 2, MKCOL(7, C_PANEL), buf);
+    ui_addbutton(RP_X, ADSR_Y, RP_W, BTN_ADSRGRAPH, 0);
   }
 
   if ((editorInfo.editmode == EDIT_INSTRUMENT) && (!eamode))
@@ -705,7 +757,7 @@ static void drawstatusarea(void)
   x += strlen(buf) + 2;
   ui_drawbutton(x, STATUS_Y, " " GS_UNDO " Undo ", BTN_UNDO, 0, 0);
   x += 9;
-  ui_drawbutton(x, STATUS_Y, " Redo " GS_NEXT " ", BTN_REDO, 0, 0);
+  ui_drawbutton(x, STATUS_Y, " " GS_REDO " Redo ", BTN_REDO, 0, 0);
 
   // Play status and time
   if (editorInfo.multiplier)
@@ -769,7 +821,12 @@ static void drawstatusarea(void)
     messagetimer = 50 * 6;
   }
   printblankc(0, MESSAGE_Y, MKCOL(C_HEADERTEXT, C_HEADER), MAX_COLUMNS);
-  if ((messagetimer > 0) && (shownmessage[0]))
+  if (buttonhint(hoverbtn))
+  {
+    printglyph(1, MESSAGE_Y, MKCOL(C_RB5, C_HEADER), GL_INFO);
+    printtext(3, MESSAGE_Y, MKCOL(C_HEADERTEXT, C_HEADER), buttonhint(hoverbtn));
+  }
+  else if ((messagetimer > 0) && (shownmessage[0]))
   {
     messagetimer--;
     printglyph(1, MESSAGE_Y, MKCOL(C_RB3, C_HEADER), GL_BULLET);
@@ -786,6 +843,7 @@ static void drawstatusarea(void)
     printtext(VOL_LABEL_X - 75, MESSAGE_Y, MKCOL(C_BUTTONHI == C_HEADER ? 7 : C_RB5, C_HEADER),
       "F1 Play  F4 Stop  F5-F8 Editors  F9 Export  F10 Load  F11 Save  F12 Help");
   }
+  hoverbtn = 0;
 
   // Output volume slider
   {
@@ -820,7 +878,7 @@ void printstatus(void)
   draworderlist();
   printblankc(RP_X, ORD_ROWS_Y + VISIBLEORDERCHNS, MKCOL(8, 0), RP_W);
   drawinstrument();
-  printblankc(RP_X, INS_ROWS_Y + 5, MKCOL(8, 0), RP_W);
+  printblankc(RP_X, ADSR_Y + 3, MKCOL(8, 0), RP_W);
   drawtables();
   printblankc(RP_X, TBL_ROWS_Y + VISIBLETABLEROWS, MKCOL(8, 0), RP_W);
   drawnames();

@@ -267,6 +267,52 @@ static TILEIMAGE *findtile(int glyph, int *tx, int *ty)
   return NULL;
 }
 
+// ---------------------------------------------------------------------------
+// Canvases: small pixel graphics (alpha masks at 16x32 pixels per cell) that
+// are drawn with the colours of the cells they cover, e.g. the ADSR graph
+// ---------------------------------------------------------------------------
+
+#define CANVAS_BASE 0xe000
+
+static inline void setcharcolor(unsigned *dptr, int ch, int color);
+#define CANVAS_CELLS 512
+
+static unsigned char canvasbuf[MAX_CANVAS][CANVAS_MAXCH * 32 * CANVAS_MAXCW * 16];
+static unsigned char canvasprev[MAX_CANVAS][CANVAS_MAXCH * 32 * CANVAS_MAXCW * 16];
+static int canvascw[MAX_CANVAS];
+static int canvasch[MAX_CANVAS];
+
+unsigned char *canvas_begin(int id, int cw, int ch)
+{
+  if ((id < 0) || (id >= MAX_CANVAS)) return NULL;
+  if (cw > CANVAS_MAXCW) cw = CANVAS_MAXCW;
+  if (ch > CANVAS_MAXCH) ch = CANVAS_MAXCH;
+  canvascw[id] = cw;
+  canvasch[id] = ch;
+  memset(canvasbuf[id], 0, sizeof canvasbuf[id]);
+  return canvasbuf[id];
+}
+
+void canvas_draw(int id, int x, int y, int color)
+{
+  int cx, cy;
+  int changed;
+  if ((id < 0) || (id >= MAX_CANVAS) || (!scrbuffer)) return;
+  changed = memcmp(canvasbuf[id], canvasprev[id], sizeof canvasbuf[id]) != 0;
+  if (changed) memcpy(canvasprev[id], canvasbuf[id], sizeof canvasbuf[id]);
+  for (cy = 0; cy < canvasch[id]; cy++)
+  {
+    for (cx = 0; cx < canvascw[id]; cx++)
+    {
+      int idx;
+      if ((x + cx < 0) || (x + cx >= MAX_COLUMNS) || (y + cy < 0) || (y + cy >= MAX_ROWS)) continue;
+      idx = (x + cx) + (y + cy) * MAX_COLUMNS;
+      setcharcolor(scrbuffer + idx, CANVAS_BASE + id * CANVAS_CELLS + cy * canvascw[id] + cx, color);
+      if ((changed) && (prevscrbuffer)) prevscrbuffer[idx] = 0xffffffff;
+    }
+  }
+}
+
 void drawimage(int x, int y, const char *name, int cellsw, int cellsh)
 {
   TILEIMAGE *t = gettileimage(name, cellsw, cellsh);
@@ -602,6 +648,33 @@ static void rendercell(int x, int y, unsigned cell)
   Uint32 *dst = fb + (y * ch) * fbw + x * cw;
   int px, py;
 
+  if (glyph >= CANVAS_BASE)
+  {
+    int id = (glyph - CANVAS_BASE) / CANVAS_CELLS;
+    int idx = (glyph - CANVAS_BASE) % CANVAS_CELLS;
+    int ccw = canvascw[id] ? canvascw[id] : 1;
+    int tx = idx % ccw, ty = idx / ccw;
+    const int stride = CANVAS_MAXCW * 16;
+    const unsigned char *a = canvasbuf[id] + (ty * 32) * stride + tx * 16;
+    for (py = 0; py < ch; py++)
+    {
+      for (px = 0; px < cw; px++)
+      {
+        unsigned v;
+        if (scale == 1)
+        {
+          const unsigned char *q = a + (py * 2) * stride + px * 2;
+          v = (q[0] + q[1] + q[stride] + q[stride + 1] + 2) >> 2;
+        }
+        else v = a[py * stride + px];
+        if (!v) dst[px] = bgc;
+        else if (v == 255) dst[px] = fgc;
+        else dst[px] = blend(bgc, fgc, v);
+      }
+      dst += fbw;
+    }
+    return;
+  }
   if (glyph < 256)
   {
     const unsigned char *a = (scale == 1 ? res_font1 : res_font2) + glyph * cw * ch;
