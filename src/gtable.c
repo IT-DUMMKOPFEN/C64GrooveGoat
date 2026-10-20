@@ -913,10 +913,76 @@ int makespeedtable(unsigned data, int mode, int makenew)
   return -1;
 }
 
+// Does a pattern or wavetable command with this command number refer to table "num"?
+static int cmdusestable(int num, int cmd)
+{
+  if (num < STBL) return cmd == CMD_SETWAVEPTR + num;
+  return (cmd == CMD_FUNKTEMPO) || ((cmd >= CMD_PORTAUP) && (cmd <= CMD_VIBRATO));
+}
+
+// Is any row of table "num" in [pos, pos+len) used by something else than
+// instrument "ins": another instrument, a jump from outside the range, a
+// wavetable command or a pattern command?
+int tablepartreferenced(int num, int pos, int len, int ins)
+{
+  int c, d;
+  // A program started at row "e" runs until its end (jump row). It uses the
+  // part if the two ranges overlap - e.g. another instrument whose program
+  // starts earlier and runs through the rows of this instrument.
+  #define USES(e) (((e) >= 0) && ((e) < pos + len) && ((e) + gettablepartlen(num, (e)) > pos))
+
+  for (c = 1; c < MAX_INSTR; c++)
+  {
+    if ((c != ins) && (instr[c].ptr[num]))
+    {
+      int e = instr[c].ptr[num] - 1;
+      if (USES(e)) return 1;
+    }
+  }
+  if (num != STBL)
+  {
+    for (c = 0; c < MAX_TABLELEN; c++)
+    {
+      if ((c >= pos) && (c < pos + len)) continue;
+      if ((ltable[num][c] == 0xff) && (rtable[num][c]))
+      {
+        int e = rtable[num][c] - 1;
+        if (USES(e)) return 1;
+      }
+    }
+  }
+  for (c = 0; c < MAX_TABLELEN; c++)
+  {
+    if ((num == WTBL) && (c >= pos) && (c < pos + len)) continue;
+    if ((ltable[WTBL][c] >= WAVECMD) && (ltable[WTBL][c] <= WAVELASTCMD) &&
+        (cmdusestable(num, ltable[WTBL][c] & 0xf)) && (rtable[WTBL][c]))
+    {
+      int e = rtable[WTBL][c] - 1;
+      if (USES(e)) return 1;
+    }
+  }
+  for (c = 0; c < MAX_PATT; c++)
+  {
+    for (d = 0; d < pattlen[c]; d++)
+    {
+      if ((cmdusestable(num, pattern[c][d*4+2])) && (pattern[c][d*4+3]))
+      {
+        int e = pattern[c][d*4+3] - 1;
+        if (USES(e)) return 1;
+      }
+    }
+  }
+  #undef USES
+  return 0;
+}
+
+// Delete the table data of an instrument. Rows that are still used by other
+// instruments, jumps, wavetable commands or pattern commands (e.g. a shared
+// vibrato speed, or a wavetable program that patterns start with 8XY) are
+// kept, because deleting them would change how the song plays.
 void deleteinstrtable(int i)
 {
-  int c,d;
-  int eraseok = 1;
+  int c;
 
   for (c = 0; c < MAX_TABLES; c++)
   {
@@ -925,17 +991,12 @@ void deleteinstrtable(int i)
       int pos = instr[i].ptr[c]-1;
       int len = gettablepartlen(c, pos);
 
-      // Check that this table area isn't used by another instrument
-      for (d = 1; d < MAX_INSTR; d++)
+      if ((len > 0) && (!tablepartreferenced(c, pos, len, i)))
       {
-        if ((d != i) && (instr[d].ptr[c]))
-        {
-          int cmppos = instr[d].ptr[c]-1;
-          if ((cmppos >= pos) && (cmppos < pos+len)) eraseok = 0;
-        }
-      }
-      if (eraseok)
+        // the instrument itself no longer points to the deleted rows
+        instr[i].ptr[c] = 0;
         while (len--) deletetable(c, pos);
+      }
     }
   }
 }

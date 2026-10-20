@@ -23,7 +23,8 @@ based on GoatTracker 2 by Lasse Oorni (Cadaver) and its "Silver Fork".
 - Audio export: WAV (also every voice as its own file) and MP3
 - Video export: MP4 (720p) with an oscilloscope for every voice
 - Night theme in the original C64 blue and a day theme
-- Built-in manual with search (Help -> Manual) and keyboard reference (F12)
+- Built-in manual with search (Help -> Manual), the history of C64 SID music
+  (Help -> History) and keyboard reference (F12)
 
 
 Starting

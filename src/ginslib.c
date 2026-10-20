@@ -220,9 +220,8 @@ static void buildview(void)
 // Preview (temporarily loads the instrument into the current slot)
 // ---------------------------------------------------------------------------
 
-static INSTR backupinstr;
-static unsigned char backupl[MAX_TABLES][MAX_TABLELEN];
-static unsigned char backupr[MAX_TABLES][MAX_TABLELEN];
+// complete copy of instruments, tables and patterns before the preview
+static void *previewdata = NULL;
 static int previewing = 0;
 
 static void restoreslot(void)
@@ -230,9 +229,7 @@ static void restoreslot(void)
   if (!previewing) return;
   snd_lock();
   releasenote(editorInfo.epchn);
-  memcpy(&instr[editorInfo.einum], &backupinstr, sizeof(INSTR));
-  memcpy(ltable, backupl, sizeof ltable);
-  memcpy(rtable, backupr, sizeof rtable);
+  songdata_restore(previewdata);
   snd_unlock();
   previewing = 0;
 }
@@ -251,7 +248,7 @@ static int loadintoslot(const LIBENTRY *e)
   instrfilename[MAX_FILENAME - 1] = 0;
   loadinstrument();
   strcpy(instrfilename, save);
-  return 1;
+  return !instrloadfailed;
 }
 
 static void preview(const LIBENTRY *e)
@@ -265,19 +262,19 @@ static void preview(const LIBENTRY *e)
   releasenote(editorInfo.epchn);
   if (previewing)
   {
-    memcpy(&instr[editorInfo.einum], &backupinstr, sizeof(INSTR));
-    memcpy(ltable, backupl, sizeof ltable);
-    memcpy(rtable, backupr, sizeof rtable);
+    songdata_restore(previewdata);
   }
   else
   {
-    memcpy(&backupinstr, &instr[editorInfo.einum], sizeof(INSTR));
-    memcpy(backupl, ltable, sizeof ltable);
-    memcpy(backupr, rtable, sizeof rtable);
+    songdata_free(previewdata);
+    previewdata = songdata_save();
   }
   previewing = 1;
   if (loadintoslot(e))
+  {
+    adaptfiltervoices(editorInfo.einum, 1 << (editorInfo.epchn % 3));
     preview_note(FIRSTNOTE + editorInfo.epoctave * 12, editorInfo.einum, editorInfo.epchn);
+  }
   snd_unlock();
 }
 
@@ -458,7 +455,7 @@ void instrumentlibrary(void)
     }
 
     printtext(x0 + 3, y0 + LIB_H - 3, MKCOL(3, C_PANEL),
-      "Type to search  UP/DOWN/PGUP/PGDN select  LEFT/RIGHT category  TAB 6581/8580  SPACE preview  INS or * favourite");
+      "Type to search  UP/DOWN/PGUP/PGDN select  LEFT/RIGHT category  TAB 6581/8580  SPACE or click: preview  INS/* favourite");
     printtext(x0 + 3, y0 + LIB_H - 2, MKCOL(3, C_PANEL), "ENTER / double click = load into the instrument slot   ESC = close");
 
     fliptoscreen();
@@ -496,6 +493,12 @@ void instrumentlibrary(void)
         Uint32 now = SDL_GetTicks();
         if ((hitrow == lastclickpos) && (now - lastclicktime < 450))
           rawkey = KEY_ENTER;
+        else
+        {
+          // a click selects the instrument and plays it at once
+          rawkey = isplaying() ? 0 : KEY_SPACE;
+          if (isplaying()) setstatusmessage("Stop the music to preview instruments");
+        }
         libpos = hitrow;
         lastclickpos = hitrow;
         lastclicktime = now;
@@ -528,6 +531,9 @@ void instrumentlibrary(void)
       buildview();
     }
     if (key == '*') rawkey = KEY_INS;
+
+    // the selection may have been changed by the mouse
+    sel = viewcount ? &lib[view[libpos]] : NULL;
 
     switch (rawkey)
     {
@@ -590,6 +596,10 @@ void instrumentlibrary(void)
         ud = undoinstrbegin();
         if (loadintoslot(sel))
         {
+          // filter only the voices on which the instrument is used in the song
+          int mask = instrumentvoicemask(editorInfo.einum);
+          if (!mask) mask = 1 << (editorInfo.epchn % 3);
+          adaptfiltervoices(editorInfo.einum, mask);
           songmodified = 1;
           snprintf(statusmessage, sizeof statusmessage, "Loaded %s (%s) into instrument slot %02X", sel->name, catnames[sel->cat], editorInfo.einum);
         }
@@ -602,6 +612,8 @@ void instrumentlibrary(void)
   if (done != 2) restoreslot();
   previewing = 0;
   preview_end();
+  songdata_free(previewdata);
+  previewdata = NULL;
   key = rawkey = 0;
   printmainscreen();
 }
@@ -661,4 +673,148 @@ int library_previewtest(int step)
   preview_end();
   printf("tested %d, silent %d\n", tested, silent);
   return silent == 0;
+}
+
+// ---------------------------------------------------------------------------
+// Test helper (GG_REPLACETEST): replaces every instrument of the loaded song
+// with library instruments and checks that everything else in the song still
+// plays the same table programs
+// ---------------------------------------------------------------------------
+
+static int progsig(char *out, int t, int ptr, int depth)
+{
+  int pos, n = 0, steps;
+  if ((!ptr) || (t < 0) || (t >= MAX_TABLES)) return sprintf(out, "-");
+  pos = ptr - 1;
+  if (t == STBL) return sprintf(out, "S%02x%02x", ltable[STBL][pos], rtable[STBL][pos]);
+  for (steps = 0; (steps < 64) && (pos < MAX_TABLELEN); steps++, pos++)
+  {
+    unsigned char l = ltable[t][pos], r = rtable[t][pos];
+    if (l == 0xff)
+    {
+      // loop inside the program: relative offset; jump elsewhere: what is there
+      if (!r) n += sprintf(out + n, "END");
+      else if ((r - 1 >= ptr - 1) && (r - 1 <= pos)) n += sprintf(out + n, "L%d", r - 1 - (ptr - 1));
+      else if (depth < 2)
+      {
+        n += sprintf(out + n, "T(");
+        n += progsig(out + n, t, r, depth + 1);
+        n += sprintf(out + n, ")");
+      }
+      break;
+    }
+    n += sprintf(out + n, "%02x%02x.", l, r);
+    // wavetable commands that point into other tables
+    if ((t == WTBL) && (l >= WAVECMD) && (l <= WAVELASTCMD) && (depth < 1))
+    {
+      int cmd = l & 0xf;
+      if ((cmd >= CMD_SETWAVEPTR) && (cmd <= CMD_SETWAVEPTR + 2)) n += progsig(out + n, cmd - CMD_SETWAVEPTR, r, depth + 1);
+      if (((cmd >= CMD_PORTAUP) && (cmd <= CMD_VIBRATO)) || (cmd == CMD_FUNKTEMPO)) n += progsig(out + n, STBL, r, depth + 1);
+    }
+  }
+  return n;
+}
+
+char *songsignature(int skipins)
+{
+  static char *buf = NULL;
+  int n = 0, i, t, p, d;
+  if (!buf) buf = (char *)malloc(8 * 1024 * 1024);
+  for (i = 1; i < MAX_INSTR; i++)
+  {
+    if (i == skipins) continue;
+    n += sprintf(buf + n, "I%d:%02x%02x%02x%02x%02x:", i, instr[i].ad, instr[i].sr, instr[i].vibdelay, instr[i].gatetimer, instr[i].firstwave);
+    for (t = 0; t < MAX_TABLES; t++)
+    {
+      n += progsig(buf + n, t, instr[i].ptr[t], 0);
+      buf[n++] = '|';
+    }
+  }
+  for (p = 0; p < MAX_PATT; p++)
+  {
+    for (d = 0; d < pattlen[p]; d++)
+    {
+      int cmd = pattern[p][d*4+2], data = pattern[p][d*4+3];
+      n += sprintf(buf + n, "%02x%02x%02x", pattern[p][d*4], pattern[p][d*4+1], cmd);
+      if ((cmd >= CMD_SETWAVEPTR) && (cmd <= CMD_SETWAVEPTR + 2)) n += progsig(buf + n, cmd - CMD_SETWAVEPTR, data, 0);
+      else if ((((cmd >= CMD_PORTAUP) && (cmd <= CMD_VIBRATO)) || (cmd == CMD_FUNKTEMPO)) && (data)) n += progsig(buf + n, STBL, data, 0);
+      else n += sprintf(buf + n, "%02x", data);
+    }
+  }
+  buf[n] = 0;
+  return buf;
+}
+
+int library_replacetest(void)
+{
+  int ins, errors = 0, k;
+  void *orig;
+  scanlibrary();
+  curmodel = editorInfo.sidmodel ? 1 : 0;
+  curcat = 0;
+  search[0] = 0;
+  buildview();
+  orig = songdata_save();
+  for (ins = 1; ins < MAX_INSTR; ins++)
+  {
+    char *before;
+    void *state;
+    int mask = instrumentvoicemask(ins);
+    if ((!instr[ins].ptr[WTBL]) && (!mask)) continue;
+    songdata_restore(orig);
+    editorInfo.einum = ins;
+    before = strdup(songsignature(ins));
+    state = songdata_save();
+
+    // 1. many previews, then cancel: nothing may change
+    previewing = 0;
+    for (k = 0; k < 40; k++) preview(&lib[view[(k * 131 + ins * 7) % viewcount]]);
+    restoreslot();
+    {
+      void *now = songdata_save();
+      if (memcmp(now, state, sizeof(instr) + sizeof(ltable) + sizeof(rtable) + sizeof(pattern)))
+      {
+        printf("instrument %02X: previews changed the song data\n", ins);
+        errors++;
+      }
+      songdata_free(now);
+    }
+
+    // 2. load library instruments into the slot: the rest of the song must stay the same
+    for (k = 0; k < 5; k++)
+    {
+      const LIBENTRY *e = &lib[view[(k * 977 + ins * 31) % viewcount]];
+      if (loadintoslot(e))
+      {
+        int m = mask ? mask : 1;
+        adaptfiltervoices(ins, m);
+        if (strcmp(before, songsignature(ins)))
+        {
+          const char *a = before, *b = songsignature(ins);
+          int i = 0;
+          while ((a[i]) && (a[i] == b[i])) i++;
+          if (getenv("GG_REPLACEDEBUG")) printf("diff at %d: ...%.60s\n                ...%.60s\n", i, a + (i > 20 ? i - 20 : 0), b + (i > 20 ? i - 20 : 0));
+          printf("instrument %02X replaced by %s: the rest of the song changed\n", ins, e->path);
+          errors++;
+        }
+        if (instr[ins].ptr[FTBL])
+        {
+          int p = instr[ins].ptr[FTBL] - 1;
+          if ((ltable[FTBL][p] >= 0x80) && ((rtable[FTBL][p] & 7) != (m & 7)))
+          {
+            printf("instrument %02X: filter routing %x, used on voices %x\n", ins, rtable[FTBL][p] & 7, m);
+            errors++;
+          }
+        }
+      }
+      else printf("instrument %02X: %s did not fit (%s)\n", ins, e->path, statusmessage);
+    }
+    printf("instrument %02X (voices %x): ok\n", ins, mask);
+    free(before);
+    songdata_free(state);
+  }
+  songdata_restore(orig);
+  songdata_free(orig);
+  printf("errors: %d\n", errors);
+  return errors == 0;
 }

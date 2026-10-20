@@ -344,6 +344,7 @@ def main():
         ('mplayer.s', 'src/mplayer.s'),
         ('frontend.s', 'src/frontend.s'),
         ('manual.txt', 'docs/manual.txt'),
+        ('history.txt', 'docs/history.txt'),
         ('credits.txt', 'docs/credits.txt'),
     ]
     flist = []
@@ -353,6 +354,9 @@ def main():
             print('warning: missing', p)
             continue
         data = open(p, 'rb').read()
+        if name.endswith('.txt'):
+            # the fonts use Latin-1 (e.g. "Hülsbeck", "Öörni")
+            data = data.decode('utf-8').encode('latin-1', 'replace')
         lines.append('static const unsigned char res_file%d[%d] = {' % (i, len(data) + 1))
         lines.append(cbytes(data + b'\0'))
         lines.append('};')

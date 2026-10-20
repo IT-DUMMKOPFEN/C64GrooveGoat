@@ -285,3 +285,55 @@ void undoinstrend(void *ed)
   if (undoValidateUndoAreas((GTUNDO_OBJECT *)ed) == 0)
     undoFreeUndoObject((GTUNDO_OBJECT *)ed);
 }
+
+// Voices (bit 0-2 = voice 1-3 of a SID) on which an instrument is used in
+// the song: all subtunes, all channels, all patterns of the orderlists
+int instrumentvoicemask(int ins)
+{
+  int mask = 0, s, c, p, d;
+  static unsigned char used[MAX_PATT];
+  for (c = 0; c < numchannels; c++)
+  {
+    memset(used, 0, sizeof used);
+    for (s = 0; s < MAX_SONGS; s++)
+    {
+      for (p = 0; p < MAX_SONGLEN; p++)
+      {
+        unsigned char v = songorder[s][c][p];
+        if (v == LOOPSONG) break;
+        if (v < MAX_PATT) used[v] = 1;
+      }
+    }
+    for (p = 0; p < MAX_PATT; p++)
+    {
+      if (!used[p]) continue;
+      for (d = 0; d < pattlen[p]; d++)
+      {
+        if (pattern[p][d*4+1] == ins)
+        {
+          mask |= 1 << (c % 3);
+          break;
+        }
+      }
+    }
+  }
+  return mask;
+}
+
+// Set the voice bits of the filter routing in the filtertable program of an
+// instrument. Instruments from the library route all three voices through
+// the filter, which would also filter the other voices of the song.
+void adaptfiltervoices(int ins, int mask)
+{
+  int pos, len, c;
+  if ((ins <= 0) || (ins >= MAX_INSTR) || (!instr[ins].ptr[FTBL]) || (!mask)) return;
+  pos = instr[ins].ptr[FTBL] - 1;
+  len = gettablepartlen(FTBL, pos);
+  // never change a filter program that something else uses too
+  if (tablepartreferenced(FTBL, pos, len, ins)) return;
+  for (c = pos; (c < pos + len) && (c < MAX_TABLELEN); c++)
+  {
+    if ((ltable[FTBL][c] >= 0x80) && (ltable[FTBL][c] != 0xff))
+      rtable[FTBL][c] = (rtable[FTBL][c] & 0xf0) | (mask & 0x0f);
+  }
+}

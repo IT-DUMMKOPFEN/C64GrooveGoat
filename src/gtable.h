@@ -26,6 +26,7 @@ void deletetable(int num, int pos);
 int makespeedtable(unsigned data, int mode, int makenew);
 void optimizetable(int num);
 void deleteinstrtable(int i);
+int tablepartreferenced(int num, int pos, int len, int ins);
 int gettablelen(int num);
 int gettablepartlen(int num, int pos);
 void gototable(int num, int pos);

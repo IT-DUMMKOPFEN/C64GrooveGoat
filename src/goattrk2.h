@@ -150,6 +150,7 @@ void exportsid(void);
 void exportprg(void);
 void showinfo(void);
 void showmanual(void);
+void showhistory(void);
 void showwelcomewindow(void);
 void configpath(char *dest, const char *file);
 void showsidinfo(void);

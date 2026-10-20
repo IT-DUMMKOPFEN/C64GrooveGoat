@@ -95,7 +95,7 @@ OBJS = $(addprefix $(BUILDDIR)/,$(CSRC:.c=.o) $(CXXSRC:.cpp=.o) $(RESIDSRC:.cpp=
 
 all: $(EXE)
 
-$(SRCDIR)/gres.c: tools/mkres.py tools/mklogo.py $(SRCDIR)/player.s $(SRCDIR)/altplayer.s $(SRCDIR)/mplayer.s $(SRCDIR)/frontend.s docs/manual.txt docs/credits.txt
+$(SRCDIR)/gres.c: tools/mkres.py tools/mklogo.py $(SRCDIR)/player.s $(SRCDIR)/altplayer.s $(SRCDIR)/mplayer.s $(SRCDIR)/frontend.s docs/manual.txt docs/history.txt docs/credits.txt
 	python3 tools/mkres.py
 
 $(BUILDDIR)/codecs/lame/%.o: $(SRCDIR)/codecs/lame/%.c $(SRCDIR)/codecs/lame/config.h

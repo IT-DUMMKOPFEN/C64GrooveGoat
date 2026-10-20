@@ -1259,6 +1259,77 @@ void loadsong(void)
   }
 }
 
+// Snapshots of all data that loading or deleting an instrument can change:
+// the instruments (table pointers of all instruments move when table rows are
+// deleted), the tables and the patterns (table commands like 8XY or 4XY are
+// renumbered). Used by the instrument previews, which load instruments only
+// temporarily.
+typedef struct
+{
+  INSTR instr[MAX_INSTR];
+  unsigned char l[MAX_TABLES][MAX_TABLELEN];
+  unsigned char r[MAX_TABLES][MAX_TABLELEN];
+  unsigned char patt[MAX_PATT][MAX_PATTROWS*4+4];
+} SONGDATA;
+
+void *songdata_save(void)
+{
+  SONGDATA *d = (SONGDATA *)malloc(sizeof(SONGDATA));
+  if (!d) return NULL;
+  memcpy(d->instr, instr, sizeof instr);
+  memcpy(d->l, ltable, sizeof ltable);
+  memcpy(d->r, rtable, sizeof rtable);
+  memcpy(d->patt, pattern, sizeof pattern);
+  return d;
+}
+
+void songdata_restore(const void *data)
+{
+  const SONGDATA *d = (const SONGDATA *)data;
+  if (!d) return;
+  memcpy(instr, d->instr, sizeof instr);
+  memcpy(ltable, d->l, sizeof ltable);
+  memcpy(rtable, d->r, sizeof rtable);
+  memcpy(pattern, d->patt, sizeof pattern);
+}
+
+void songdata_free(void *data)
+{
+  free(data);
+}
+
+// Copy of instruments, tables and patterns, so that a failed instrument load
+// can be undone completely (save = 1 stores, save = 0 restores)
+int instrloadfailed = 0;
+
+void snapshotsongdata(int save)
+{
+  static INSTR *si = NULL;
+  static unsigned char *sl = NULL, *sr = NULL, *sp = NULL;
+  if (!si)
+  {
+    si = (INSTR *)malloc(sizeof instr);
+    sl = (unsigned char *)malloc(sizeof ltable);
+    sr = (unsigned char *)malloc(sizeof rtable);
+    sp = (unsigned char *)malloc(sizeof pattern);
+    if ((!si) || (!sl) || (!sr) || (!sp)) return;
+  }
+  if (save)
+  {
+    memcpy(si, instr, sizeof instr);
+    memcpy(sl, ltable, sizeof ltable);
+    memcpy(sr, rtable, sizeof rtable);
+    memcpy(sp, pattern, sizeof pattern);
+  }
+  else
+  {
+    memcpy(instr, si, sizeof instr);
+    memcpy(ltable, sl, sizeof ltable);
+    memcpy(rtable, sr, sizeof rtable);
+    memcpy(pattern, sp, sizeof pattern);
+  }
+}
+
 void loadinstrument(void)
 {
   char ident[4];
@@ -1270,7 +1341,9 @@ void loadinstrument(void)
   handle = fopen(instrfilename, "rb");
   if (handle)
   {
+    int overflow = 0;
     stopsong();
+    snapshotsongdata(1);
     fread(ident, 4, 1, handle);
 
     if ((!memcmp(ident, "GTI3", 4)) || (!memcmp(ident, "GTI4", 4)) || (!memcmp(ident, "GTI5", 4)))
@@ -1296,6 +1369,7 @@ void loadinstrument(void)
       {
         int start = gettablelen(c);
         int len = fread8(handle);
+        if (start + len > MAX_TABLELEN) overflow = 1;
 
         if (len)
         {
@@ -1359,6 +1433,7 @@ void loadinstrument(void)
       {
         int start = gettablelen(c);
         int len = fread8(handle);
+        if (start + len > MAX_TABLELEN) overflow = 1;
 
         if (len)
         {
@@ -1638,6 +1713,14 @@ void loadinstrument(void)
       }
       if (!instr[editorInfo.einum].firstwave) instr[editorInfo.einum].gatetimer |= 0x40;
     }
+    // Not enough room in the tables: keep the song as it was
+    if (overflow)
+    {
+      snapshotsongdata(0);
+      snprintf(statusmessage, sizeof statusmessage, "Not enough free table rows for %s - delete unused table data first (SHIFT+O in the tables)", instrfilename);
+      instrloadfailed = 1;
+    }
+    else instrloadfailed = 0;
   }
 }
 

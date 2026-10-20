@@ -138,16 +138,14 @@ static void freedir(void)
 
 // Instrument preview: back up the current instrument + tables, load the
 // file temporarily and play a test note.
-static INSTR previewbackupinstr;
-static unsigned char previewbackupl[MAX_TABLES][MAX_TABLELEN];
-static unsigned char previewbackupr[MAX_TABLES][MAX_TABLELEN];
+// complete copy of instruments, tables and patterns before the preview
+static void *previewdata = NULL;
 static int previewactive = 0;
 
 static void previewbackup(void)
 {
-  memcpy(&previewbackupinstr, &instr[editorInfo.einum], sizeof(INSTR));
-  memcpy(previewbackupl, ltable, sizeof ltable);
-  memcpy(previewbackupr, rtable, sizeof rtable);
+  songdata_free(previewdata);
+  previewdata = songdata_save();
   previewactive = 0;
 }
 
@@ -155,9 +153,7 @@ static void previewrestore(void)
 {
   if (!previewactive) return;
   releasenote(editorInfo.epchn);
-  memcpy(&instr[editorInfo.einum], &previewbackupinstr, sizeof(INSTR));
-  memcpy(ltable, previewbackupl, sizeof ltable);
-  memcpy(rtable, previewbackupr, sizeof rtable);
+  songdata_restore(previewdata);
   previewactive = 0;
 }
 
@@ -170,9 +166,7 @@ static void previewplay(const char *name)
   releasenote(editorInfo.epchn);
   if (previewactive)
   {
-    memcpy(&instr[editorInfo.einum], &previewbackupinstr, sizeof(INSTR));
-    memcpy(ltable, previewbackupl, sizeof ltable);
-    memcpy(rtable, previewbackupr, sizeof rtable);
+    songdata_restore(previewdata);
   }
   strcpy(save, instrfilename);
   strncpy(instrfilename, name, MAX_FILENAME - 1);
@@ -705,6 +699,8 @@ int fileselector(char *name, char *path, char *filter, char *title, int filemode
   {
     previewrestore();
     preview_end();
+    songdata_free(previewdata);
+    previewdata = NULL;
   }
 
   // Restore screen & exit

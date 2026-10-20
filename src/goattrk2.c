@@ -462,6 +462,10 @@ int main(int argc, char **argv)
       }
       return EXIT_SUCCESS;
     }
+    if (getenv("GG_REPLACETEST"))
+      return library_replacetest() ? EXIT_SUCCESS : EXIT_FAILURE;
+    if (getenv("GG_RANDOMREPLACETEST"))
+      return randominstrument_replacetest() ? EXIT_SUCCESS : EXIT_FAILURE;
     if (savename[0])
     {
       strncpy(songfilename, savename, MAX_FILENAME - 1);
@@ -870,6 +874,7 @@ static void runautotest(void)
     printmainscreen();
     if (!strcmp(scr, "help")) onlinehelp(0, 0);
     if (!strcmp(scr, "manual")) showmanual();
+    if (!strcmp(scr, "history")) showhistory();
     if (!strcmp(scr, "info")) showinfo();
     if (!strcmp(scr, "welcome")) showwelcomewindow();
     if (!strcmp(scr, "sidinfo")) showsidinfo();
@@ -1186,6 +1191,7 @@ static void buttoncommand(int id, int param)
     case BTN_THEME: togglethemekey(); break;
     case BTN_HELP: onlinehelp(0, 0); break;
     case BTN_MANUAL: showmanual(); break;
+    case BTN_HISTORY: showhistory(); break;
     case BTN_INFO: showinfo(); break;
     case BTN_PLAY: initsong(editorInfo.esnum, PLAY_BEGINNING); followplay = shiftpressed; break;
     case BTN_PLAYPOS: initsong(editorInfo.esnum, PLAY_POS); followplay = shiftpressed; break;

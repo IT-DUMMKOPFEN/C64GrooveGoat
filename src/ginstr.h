@@ -16,5 +16,7 @@ void gotoinstr(int i);
 void showinstrtable(void);
 void *undoinstrbegin(void);
 void undoinstrend(void *ed);
+int instrumentvoicemask(int ins);
+void adaptfiltervoices(int ins, int mask);
 
 #endif

@@ -17,7 +17,8 @@ Author of C64 GrooveGoat: IT-Dummkopfen. Click the Info button in the toolbar fo
 Platforms: Windows 11 (x64), macOS on Apple Silicon (M chips) and Linux (AppImage, x86-64).
 
 This manual is built into the program: click Manual in the keyboard reference (F12, Help button)
-or press M there. Use the cursor keys, Page Up/Down, Home/End or the mouse wheel to scroll, LEFT
+or press M there. Next to it, the History button (or H) opens a chapter about the history of C64
+SID music: the chip, its two versions, the great composers and its legacy. Use the cursor keys, Page Up/Down, Home/End or the mouse wheel to scroll, LEFT
 and RIGHT jump to the previous / next chapter, click a chapter on the left to go there, press F
 to search for a word (F3 or N finds the next place) and ESC to close the manual.
 
@@ -447,9 +448,12 @@ selected instrument with its ADSR graph on the right.
 |  UP / DOWN     Select an instrument (also PAGE UP/DOWN, HOME, END, mouse wheel)
 |  LEFT / RIGHT  Previous / next category ("All instruments", "Favourites", categories)
 |  TAB           Switch between the 6581 and the 8580 set (or click 6581 / 8580)
-|  SPACE         Preview: plays the instrument on the cursor voice (right click on a name)
+|  SPACE         Preview: plays the instrument on the cursor voice (or click on a name)
 |  INS or *      Mark / unmark as favourite (or click the star in front of the name)
 |  ENTER         Load the instrument into the current instrument slot (or double click)
+
+A single click on an instrument selects it and plays it at once, so you can click through the
+list and listen; a double click loads it.
 
 The set of the SID model selected in the settings bar is shown first. Favourites are marked with
 a star and collected in the "Favourites" category; they are saved in the configuration folder
@@ -471,8 +475,29 @@ songs. In the library that comes with C64 GrooveGoat their decay was set to the 
 (the release value of the instrument), and a few very short percussion sounds got a slightly
 longer decay.
 
-Loading an instrument adds its table data to the song's tables (unused table data of the old
-instrument in the slot is removed). This is one undo step.
+### Replacing an instrument of a song
+
+Loading an instrument into a slot that the song already uses replaces it everywhere in the song.
+C64 GrooveGoat takes care that only this instrument changes and the rest of the song keeps
+playing exactly as before:
+
+- The table data of the new instrument is added at the end of the tables. The old table rows of
+  the slot are only removed if nothing else uses them. Rows that are still used - by another
+  instrument whose program runs into them, by a jump of another program, by a wavetable command
+  or by a pattern command (e.g. a vibrato or portamento speed of 1XY-4XY, or a wave/pulse/filter
+  program started with 8XY/9XY/AXY) - are kept. When rows are removed, all pointers to the
+  rows behind them (instruments, jumps, wavetable and pattern commands) are moved along.
+- The filter routing of the new instrument is adapted to the song: library instruments route all
+  three voices of a SID through the filter, which would also filter the other voices of the song.
+  When the instrument is loaded, the filter program only selects the voices on which the
+  instrument is used in the song (all subtunes are checked); if it is not used yet, the voice of
+  the pattern cursor.
+- If the tables are too full for the new instrument, nothing is changed and the message line
+  says so. Delete unused table rows first (SHIFT+O in the table editor optimizes a table).
+- Previews never change the song: all instruments, tables and patterns are restored exactly after
+  every preview and when the library is closed.
+
+Loading an instrument is one undo step (CTRL+Z restores the old instrument and its tables).
 
 Instruments can also be loaded with Load Ins (file selector, SPACE previews), and you can drop
 .ins files onto the window to load them into the current slot. Instruments are saved and loaded
@@ -514,8 +539,9 @@ recipes for typical C64 sounds. Every click on Generate creates a new variation.
 |  Resonance        Auto or $0-$F
 |  Cutoff           Auto, Low, Middle or High
 |  Filter movement  Auto, Static, Sweep down, Sweep up or Wobble (up and down in a loop)
-|  Filtered voice   The voice bit of the filter routing (1-3). It is set to the voice of
-|                   the pattern cursor; use the instrument on that voice of a SID.
+|  Filtered voice   The voices whose filter routing bit is set. "Auto" uses the voices on
+|                   which the instrument slot is used in the song (or the voice of the
+|                   pattern cursor for a new instrument); voice 1, 2 or 3 can be chosen.
 
 The generator knows the SID model selected in the settings bar: the 6581 filter is darker and
 opens at much lower cutoff values than the 8580, and combined waveforms (e.g. pulse+saw) are
@@ -529,6 +555,9 @@ only used for the 8580, because they are very quiet on the 6581.
 |  SPACE         Preview (plays a typical note for the sound on the cursor voice)
 |  ENTER         Use it: keep the instrument in the current slot (one undo step)
 |  ESC           Cancel: the slot is restored as it was
+
+"Use it" replaces the instrument in the slot everywhere in the song; the rest of the song stays
+unchanged (see "Replacing an instrument of a song" in the instrument library chapter).
 
 The preview only works while the music is stopped. The result area shows the name, the ADSR
 values with the envelope graph and the generated table rows (left:right values). If the tables

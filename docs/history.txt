@@ -1,0 +1,177 @@
+# The History of C64 SID Music
+
+The MOS Technology SID (Sound Interface Device), type MOS 6581 and later MOS/CSG 8580, is one of
+the most remarkable sound chips of early home computing. It was designed in 1981 by Bob Yannes
+and made the Commodore 64 (C64, 1982) not just a home computer with a beeper, but a real
+synthesizer. This chapter tells its story - the chip, its two versions, the composers who made it
+famous and what remains of it today.
+
+Use the cursor keys, Page Up/Down or the mouse wheel to scroll, LEFT/RIGHT to jump between the
+chapters and F to search. M switches to the manual, ESC closes.
+
+# 1. What made the SID so special?
+
+Before the C64, sound in home computers was mostly an afterthought: simple square waves, clicks
+and beeps (like the speaker of the Apple II or the IBM PC). Bob Yannes, an engineer at MOS
+Technology and a fan of music synthesizers, wanted to build a real synthesizer on a single chip.
+He and his team designed the SID in about five months in the second half of 1981. Yannes left
+Commodore in 1983 and co-founded the synthesizer company Ensoniq.
+
+## The architecture
+
+- Three independent voices. Each oscillator covers the range from almost 0 Hz up to about 4 kHz
+  (roughly 8 octaves), set by a 16-bit frequency value.
+- Four waveforms per voice: sawtooth, triangle, pulse with variable pulse width (12 bit) and
+  noise. Triangle, sawtooth and pulse can also be selected together; the chip then produces
+  "combined waveforms" with their own, characteristic sound.
+- One ADSR envelope generator per voice (attack, decay, sustain, release), so that the volume of
+  a note can follow the shape of real instruments: drums, plucked strings, brass, pads.
+- A programmable multimode analog filter with low-pass, band-pass and high-pass outputs (also
+  combined, e.g. a notch filter), adjustable cutoff frequency and resonance. Each voice can be
+  routed through the filter or not.
+- Oscillator synchronization and ring modulation between the voices for metallic, bell-like and
+  evolving sounds.
+- A master volume of 16 steps, two paddle (potentiometer) inputs and an audio input.
+
+## Tricks and hacks
+
+Musicians and programmers soon learned to go beyond the limits of the chip:
+
+- Arpeggios: by changing the pitch of a voice on every frame of the screen (50 times per second
+  on PAL, 60 times on NTSC computers), one voice can play a chord as a fast series of notes. This
+  "C64 arpeggio" became the signature sound of the platform.
+- Wave and pulse programs: changing the waveform and the pulse width from frame to frame
+  (for example noise for one frame, then pulse with falling notes) creates drums and complex
+  instrument sounds - the principle of the wavetables in GoatTracker and C64 GrooveGoat.
+- Digitized samples: writing the 4-bit master volume register produces small steps of the output
+  level, because of a DC offset in the 6581. Writing it thousands of times per second plays 4-bit
+  samples - speech, drums and short digitized sounds.
+- Multiplexing: good drivers let one voice alternate between bass, drum and melody notes, so
+  that three voices sound like more.
+
+# 2. MOS 6581 and MOS 8580
+
+Commodore produced two main versions of the SID. Because large parts of the chip are analog, they
+sound clearly different.
+
+                         +---------------------------------+
+                         |         SID CHIP FAMILY         |
+                         +----------------+----------------+
+                                          |
+                  +-----------------------+-----------------------+
+                  |                                               |
+      +-----------+-----------+                       +-----------+-----------+
+      |    MOS 6581 (NMOS)    |                       |  MOS 8580 (HMOS-II)   |
+      |  original C64         |                       |  later C64C, C64G,    |
+      |  1982 - about 1986    |                       |  C128DCR, from 1986   |
+      +-----------+-----------+                       +-----------+-----------+
+                  |                                               |
+      12 V supply voltage                             9 V supply voltage
+      non-linear filter that differs                  linear filter, the same
+      from chip to chip                               on every chip, strong resonance
+      warm, rough, "dirty" sound                      clean, bright, precise sound
+      loud volume-register samples                    samples almost inaudible
+
+## MOS 6581 ("old SID")
+
+- Used in the original C64 from 1982 and made until about 1986.
+- NMOS process with a 12 V supply.
+- Sound: warm, full, slightly distorted.
+- The filter varies a lot from chip to chip because of manufacturing tolerances: the same song
+  sounds brighter on one C64 and darker on another. Many composers wrote for "their" chip.
+- The DC offset makes volume-register samples loud and clear.
+- Combined waveforms are quiet and sound different from the 8580.
+
+## MOS 8580 ("new SID")
+
+- Used in newer C64 models from about 1986/87 (later C64C boards, C64G) and in the C128DCR.
+- HMOS-II process with a 9 V supply; runs cooler and is more robust.
+- Sound: clean, bright and precise. The filter is linear and behaves the same on every chip, and
+  its resonance is much stronger.
+- Combined waveforms are louder and clearer.
+- The DC offset was largely removed, so samples played with the volume register are nearly
+  silent. Players and demos use special software techniques or a small hardware modification to
+  make them audible again.
+
+C64 GrooveGoat lets you choose the emulated chip (6581 or 8580) in the settings bar; the
+instrument library has its own set for each chip, and the random instrument generator adapts its
+filter settings to the chip.
+
+# 3. Legendary composers
+
+Early C64 music had to be programmed in 6502 assembly language, usually with a sound driver
+written by the musician. The great SID composers were programmers and composers at the same
+time.
+
+## Rob Hubbard
+
+Hubbard brought rock and funk structures, driving basslines, fast arpeggios and expressive pitch
+bends to game music, and is often called the most influential C64 composer.
+
+- Monty on the Run (1985) - based on Charles Williams' "Devil's Galop", one of the first tunes
+  with pitch bends in his driver.
+- Commando (1985/86) - a fast, driving theme based on a motif of the arcade game.
+- International Karate (1986) - a pentatonic theme inspired by Ryuichi Sakamoto's "Forbidden
+  Colours" ("Merry Christmas, Mr. Lawrence").
+
+## Martin Galway
+
+Galway, from Belfast in Northern Ireland, wrote long and complex pieces for Ocean and Imagine and
+was one of the pioneers of sampled sounds in SID music.
+
+- Comic Bakery (1984) - one of the best known and most remixed C64 melodies.
+- Rambo: First Blood Part II (1985) - a long, orchestral-style soundtrack.
+- Wizball (1987) and Arkanoid (1987) - Arkanoid's music is famous for its sampled sounds.
+
+## Chris Hülsbeck
+
+A German composer (born 1968) who wrote catchy, melodic game music and his own music tools.
+
+- Shades (1986) - won the music competition of the German magazine 64'er and started his career.
+- Soundmonitor - his music editor, published as a listing in 64'er; one of the first trackers
+  for the C64.
+- The Great Giana Sisters (1987) - one of the best known melodies of the C64 era.
+- Later he wrote the TFMX music system and many famous soundtracks on the Amiga.
+
+## Ben Daglish
+
+Daglish (1966-2018) combined folk melodies, classical structures and fast arpeggios.
+
+- Gauntlet (1986) and Deflektor (1987) - two of his most popular game themes.
+- The Last Ninja (1987, together with Anthony Lees) - an atmospheric soundtrack for one of the
+  best-selling C64 games.
+- Trap (1986) - known for its fast pulse width modulation.
+
+Many more composers shaped the sound of the C64, among them Jeroen Tel, Tim Follin, David
+Whittaker, Fred Gray, Jonathan Dunn, Matt Gray and Richard Joseph.
+
+# 4. From assembly to trackers
+
+In the first years every composer wrote music directly in assembly language or with a private
+editor. Later, music editors made SID music accessible to everybody:
+
+- Soundmonitor (Chris Hülsbeck) - an early tracker-like editor, published in 64'er.
+- JCH Editor (Jens-Christian Huus) and DMC - Demo Music Creator (Brian of Graffity) - the
+  standard editors of the demoscene for many years.
+- GoatTracker by Lasse Öörni (Cadaver) - a cross-platform tracker for PC, Mac and Linux that
+  exports music for the real C64. Its version 2 and the "Silver Fork" by Joel Ricci are the basis
+  of C64 GrooveGoat.
+- SID-Wizard (Hermit) - a modern tracker that runs on the C64 itself.
+
+The principles are the same as in the 1980s: patterns with notes, instruments made of ADSR values
+and small wave, pulse and filter programs - but today they can be edited comfortably and played
+with an accurate emulation such as reSID.
+
+# 5. Legacy and preservation
+
+The sound of the SID lives on in modern electronic music:
+
+- High Voltage SID Collection (HVSC): an archive of more than 50,000 SID music files, playable
+  with emulators and SID players on any computer. C64 GrooveGoat exports in the PSID format of
+  the HVSC.
+- Hardware synthesizers with real SID chips, such as the Elektron SidStation and the TherapSID by
+  Twisted Electrons.
+- Modern replacements and emulations for C64 computers whose SID has failed: SwinSID, ARMSID,
+  FPGASID, SIDKick pico, BackSID and others.
+- The demoscene still releases new SID compositions every year and keeps discovering new sounds
+  and tricks - often with several SID chips, as C64 GrooveGoat supports with up to 8 SIDs.

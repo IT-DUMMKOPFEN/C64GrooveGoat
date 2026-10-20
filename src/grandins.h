@@ -3,5 +3,6 @@
 
 void randominstrument(void);
 int randominstrument_selftest(const char *dir);
+int randominstrument_replacetest(void);
 
 #endif

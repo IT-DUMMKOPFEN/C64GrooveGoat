@@ -314,13 +314,15 @@ void onlinehelp(int standalone, int context)
     printblankc(0, 0, MKCOL(C_HEADERTEXT, C_HEADER), MAX_COLUMNS);
     drawimage(0, 0, "logo", 2, 1);
     printtext(3, 0, MKCOL(C_HEADERTEXT, C_HEADER), "C64 GrooveGoat " PROGRAMVERSION " - Keyboard reference");
+    ui_drawbutton(MAX_COLUMNS - 43, 0, " " GS_PRG " History ", BTN_HISTORY, 0, 0);
     ui_drawbutton(MAX_COLUMNS - 30, 0, " " GS_NOTE " Manual ", BTN_MANUAL, 0, 0);
     numuibuttons = 0;
+    ui_addbutton(MAX_COLUMNS - 43, 0, 11, BTN_HISTORY, 0);
     ui_addbutton(MAX_COLUMNS - 30, 0, 10, BTN_MANUAL, 0);
     printtext(MAX_COLUMNS - 19, 0, MKCOL(C_BUTTONTEXT, C_BUTTON), "  Close (ESC)  ");
     ui_addbutton(MAX_COLUMNS - 19, 0, 15, BTN_QUIT, 0);
     printblankc(0, MAX_ROWS - 1, MKCOL(C_HEADERTEXT, C_HEADER), MAX_COLUMNS);
-    printtext(1, MAX_ROWS - 1, MKCOL(C_HEADERTEXT, C_HEADER), "Arrows / PgUp / PgDn / Home / End / mouse wheel scroll, M opens the manual, any other key closes");
+    printtext(1, MAX_ROWS - 1, MKCOL(C_HEADERTEXT, C_HEADER), "Arrows / PgUp / PgDn / Home / End / mouse wheel scroll, M opens the manual, H the history, any other key closes");
 
     fliptoscreen();
     getkey();
@@ -340,6 +342,11 @@ void onlinehelp(int standalone, int context)
         showmanual();
         continue;
       }
+      if (id == BTN_HISTORY)
+      {
+        showhistory();
+        continue;
+      }
       if ((id == BTN_QUIT) || (mousey == 0)) break;
     }
 
@@ -353,6 +360,9 @@ void onlinehelp(int standalone, int context)
       case KEY_END: hview = lastrow - MAX_ROWS + 2; break;
       case KEY_M:
       showmanual();
+      break;
+      case KEY_H:
+      showhistory();
       break;
       case 0: break;
       case KEY_LEFTSHIFT: case KEY_RIGHTSHIFT: break;
@@ -377,11 +387,27 @@ void onlinehelp(int standalone, int context)
 #define MAN_TEXT_X (MAN_TOC_W + 2)
 #define MAN_TEXT_W (MAX_COLUMNS - MAN_TEXT_X - 2)
 
-static char *manlines[MAN_MAXLINES];
-static unsigned char manstyle[MAN_MAXLINES];
-static int nummanlines = 0;
-static int mantoc[256];
-static int numtoc = 0;
+// Two documents use the same viewer: the manual and the history of C64 SID
+// music. "doc" points to the one that is shown.
+typedef struct
+{
+  const char *resource;
+  const char *title;
+  char *lines[MAN_MAXLINES];
+  unsigned char style[MAN_MAXLINES];
+  int num;
+  int toc[256];
+  int numtoc;
+} DOCUMENT;
+
+static DOCUMENT documents[2] = {{"manual.txt", "Manual"}, {"history.txt", "History of C64 SID music"}};
+static DOCUMENT *doc = &documents[0];
+
+#define manlines (doc->lines)
+#define manstyle (doc->style)
+#define nummanlines (doc->num)
+#define mantoc (doc->toc)
+#define numtoc (doc->numtoc)
 
 static void addmanline(const char *s, int len, int style)
 {
@@ -398,7 +424,7 @@ static void addmanline(const char *s, int len, int style)
 static void buildmanual(void)
 {
   int len = 0;
-  const char *text = (const char *)res_getfile("manual.txt", &len);
+  const char *text = (const char *)res_getfile(doc->resource, &len);
   const char *p, *end;
   if (nummanlines) return;
   if (!text) return;
@@ -477,13 +503,16 @@ static int findmanline(const char *what, int from)
   return -1;
 }
 
-void showmanual(void)
+static void showdocument(int which)
 {
   int view = 0;
   int textrows = MAX_ROWS - 3;
   static char search[64];
   int hitline = -1;
+  char title[100];
+  doc = &documents[which];
   buildmanual();
+  snprintf(title, sizeof title, "C64 GrooveGoat " PROGRAMVERSION " - %s", doc->title);
 
   for (;;)
   {
@@ -492,8 +521,13 @@ void showmanual(void)
     fillarea(0, 0, MAX_COLUMNS, MAX_ROWS, MKCOL(8, C_PANEL), ' ');
     printblankc(0, 0, MKCOL(C_HEADERTEXT, C_HEADER), MAX_COLUMNS);
     drawimage(0, 0, "logo", 2, 1);
-    printtext(3, 0, MKCOL(C_HEADERTEXT, C_HEADER), "C64 GrooveGoat " PROGRAMVERSION " - Manual");
+    printtext(3, 0, MKCOL(C_HEADERTEXT, C_HEADER), title);
     numuibuttons = 0;
+    // switch to the other document
+    if (which == 0)
+      ui_drawbutton(MAX_COLUMNS - 31, 0, " " GS_PRG " History ", BTN_HISTORY, 0, 0);
+    else
+      ui_drawbutton(MAX_COLUMNS - 31, 0, " " GS_NOTE " Manual  ", BTN_HISTORY, 0, 0);
     printtext(MAX_COLUMNS - 19, 0, MKCOL(C_BUTTONTEXT, C_BUTTON), "  Close (ESC)  ");
     ui_addbutton(MAX_COLUMNS - 19, 0, 15, BTN_QUIT, 0);
 
@@ -556,7 +590,9 @@ void showmanual(void)
         printglyph(MAX_COLUMNS - 1, 2 + c, MKCOL((c >= bary) && (c < bary + barh) ? 9 : C_LINE, C_PANEL), GL_FULL);
     }
     printblankc(0, MAX_ROWS - 1, MKCOL(C_HEADERTEXT, C_HEADER), MAX_COLUMNS);
-    printtext(1, MAX_ROWS - 1, MKCOL(C_HEADERTEXT, C_HEADER), "Arrows / PgUp / PgDn / Home / End / wheel scroll, LEFT/RIGHT chapter, F search, F3 or N find next, ESC closes");
+    printtext(1, MAX_ROWS - 1, MKCOL(C_HEADERTEXT, C_HEADER), which ?
+      "Arrows / PgUp / PgDn / Home / End / wheel scroll, LEFT/RIGHT chapter, F search, F3 or N next, M manual, ESC closes" :
+      "Arrows / PgUp / PgDn / Home / End / wheel scroll, LEFT/RIGHT chapter, F search, F3 or N next, H history, ESC closes");
     if (search[0])
     {
       char sb[100];
@@ -578,6 +614,12 @@ void showmanual(void)
       int id = ui_hitbutton(mousex, mousey, &param);
       if (id == BTN_QUIT) break;
       if (id == BTN_MANUAL) view = param;
+      if (id == BTN_HISTORY)
+      {
+        showdocument(which ^ 1);
+        doc = &documents[which];
+        continue;
+      }
     }
     switch (rawkey)
     {
@@ -596,8 +638,16 @@ void showmanual(void)
       for (c = 0; c < numtoc; c++)
         if (mantoc[c] > view) { view = mantoc[c]; break; }
       break;
+      case KEY_H:
+      case KEY_M:
+      if (((rawkey == KEY_H) && (which == 0)) || ((rawkey == KEY_M) && (which == 1)))
+      {
+        showdocument(which ^ 1);
+        doc = &documents[which];
+      }
+      break;
       case KEY_F:
-      if (dlg_edittext("Search the manual", "Find:", search, 40, 0))
+      if (dlg_edittext(which ? "Search the history" : "Search the manual", "Find:", search, 40, 0))
       {
         hitline = findmanline(search, view);
         if (hitline >= 0) view = hitline - 3;
@@ -629,6 +679,16 @@ void showmanual(void)
   printmainscreen();
   key = 0;
   rawkey = 0;
+}
+
+void showmanual(void)
+{
+  showdocument(0);
+}
+
+void showhistory(void)
+{
+  showdocument(1);
 }
 
 // ---------------------------------------------------------------------------
@@ -911,6 +971,7 @@ void helpscreenshot(const char *filename)
   int c;
   // draw one frame of the help and manual without waiting for keys
   fillarea(0, 0, MAX_COLUMNS, MAX_ROWS, MKCOL(8, C_PANEL), ' ');
+  doc = &documents[0];
   buildmanual();
   for (c = 0; (c < MAX_ROWS - 2) && (c < nummanlines); c++)
     printtext(1, c + 1, MKCOL(manstyle[c] ? 14 : 8, C_PANEL), manlines[c]);

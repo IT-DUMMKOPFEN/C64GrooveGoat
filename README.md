@@ -43,7 +43,7 @@ by Lasse Öörni (Cadaver) and the
   for 1, 2, 4 or 8 SIDs, song info, play time and a C64 rainbow progress bar
 - Multi-SID 6502 playroutine (`src/mplayer.s`) that produces exactly the same SID register
   values per SID as the GoatTracker 2 playroutine
-- Built-in manual with search, keyboard reference, button help on mouse-over, welcome window,
+- Built-in manual with search and a chapter on the history of C64 SID music, keyboard reference, button help on mouse-over, welcome window,
   info dialog with all credits
 - Output volume slider (0-100%, default 80%) with a soft limiter against clipping; the SID
   emulation runs in its own audio thread (no crackling when other programs are busy)
@@ -82,6 +82,9 @@ in `src/codecs` and built with the program.
   library offline and lists the ones that stay silent; `GG_RANDOMTEST=folder` renders all
   random instrument recipes. `tools/fixlibrary.py` repairs the library instruments whose
   envelope is over within the first frame (used by `tools/package.sh`).
+- `GG_REPLACETEST=1` / `GG_RANDOMREPLACETEST=1 groovegoat song.sng --export=/dev/null` replace
+  every instrument of a song with library / random instruments and check that the rest of the
+  song (all other instruments' table programs and all table commands in the patterns) stays the same.
 - `GG_SCRIPT="..."` drives the user interface with scripted key presses and mouse clicks
   and takes screenshots (see `src/gautotest.c`).
 

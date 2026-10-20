@@ -11,6 +11,7 @@
 #include "gres.h"
 #include "grandins.h"
 #include "gexport.h"
+#include "ginslib.h"
 
 enum
 {
@@ -42,10 +43,17 @@ typedef struct
   int resonance;     // -1 auto, 0-15
   int cutoff;        // CR_*
   int move;          // MV_*
-  int voice;         // filtered voice 0-2
+  int voice;         // filtered voice 0-2, -1 = auto (where the instrument is used)
 } RNDSETTINGS;
 
-static RNDSETTINGS rs = {RC_BASS, FT_AUTO, -1, CR_AUTO, MV_AUTO, 0};
+static RNDSETTINGS rs = {RC_BASS, FT_AUTO, -1, CR_AUTO, MV_AUTO, -1};
+static int automask = 1;   // voices on which the instrument slot is used
+static int autoused = 0;   // automask comes from the song (else: cursor voice)
+
+static int filtermask(void)
+{
+  return rs.voice < 0 ? automask : (1 << rs.voice);
+}
 
 // ---------------------------------------------------------------------------
 // Building blocks
@@ -181,7 +189,7 @@ static void buildfilter(RNDINSTR *ins, FILTERSPEC *f)
   if (!f->time) f->time = rnd(0x10, 0x30);
   if (f->time > 0x7f) f->time = 0x7f;
 
-  tadd(t, 0x80 | filterbits[f->type], ((f->res & 15) << 4) | (1 << rs.voice));
+  tadd(t, 0x80 | filterbits[f->type], ((f->res & 15) << 4) | filtermask());
   switch (f->move)
   {
     case MV_STATIC:
@@ -704,24 +712,20 @@ static void generate(RNDINSTR *ins)
 // Applying an instrument to the current slot
 // ---------------------------------------------------------------------------
 
-static INSTR backupinstr;
-static unsigned char backupl[MAX_TABLES][MAX_TABLELEN];
-static unsigned char backupr[MAX_TABLES][MAX_TABLELEN];
+// complete copy of instruments, tables and patterns before the preview
+static void *previewdata = NULL;
 
 static void backupslot(void)
 {
-  memcpy(&backupinstr, &instr[editorInfo.einum], sizeof(INSTR));
-  memcpy(backupl, ltable, sizeof ltable);
-  memcpy(backupr, rtable, sizeof rtable);
+  songdata_free(previewdata);
+  previewdata = songdata_save();
 }
 
 static void restoreslot(void)
 {
   snd_lock();
   releasenote(editorInfo.epchn);
-  memcpy(&instr[editorInfo.einum], &backupinstr, sizeof(INSTR));
-  memcpy(ltable, backupl, sizeof ltable);
-  memcpy(rtable, backupr, sizeof rtable);
+  songdata_restore(previewdata);
   snd_unlock();
 }
 
@@ -809,7 +813,10 @@ void randominstrument(void)
 
   if (!editorInfo.einum) editorInfo.einum = 1;
   stopsong();
-  rs.voice = editorInfo.epchn % 3;
+  // filter routing: the voices on which this instrument is used in the song
+  automask = instrumentvoicemask(editorInfo.einum);
+  autoused = automask != 0;
+  if (!automask) automask = 1 << (editorInfo.epchn % 3);
   backupslot();
   preview_begin();
   srand(SDL_GetTicks());
@@ -860,7 +867,17 @@ void randominstrument(void)
           case 1: if (rs.resonance < 0) strcpy(val, "Auto"); else sprintf(val, "%X", rs.resonance); break;
           case 2: strcpy(val, cutoffnames[rs.cutoff]); break;
           case 3: strcpy(val, movenames[rs.move]); break;
-          case 4: sprintf(val, "Voice %d (sets the filter routing bit)", rs.voice + 1); break;
+          case 4:
+          if (rs.voice < 0)
+          {
+            int v, n = 0;
+            strcpy(val, "Auto: voice");
+            for (v = 0; v < 3; v++)
+              if (automask & (1 << v)) sprintf(val + strlen(val), "%s %d", n++ ? "," : "", v + 1);
+            strcat(val, autoused ? " (used there in the song)" : " (cursor voice)");
+          }
+          else sprintf(val, "Voice %d", rs.voice + 1);
+          break;
         }
         printblankc(x0 + 2, y, MKCOL(8, bg), 60);
         snprintf(buf, sizeof buf, "%-17s " GS_PREV " %s " GS_NEXT, labels[c], val);
@@ -989,7 +1006,7 @@ void randominstrument(void)
           case 2: rs.resonance += dir; if (rs.resonance < -1) rs.resonance = 15; if (rs.resonance > 15) rs.resonance = -1; regenerate = 1; break;
           case 3: rs.cutoff = (rs.cutoff + dir + NUMCR) % NUMCR; regenerate = 1; break;
           case 4: rs.move = (rs.move + dir + NUMMV) % NUMMV; regenerate = 1; break;
-          case 5: rs.voice = (rs.voice + dir + 3) % 3; regenerate = 1; break;
+          case 5: rs.voice += dir; if (rs.voice < -1) rs.voice = 2; if (rs.voice > 2) rs.voice = -1; regenerate = 1; break;
           default:
           sel += dir;
           if (sel < 6) sel = 6;
@@ -1027,6 +1044,8 @@ void randominstrument(void)
       if (!isplaying())
       {
         int note = FIRSTNOTE + cur.previewnote * 12;
+        // the preview voice must be routed through the filter to hear it
+        adaptfiltervoices(editorInfo.einum, filtermask() | (1 << (editorInfo.epchn % 3)));
         preview_note(note, editorInfo.einum, editorInfo.epchn);
         previewing = 1;
         previewtimer = cur.previewframes;
@@ -1048,6 +1067,8 @@ void randominstrument(void)
   }
   else restoreslot();
   preview_end();
+  songdata_free(previewdata);
+  previewdata = NULL;
   key = rawkey = 0;
   printmainscreen();
 }
@@ -1067,6 +1088,7 @@ int randominstrument_selftest(const char *dir)
       clearsong(1, 1, 1, 1, 1);
       rs.recipe = r;
       rs.voice = 0;
+      automask = 1;
       srand(r * 31 + m * 7 + 1);
       generate(&cur);
       editorInfo.einum = 1;
@@ -1093,4 +1115,48 @@ int randominstrument_selftest(const char *dir)
     }
   }
   return 1;
+}
+
+// Test helper (GG_RANDOMREPLACETEST): replaces every instrument of the loaded
+// song with random instruments; the rest of the song must stay the same
+int randominstrument_replacetest(void)
+{
+  int ins, r, errors = 0;
+  void *orig = songdata_save();
+  for (ins = 1; ins < MAX_INSTR; ins++)
+  {
+    char *before;
+    if ((!instr[ins].ptr[WTBL]) && (!instrumentvoicemask(ins))) continue;
+    songdata_restore(orig);
+    editorInfo.einum = ins;
+    before = strdup(songsignature(ins));
+    automask = instrumentvoicemask(ins);
+    if (!automask) automask = 1;
+    rs.voice = -1;
+    for (r = 0; r < NUMRECIPES; r++)
+    {
+      rs.recipe = r;
+      generate(&cur);
+      if (!applyinstrument(&cur))
+      {
+        printf("instrument %02X: %s did not fit\n", ins, cur.name);
+        continue;
+      }
+      if (strcmp(before, songsignature(ins)))
+      {
+        printf("instrument %02X replaced by %s: the rest of the song changed\n", ins, cur.name);
+        errors++;
+      }
+      if ((instr[ins].ptr[FTBL]) && ((rtable[FTBL][instr[ins].ptr[FTBL] - 1] & 7) != automask))
+      {
+        printf("instrument %02X: filter routing %x instead of %x\n", ins, rtable[FTBL][instr[ins].ptr[FTBL] - 1] & 7, automask);
+        errors++;
+      }
+    }
+    free(before);
+  }
+  songdata_restore(orig);
+  songdata_free(orig);
+  printf("errors: %d\n", errors);
+  return errors == 0;
 }
