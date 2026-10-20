@@ -45,6 +45,7 @@ SID::SID()
   // Initialize pointers.
   sample = 0;
   fir = 0;
+  scopebuf = 0;
 
   voice[0].set_sync_source(&voice[2]);
   voice[1].set_sync_source(&voice[0]);
@@ -780,6 +781,11 @@ int SID::clock_fast(cycle_count& delta_t, short* buf, int n,
     clock(delta_t_sample);
     delta_t -= delta_t_sample;
     sample_offset = (next_sample_offset & FIXP_MASK) - (1 << (FIXP_SHIFT - 1));
+    if (scopebuf) {
+      scopebuf[s*3] = voice_scope(0);
+      scopebuf[s*3+1] = voice_scope(1);
+      scopebuf[s*3+2] = voice_scope(2);
+    }
     buf[s++*interleave] = output();
   }
 

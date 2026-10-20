@@ -698,10 +698,14 @@ static void drawstatusarea(void)
     ui_drawbutton(x, STATUS_Y, km[keypreset], BTN_KEYMODE, 0, 0);
     x += strlen(km[keypreset]) + 1;
   }
+  ui_drawbutton(x, STATUS_Y, kbdlayout ? " Kbd: DE " : " Kbd: EN ", BTN_KBDLAYOUT, 0, 0);
+  x += 10;
   sprintf(buf, "Step %d", stepsize);
   printtext(x, STATUS_Y, sc, buf);
   x += strlen(buf) + 2;
   ui_drawbutton(x, STATUS_Y, " " GS_UNDO " Undo ", BTN_UNDO, 0, 0);
+  x += 9;
+  ui_drawbutton(x, STATUS_Y, " Redo " GS_NEXT " ", BTN_REDO, 0, 0);
 
   // Play status and time
   if (editorInfo.multiplier)

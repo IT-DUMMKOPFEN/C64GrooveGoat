@@ -18,6 +18,48 @@ int currentUndoPackagesCounter = 1;
 unsigned int undoBufferSize = 0;
 int undoCounter = 0;
 
+// Redo: every undo step stores the state before it was undone
+static GTUNDO_OBJECT **redoList = NULL;
+static int redoSize = 0;
+static int redoPos = 0;
+static int *redoPackages = NULL;      // start index of every redo package
+static int redoPackageSize = 0;
+static int redoPackageCount = 0;
+static int inRedo = 0;
+
+static void redoPush(GTUNDO_OBJECT *r)
+{
+	if (redoPos >= redoSize)
+	{
+		redoSize = redoSize ? redoSize * 2 : 256;
+		redoList = realloc(redoList, sizeof(GTUNDO_OBJECT*) * redoSize);
+	}
+	redoList[redoPos++] = r;
+}
+
+static void redoStartPackage(void)
+{
+	if (redoPackageCount >= redoPackageSize)
+	{
+		redoPackageSize = redoPackageSize ? redoPackageSize * 2 : 64;
+		redoPackages = realloc(redoPackages, sizeof(int) * redoPackageSize);
+	}
+	redoPackages[redoPackageCount++] = redoPos;
+}
+
+// A new edit makes the redo history invalid
+void redoClear(void)
+{
+	if (inRedo) return;
+	while (redoPos > 0) undoFreeUndoObject(redoList[--redoPos]);
+	redoPackageCount = 0;
+}
+
+int redoAvailable(void)
+{
+	return redoPackageCount > 0;
+}
+
 #define REMOVE_UNDO 0
 
 int initUndoBufferFlag = 0;
@@ -106,6 +148,7 @@ void undoInitAllAreas()
 
 void undoFreeAll()
 {
+	redoClear();
 	if (REMOVE_UNDO)
 		return;
 
@@ -505,6 +548,7 @@ void undoFinalizeUndoPackage(GTUNDO_OBJECT *editorSettings)
 		return;
 
 	undoCounter++;	// we can use this to know if anything has been modified in the editor
+	redoClear();
 
 	quickAddObjectToList((char*)editorSettings, NULL);
 
@@ -538,6 +582,7 @@ void undoAddEditorSettingsToList()
 //		printtext(75, 1, 0xe, textbuffer);
 
 		undoCounter++;	// we can use this to know if anything has been modified in the editor
+		redoClear();
 
 		GTUNDO_OBJECT *undoEditorInfoBackup2;
 
@@ -578,11 +623,21 @@ void undoPerform()
 	undoCounter = 0;
 
 	int counter;
+	redoStartPackage();
 	do {
 		currentUndoPosition--;
 
 		gu = (GTUNDO_OBJECT*)undoList[currentUndoPosition];
 		counter = gu->counter;
+
+		// remember the current state for redo
+		{
+			GTUNDO_OBJECT *r = (GTUNDO_OBJECT*)undoCreateUndoObject(gu->dest, gu->size, gu->offset);
+			r->parentArea = gu->parentArea;
+			r->type = gu->type;
+			r->counter = gu->counter;
+			redoPush(r);
+		}
 
 		char *dest = gu->dest;
 		dest += gu->offset;
@@ -601,6 +656,48 @@ void undoPerform()
 }
 
 
+
+// Redo the last undone step
+void redoPerform(void)
+{
+	int start, i, n;
+	if (!redoPackageCount) return;
+	start = redoPackages[--redoPackageCount];
+	n = redoPos - start;
+	inRedo = 1;
+	// apply in reverse capture order, and push the current state as a new
+	// undo package
+	for (i = redoPos - 1; i >= start; i--)
+	{
+		GTUNDO_OBJECT *r = redoList[i];
+		GTUNDO_OBJECT *u = (GTUNDO_OBJECT*)undoCreateUndoObject(r->dest, r->size, r->offset);
+		char *dest = r->dest + r->offset;
+		memcpy(dest, r->data, r->size);
+		if (r->parentArea != NULL)
+		{
+			dest = r->parentArea->undoObject->dest + r->offset;
+			memcpy(dest, r->data, r->size);
+		}
+		u->counter = (n == 1) ? r->counter : (redoPos - 1 - i);
+		quickAddObjectToList((char*)u, r->parentArea);
+		u->parentArea = r->parentArea;
+		u->type = r->type;
+		undoFreeUndoObject(r);
+	}
+	// counters: the newest (top) object has the highest number, the oldest 0
+	if (n > 1)
+	{
+		for (i = 0; i < n; i++)
+		{
+			GTUNDO_OBJECT *u = (GTUNDO_OBJECT*)undoList[currentUndoPosition - 1 - i];
+			u->counter = n - 1 - i;
+		}
+	}
+	redoPos = start;
+	undoPackageCounter = 0;
+	undoCounter++;
+	inRedo = 0;
+}
 
 void undoFreeUndoObject(GTUNDO_OBJECT *gu)
 {

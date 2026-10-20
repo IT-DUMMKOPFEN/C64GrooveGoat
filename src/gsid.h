@@ -29,6 +29,9 @@ int sid_fillbuffer(short *ptr, int samples, unsigned int adparam, int stereo);
 unsigned char sid_getorder(unsigned char index, unsigned int adparam);
 int sid_getenv(int s, int v);
 void sid_setvolume(int percent);
+void sid_setvolumeimmediate(int percent);
+void sid_setvoicemask(int s, int mutemask);
+void sid_setscope(short *buf, int stride);
 void sid_setpanning(int nsids, int stereo);
 
 #ifndef GSID_C

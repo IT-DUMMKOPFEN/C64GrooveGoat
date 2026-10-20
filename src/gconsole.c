@@ -25,6 +25,7 @@ int shiftonlypressed = 0;
 int ctrlpressed = 0;
 int altpressed = 0;
 int metapressed = 0;
+unsigned kbdlayout = 0;   // 0 = EN (QWERTY), 1 = DE (QWERTZ)
 int cursorflashdelay = 0;
 int mouseb = 0;
 int prevmouseb = 0;
@@ -796,7 +797,9 @@ void getkey(void)
   if ((win_keystate[KEY_LEFTSHIFT]) || (win_keystate[KEY_RIGHTSHIFT]) ||
       (win_keystate[KEY_CTRL]) || (win_keystate[KEY_RIGHTCTRL]))
     shiftpressed = 1;
-  if ((win_keystate[KEY_LEFTSHIFT]) || (win_keystate[KEY_RIGHTSHIFT]))
+  if (((win_keystate[KEY_LEFTSHIFT]) || (win_keystate[KEY_RIGHTSHIFT])) &&
+      (!win_keystate[KEY_CTRL]) && (!win_keystate[KEY_RIGHTCTRL]) &&
+      (!win_keystate[KEY_LEFTMETA]) && (!win_keystate[KEY_RIGHTMETA]))
     shiftonlypressed = 1;
   if ((win_keystate[KEY_CTRL]) || (win_keystate[KEY_RIGHTCTRL]))
     ctrlpressed = 1;
@@ -804,6 +807,15 @@ void getkey(void)
     altpressed = 1;
   if ((win_keystate[KEY_LEFTMETA]) || (win_keystate[KEY_RIGHTMETA]))
     metapressed = 1;
+
+  // Keyboard layout DE (QWERTZ): commands with SHIFT / CTRL / CMD use the
+  // key labels, so the Y and Z keys are swapped for them (CTRL+Z = undo on
+  // the key labelled Z). Notes are always entered by key position.
+  if ((kbdlayout == 1) && ((shiftpressed) || (metapressed)))
+  {
+    if (rawkey == KEY_Z) rawkey = KEY_Y;
+    else if (rawkey == KEY_Y) rawkey = KEY_Z;
+  }
 
   // While CTRL / CMD / ALT is held, no text characters are wanted
   if ((ctrlpressed) || (metapressed))

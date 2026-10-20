@@ -62,6 +62,7 @@ unsigned themesetting = THEME_NIGHT;
 unsigned prgfrontend = 1;
 unsigned mastervolume = 80;
 unsigned showwelcome = 1;
+unsigned kbdlayoutsetting = 2;
 float basepitch = 0.0f;
 float equaldivisionsperoctave = 12.0f;
 int tuningcount = 0;
@@ -351,6 +352,9 @@ int main(int argc, char **argv)
   themesetting &= 1;
   stereomode &= 1;
   if (mastervolume > 100) mastervolume = 100;
+  // Older versions used 44100 Hz; most sound systems run at 48000 Hz, which
+  // avoids resampling by the sound server
+  if (mr == 44100) mr = 48000;
   showwelcome &= 1;
   sid_setvolume(mastervolume);
 
@@ -452,6 +456,12 @@ int main(int argc, char **argv)
     return EXIT_FAILURE;
   }
 
+  // Keyboard layout: detect from the system keymap on the first start
+  if (kbdlayoutsetting > 1)
+    kbdlayout = (SDL_GetKeyFromScancode(SDL_SCANCODE_Z) == SDLK_y) ? 1 : 0;
+  else
+    kbdlayout = kbdlayoutsetting;
+
   // Reset channels/song
   initchannels();
   clearsong(1, 1, 1, 1, 1);
@@ -493,6 +503,7 @@ int main(int argc, char **argv)
   }
 
   // Shutdown sound output now
+  if (getenv("GG_AUDIODEBUG")) fprintf(stderr, "audio underruns: %u\n", snd_getunderruns());
   sound_uninit();
   themesetting = theme;
   saveconfig();
@@ -614,6 +625,7 @@ static void loadconfig(void)
   getparam(configfile, &prgfrontend);
   getparam(configfile, &mastervolume);
   getparam(configfile, &showwelcome);
+  getparam(configfile, &kbdlayoutsetting);
   fclose(configfile);
   if (!strcmp(specialnotenames, "-")) specialnotenames[0] = 0;
   if (!strcmp(scalatuningfilepath, "-")) scalatuningfilepath[0] = 0;
@@ -672,7 +684,8 @@ static void saveconfig(void)
     ";Stereo output for multi-SID songs (0 = mono, 1 = stereo)\n%d\n\n"
     ";PRG export includes the player frontend (0 = no, 1 = yes)\n%d\n\n"
     ";Output volume in percent (0-100)\n%d\n\n"
-    ";Show the welcome window at startup (0 = no, 1 = yes)\n%d\n\n",
+    ";Show the welcome window at startup (0 = no, 1 = yes)\n%d\n\n"
+    ";Keyboard layout for shortcuts (0 = EN QWERTY, 1 = DE QWERTZ, 2 = detect)\n%d\n\n",
     b,
     mr,
     hardsid,
@@ -717,7 +730,8 @@ static void saveconfig(void)
     stereomode,
     prgfrontend,
     mastervolume,
-    showwelcome);
+    showwelcome,
+    kbdlayout);
   fclose(configfile);
 }
 
@@ -1178,6 +1192,12 @@ static void buttoncommand(int id, int param)
       if (keypreset > 2) keypreset = 0;
       break;
     case BTN_UNDO: undoPerform(); break;
+    case BTN_REDO: redoPerform(); break;
+    case BTN_KBDLAYOUT:
+      kbdlayout ^= 1;
+      snprintf(statusmessage, sizeof statusmessage, kbdlayout ? "Keyboard layout DE (QWERTZ): CTRL+Z undo, CTRL+Y redo, notes Y-M and Q-P" :
+        "Keyboard layout EN (QWERTY): CTRL+Z undo, CTRL+Y redo, notes Z-M and Q-P");
+      break;
     case BTN_CHNVIEW:
       chnview = param;
       editorInfo.epchn = param;
@@ -1649,8 +1669,20 @@ void generalcommands(void)
     break;
 
   case KEY_Z:
+    // Undo (CTRL/CMD+Z), redo (CTRL/CMD+SHIFT+Z)
     if (ctrlpressed || metapressed)
-      undoPerform();
+    {
+      if ((win_keystate[KEY_LEFTSHIFT]) || (win_keystate[KEY_RIGHTSHIFT]))
+        redoPerform();
+      else
+        undoPerform();
+    }
+    break;
+
+  case KEY_Y:
+    // Redo (CTRL/CMD+Y)
+    if (ctrlpressed || metapressed)
+      redoPerform();
     break;
 
   case KEY_F12:

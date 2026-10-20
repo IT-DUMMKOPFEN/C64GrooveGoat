@@ -66,6 +66,7 @@ extern int autoshotframes;
 unsigned getcell(int x, int y);
 
 #ifndef GCONSOLE_C
+extern unsigned kbdlayout;
 extern int key, rawkey, symkey, shiftpressed, ctrlpressed, altpressed, metapressed, shiftonlypressed, cursorflashdelay;
 extern int mouseb, prevmouseb;
 extern int mouseheld;

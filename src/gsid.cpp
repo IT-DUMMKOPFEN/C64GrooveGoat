@@ -52,6 +52,16 @@ FILTERPARAMS filterparams =
 extern unsigned residdelay;
 
 static float outputvolume = 0.8f;
+static float curvolume = 0.8f;
+
+// Oscilloscope capture: extra reSID instances in the fast sampling mode
+// that get the same register writes and record the signal of each voice
+static SID *scopesid[MAX_SIDS] = {0};
+static unsigned chipmodel = 0;
+static short *scopeout = NULL;        // [sid][sample][voice]
+static int scopestride = 0;           // samples per SID in scopeout
+static short *scopetmp = NULL;
+static int scopetmpsize = 0;
 
 // Output volume of the editor in percent (0-100)
 void sid_setvolume(int percent)
@@ -75,6 +85,50 @@ static inline short softclip(float v)
   if (v > 32767.0f) v = 32767.0f;
   if (v < -32768.0f) v = -32768.0f;
   return (short)v;
+}
+
+// Set the volume without fading (offline rendering)
+void sid_setvolumeimmediate(int percent)
+{
+  sid_setvolume(percent);
+  curvolume = outputvolume;
+}
+
+// Mute voices at the SID output (bit 0-2 = voice 1-3); used for rendering
+// single voices. The oscillators keep running for sync & ring modulation.
+void sid_setvoicemask(int s, int mutemask)
+{
+  int v;
+  if ((s < 0) || (s >= MAX_SIDS)) return;
+  for (v = 0; v < 3; v++)
+  {
+    if (sid[s]) sid[s]->mute(v, (mutemask >> v) & 1);
+    if (sidfp[s]) sidfp[s]->mute(v, (mutemask >> v) & 1);
+  }
+}
+
+// Enable oscilloscope capture: buf receives for every SID "stride" samples
+// of 3 voices (short [sidcount][stride][3]). NULL disables.
+void sid_setscope(short *buf, int stride)
+{
+  int s;
+  scopeout = buf;
+  scopestride = stride;
+  for (s = 0; s < MAX_SIDS; s++)
+  {
+    if ((buf) && (s < sidcount) && (!scopesid[s]))
+    {
+      scopesid[s] = new SID;
+      scopesid[s]->set_sampling_parameters(clockrate, SAMPLE_FAST, samplerate);
+      scopesid[s]->reset();
+      scopesid[s]->set_chip_model(chipmodel == 1 ? MOS8580 : MOS6581);
+    }
+    if (((!buf) || (s >= sidcount)) && (scopesid[s]))
+    {
+      delete scopesid[s];
+      scopesid[s] = NULL;
+    }
+  }
 }
 
 void sid_setpanning(int nsids, int stereo)
@@ -122,6 +176,7 @@ void sid_init(int speed, unsigned m, unsigned ntsc, unsigned interpolate, unsign
     clockrate = customclockrate;
 
   samplerate = speed;
+  chipmodel = m;
   if (nsids < 1) nsids = 1;
   if (nsids > MAX_SIDS) nsids = MAX_SIDS;
 
@@ -296,6 +351,46 @@ static int fillone(int s, short *ptr, int samples, unsigned int adparam)
   return total;
 }
 
+// Clock the oscilloscope SID with the same register writes as fillone()
+static void fillscope(int s, int samples, unsigned int adparam)
+{
+  SID *sc = scopesid[s];
+  short *out = scopeout + s * scopestride * 3;
+  int tdelta, c, done = 0;
+  cycle_count delta;
+
+  if (scopetmpsize < samples)
+  {
+    free(scopetmp);
+    scopetmpsize = samples + 1024;
+    scopetmp = (short *)malloc(scopetmpsize * sizeof(short));
+    if (!scopetmp)
+    {
+      scopetmpsize = 0;
+      return;
+    }
+  }
+  tdelta = clockrate * samples / samplerate;
+  for (c = 0; c < NUMSIDREGS; c++)
+  {
+    unsigned char o = sid_getorder(c, adparam);
+    sc->write(o, sidreg[s][o]);
+    sc->scopebuf = out + done * 3;
+    delta = SIDWRITEDELAY;
+    done += sc->clock(delta, scopetmp + done, samples - done);
+    tdelta -= SIDWRITEDELAY;
+    if (tdelta <= 0) break;
+  }
+  while (done < samples)
+  {
+    sc->scopebuf = out + done * 3;
+    delta = tdelta > 0 ? tdelta : clockrate * (samples - done) / samplerate + 1;
+    done += sc->clock(delta, scopetmp + done, samples - done);
+    tdelta = 0;
+  }
+  sc->scopebuf = NULL;
+}
+
 // Fill an output buffer. If stereo, the buffer is interleaved L/R and must
 // have room for 2 * samples values.
 int sid_fillbuffer(short *ptr, int samples, unsigned int adparam, int stereo)
@@ -325,6 +420,7 @@ int sid_fillbuffer(short *ptr, int samples, unsigned int adparam, int stereo)
     {
       if ((!sid[s]) && (!sidfp[s])) continue;
       fillone(s, sidbuf, samples, adparam);
+      if ((scopeout) && (scopesid[s]) && (samples <= scopestride)) fillscope(s, samples, adparam);
       for (c = 0; c < samples; c++)
       {
         float v = sidbuf[c];
@@ -332,16 +428,20 @@ int sid_fillbuffer(short *ptr, int samples, unsigned int adparam, int stereo)
         mix[c * 2 + 1] += v * pangainr[s];
       }
     }
-    float vol = outputvolume;
-    if (stereo)
+    // Volume changes are faded in over about 20 ms to avoid "zipper" clicks
+    float target = outputvolume;
+    float step = 1.0f / (0.02f * (samplerate > 0 ? samplerate : 48000));
+    for (c = 0; c < samples; c++)
     {
-      for (c = 0; c < samples * 2; c++)
-        ptr[c] = softclip(mix[c] * vol);
-    }
-    else
-    {
-      for (c = 0; c < samples; c++)
-        ptr[c] = softclip((mix[c * 2] + mix[c * 2 + 1]) * 0.5f * vol);
+      if (curvolume < target) { curvolume += step; if (curvolume > target) curvolume = target; }
+      else if (curvolume > target) { curvolume -= step; if (curvolume < target) curvolume = target; }
+      if (stereo)
+      {
+        ptr[c * 2] = softclip(mix[c * 2] * curvolume);
+        ptr[c * 2 + 1] = softclip(mix[c * 2 + 1] * curvolume);
+      }
+      else
+        ptr[c] = softclip((mix[c * 2] + mix[c * 2 + 1]) * 0.5f * curvolume);
     }
   }
   return samples;

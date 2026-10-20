@@ -52,6 +52,14 @@ public:
   reg8 read(reg8 offset);
   // GrooveGoat: envelope level of a voice (for level meters)
   reg8 read_env(int v) { return voice[v].envelope.readENV(); }
+  // GrooveGoat: mute a voice at the output (oscillators keep running, so
+  // sync & ring modulation of the other voices are unchanged)
+  void mute(int v, bool enable) { if ((v >= 0) && (v < 3)) voice[v].muted = enable; }
+  // GrooveGoat: oscilloscope capture, one value per voice and output sample
+  // (only in the SAMPLE_FAST mode)
+  short *scopebuf;
+  // Unmodulated voice signal for oscilloscopes
+  int voice_scope(int v) { return (voice[v].wave.output() - voice[v].wave_zero) * (int)voice[v].envelope.output() >> 8; }
   void write(reg8 offset, reg8 value);
 
   // Read/write state.

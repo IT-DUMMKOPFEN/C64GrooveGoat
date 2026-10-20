@@ -12,6 +12,7 @@ void snd_uninit(void);
 void snd_setcustommixer(void (*custommixer)(Sint32 *dest, unsigned samples));
 void snd_lock(void);
 void snd_unlock(void);
+unsigned snd_getunderruns(void);
 
 extern void (*snd_player)(void);
 extern int snd_sndinitted;

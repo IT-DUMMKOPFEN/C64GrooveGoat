@@ -35,6 +35,9 @@ public:
 
   void writeCONTROL_REG(reg8);
 
+  // GrooveGoat: a muted voice only outputs its DC level (silent, no click)
+  bool muted;
+
   // Amplitude modulated waveform output.
   // Range [-2048*255, 2047*255].
   RESID_INLINE sound_sample output();
@@ -69,6 +72,7 @@ RESID_INLINE
 sound_sample Voice::output()
 {
   // Multiply oscillator output with envelope output.
+  if (muted) return voice_DC;
   return (wave.output() - wave_zero)*envelope.output() + voice_DC;
 }
 
