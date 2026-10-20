@@ -9,6 +9,8 @@ by Lasse Öörni (Cadaver) and the
 
 ![C64 GrooveGoat playing "Solar Voyage" with 2 SIDs](docs/screenshot.png)
 
+![A frame of the MP4 video export: one oscilloscope per voice](docs/video.png)
+
 ## Features
 
 - Songs with **1, 2, 4 or 8 SID chips** (3, 6, 12 or 24 voices), all played in the editor
