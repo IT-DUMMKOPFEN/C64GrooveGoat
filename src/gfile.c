@@ -166,6 +166,8 @@ static void previewplay(const char *name)
   char save[MAX_FILENAME];
   if (!editorInfo.einum) return;
   if (isplaying()) stopsong();
+  snd_lock();
+  releasenote(editorInfo.epchn);
   if (previewactive)
   {
     memcpy(&instr[editorInfo.einum], &previewbackupinstr, sizeof(INSTR));
@@ -177,7 +179,8 @@ static void previewplay(const char *name)
   loadinstrument();
   strcpy(instrfilename, save);
   previewactive = 1;
-  playtestnote(FIRSTNOTE + editorInfo.epoctave * 12, editorInfo.einum, editorInfo.epchn);
+  preview_note(FIRSTNOTE + editorInfo.epoctave * 12, editorInfo.einum, editorInfo.epchn);
+  snd_unlock();
 }
 
 int fileselector(char *name, char *path, char *filter, char *title, int filemode)
@@ -204,7 +207,11 @@ int fileselector(char *name, char *path, char *filter, char *title, int filemode
   char buf[200];
 
   filemode &= 0xff;
-  if (instrmode) previewbackup();
+  if (instrmode)
+  {
+    previewbackup();
+    preview_begin();
+  }
 
   // Set initial path (if any)
   if (strlen(path)) chdir(path);
@@ -694,7 +701,11 @@ int fileselector(char *name, char *path, char *filter, char *title, int filemode
   }
 
   freedir();
-  if (instrmode) previewrestore();
+  if (instrmode)
+  {
+    previewrestore();
+    preview_end();
+  }
 
   // Restore screen & exit
   key = 0;

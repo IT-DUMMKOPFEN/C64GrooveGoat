@@ -456,6 +456,21 @@ a star and collected in the "Favourites" category; they are saved in the configu
 (favourites.txt) and kept for the next start. The preview only works while the music is stopped,
 so it never disturbs a playing song.
 
+Every preview starts with a freshly reset SID: the filter is switched off, the master volume is
+set to full, all voice registers of the SID are cleared, the pulse width is set to the middle and
+the preview voice is unmuted. So an instrument always sounds the same in the preview, no matter
+which instrument was played before (without the reset, a filter left over from a previous
+instrument could make the next one inaudible). When the library is closed, the editor's mute
+and filter settings are restored. The same applies to the preview in the file selector (Load
+Ins, SPACE) and in the random instrument generator.
+
+About 440 instruments of the original SIDGen library had an envelope that was already over
+during the first frame of a note (Attack/Decay $x0 or $x1 with sustain 0), in which the test bit
+of "1stFrame Wave 09" keeps the voice silent - they only produced a click, in the preview and in
+songs. In the library that comes with C64 GrooveGoat their decay was set to the intended value
+(the release value of the instrument), and a few very short percussion sounds got a slightly
+longer decay.
+
 Loading an instrument adds its table data to the song's tables (unused table data of the old
 instrument in the slot is removed). This is one undo step.
 

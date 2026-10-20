@@ -163,6 +163,94 @@ void playtestnote(int note, int ins, int chnnum)
   }
 }
 
+// ---------------------------------------------------------------------------
+// Instrument preview (library, file selector, random instrument generator)
+//
+// Every preview starts from a clean SID: the filter, the master volume and
+// all voice registers of the SID are reset, so that the state left by the
+// previous instrument (for example a filter routing all voices through a
+// low cutoff, a pulse width of 0 or a muted voice) can not make the next
+// instrument inaudible. The state of the editor is restored afterwards.
+// ---------------------------------------------------------------------------
+
+static unsigned char previewmute[MAX_CHN];
+static SIDFILT previewfilt[MAX_SIDS];
+static int previewsaved = 0;
+
+void preview_begin(void)
+{
+  int c;
+  for (c = 0; c < MAX_CHN; c++) previewmute[c] = chn[c].mute;
+  memcpy(previewfilt, sidfilt, sizeof previewfilt);
+  previewsaved = 1;
+}
+
+void preview_end(void)
+{
+  int c;
+  if (!previewsaved) return;
+  snd_lock();
+  for (c = 0; c < MAX_CHN; c++)
+  {
+    chn[c].mute = previewmute[c];
+    if (songinit == PLAY_STOPPED) chn[c].gate = 0xfe;
+  }
+  if (songinit == PLAY_STOPPED) memcpy(sidfilt, previewfilt, sizeof previewfilt);
+  snd_unlock();
+  previewsaved = 0;
+}
+
+void preview_note(int note, int ins, int chnnum)
+{
+  int s, c;
+  if ((chnnum < 0) || (chnnum >= numchannels)) chnnum = 0;
+  snd_lock();
+  // a song that was just stopped: finish stopping it now
+  if (songinit == PLAY_STOP) playroutine();
+  if (songinit != PLAY_STOPPED)
+  {
+    snd_unlock();
+    return;
+  }
+  s = chnnum / 3;
+
+  // voices of this SID: silent, default pulse width
+  for (c = s * 3; c < s * 3 + 3; c++)
+  {
+    CHN *cptr = &chn[c];
+    cptr->gate = 0xfe;
+    cptr->wave = 0;
+    cptr->freq = 0;
+    cptr->pulse = 0x800;
+    cptr->ptr[WTBL] = 0;
+    cptr->ptr[PTBL] = 0;
+    cptr->pulsetime = 0;
+    cptr->wavetime = 0;
+    cptr->vibtime = 0;
+    cptr->vibdelay = 0;
+    cptr->command = 0;
+    cptr->cmddata = 0;
+    cptr->newcommand = 0;
+    cptr->newcmddata = 0;
+    cptr->newnote = 0;
+    cptr->trans = 0;
+  }
+  chn[chnnum].mute = 0;
+  // jam mode tempo; must be longer than the instrument's gate timer
+  chn[chnnum].tempo = defaulttempo();
+  if (chn[chnnum].tempo <= (instr[ins].gatetimer & 0x3f))
+    chn[chnnum].tempo = (instr[ins].gatetimer & 0x3f) + 1;
+  // filter off, full volume, all registers cleared
+  memset(&sidfilt[s], 0, sizeof(SIDFILT));
+  sidfilt[s].masterfader = 0x0f;
+  memset(sidreg[s], 0, NUMSIDREGS);
+  sidreg[s][0x18] = 0x0f;
+  // legato instruments (1st frame wave 00) would keep the gate closed
+  if (!instr[ins].firstwave) instr[ins].firstwave = 0xff;
+  playtestnote(note, ins, chnnum);
+  snd_unlock();
+}
+
 void releasenote(int chnnum)
 {
   chn[chnnum].gate = 0xfe;

@@ -50,6 +50,9 @@ cp -r "$INSTRUMENTS/6581" "$INSTRUMENTS/8580" $DIST/common/instruments/
 cp "$INSTRUMENTS/README.txt" $DIST/common/instruments/ 2>/dev/null || true
 find $DIST/common/instruments -name "__MACOSX" -prune -exec rm -rf {} \; 2>/dev/null || true
 find $DIST/common/instruments -name ".DS_Store" -delete
+# instruments that are silent with the GoatTracker playroutine (envelope over
+# within the first frame) get their intended decay
+python3 tools/fixlibrary.py $DIST/common/instruments
 
 # Documents
 cp docs/manual.txt $DIST/common/Manual.txt

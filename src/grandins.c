@@ -717,10 +717,12 @@ static void backupslot(void)
 
 static void restoreslot(void)
 {
+  snd_lock();
   releasenote(editorInfo.epchn);
   memcpy(&instr[editorInfo.einum], &backupinstr, sizeof(INSTR));
   memcpy(ltable, backupl, sizeof ltable);
   memcpy(rtable, backupr, sizeof rtable);
+  snd_unlock();
 }
 
 // Returns 0 if there is not enough table space
@@ -809,6 +811,7 @@ void randominstrument(void)
   stopsong();
   rs.voice = editorInfo.epchn % 3;
   backupslot();
+  preview_begin();
   srand(SDL_GetTicks());
 
   generate(&cur);
@@ -1011,10 +1014,12 @@ void randominstrument(void)
     if (regenerate)
     {
       generate(&cur);
+      snd_lock();
       restoreslot();
       applied = applyinstrument(&cur);
       nospace = !applied;
       if (!applied) restoreslot();
+      snd_unlock();
       dopreview = 1;
     }
     if ((dopreview) && (applied))
@@ -1022,8 +1027,7 @@ void randominstrument(void)
       if (!isplaying())
       {
         int note = FIRSTNOTE + cur.previewnote * 12;
-        releasenote(editorInfo.epchn);
-        playtestnote(note, editorInfo.einum, editorInfo.epchn);
+        preview_note(note, editorInfo.einum, editorInfo.epchn);
         previewing = 1;
         previewtimer = cur.previewframes;
       }
@@ -1043,6 +1047,7 @@ void randominstrument(void)
     snprintf(statusmessage, sizeof statusmessage, "Random instrument \"%s\" stored in slot %02X", cur.name, editorInfo.einum);
   }
   else restoreslot();
+  preview_end();
   key = rawkey = 0;
   printmainscreen();
 }

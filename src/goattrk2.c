@@ -383,6 +383,14 @@ int main(int argc, char **argv)
   if (specialnotenames[1] != '\0')
     setspecialnotenames();
 
+  // Test helper: preview library instruments offline
+  if (getenv("GG_PREVIEWTEST"))
+  {
+    initchannels();
+    clearsong(1, 1, 1, 1, 1);
+    return library_previewtest(atoi(getenv("GG_PREVIEWTEST"))) ? EXIT_SUCCESS : EXIT_FAILURE;
+  }
+
   // Test helper: render all random instrument recipes
   if (getenv("GG_RANDOMTEST"))
   {

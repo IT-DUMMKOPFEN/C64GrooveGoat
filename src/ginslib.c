@@ -228,10 +228,12 @@ static int previewing = 0;
 static void restoreslot(void)
 {
   if (!previewing) return;
+  snd_lock();
   releasenote(editorInfo.epchn);
   memcpy(&instr[editorInfo.einum], &backupinstr, sizeof(INSTR));
   memcpy(ltable, backupl, sizeof ltable);
   memcpy(rtable, backupr, sizeof rtable);
+  snd_unlock();
   previewing = 0;
 }
 
@@ -259,6 +261,8 @@ static void preview(const LIBENTRY *e)
     setstatusmessage("Stop the music to preview instruments");
     return;
   }
+  snd_lock();
+  releasenote(editorInfo.epchn);
   if (previewing)
   {
     memcpy(&instr[editorInfo.einum], &backupinstr, sizeof(INSTR));
@@ -273,7 +277,8 @@ static void preview(const LIBENTRY *e)
   }
   previewing = 1;
   if (loadintoslot(e))
-    playtestnote(FIRSTNOTE + editorInfo.epoctave * 12, editorInfo.einum, editorInfo.epchn);
+    preview_note(FIRSTNOTE + editorInfo.epoctave * 12, editorInfo.einum, editorInfo.epchn);
+  snd_unlock();
 }
 
 // Read AD/SR and first wave of an instrument file for the info panel
@@ -327,6 +332,7 @@ void instrumentlibrary(void)
   scanlibrary();
   if (curmodel < 0) curmodel = editorInfo.sidmodel ? 1 : 0;
   previewing = 0;
+  preview_begin();
   buildview();
   key = rawkey = 0;
 
@@ -595,6 +601,64 @@ void instrumentlibrary(void)
   }
   if (done != 2) restoreslot();
   previewing = 0;
+  preview_end();
   key = rawkey = 0;
   printmainscreen();
+}
+
+// Test helper (GG_PREVIEWTEST=n): previews every n-th library instrument of
+// the current SID model offline and reports the ones that stay silent
+int library_previewtest(int step)
+{
+  static short buf[2048];
+  int c, silent = 0, tested = 0;
+  scanlibrary();
+  curmodel = editorInfo.sidmodel ? 1 : 0;
+  curcat = 0;
+  search[0] = 0;
+  buildview();
+  sid_init(48000, editorInfo.sidmodel, 0, 0, 0, 0, 1);
+  sid_setpanning(1, 0);
+  editorInfo.einum = 1;
+  editorInfo.epchn = 0;
+  preview_begin();
+  for (c = 0; c < viewcount; c += step)
+  {
+    const LIBENTRY *e = &lib[view[c]];
+    double sum = 0, framemax = 0;
+    int f, i, n = 0, loudframes = 0;
+    preview(e);
+    for (f = 0; f < 40; f++)
+    {
+      playroutine();
+      sid_fillbuffer(buf, 960, editorInfo.adparam, 0);
+      if (f >= 1)
+      {
+        double fs = 0;
+        for (i = 0; i < 960; i++, n++) fs += (double)buf[i] * buf[i];
+        sum += fs;
+        if (sqrt(fs / 960) > framemax) framemax = sqrt(fs / 960);
+        if (sqrt(fs / 960) > 100) loudframes++;
+        if ((getenv("GG_PREVIEWNAME")) && (strstr(e->path, getenv("GG_PREVIEWNAME"))))
+          printf("%s frame %d rms %.0f env %d\n", e->path, f, sqrt(fs / 960), sid_getenv(0, 0));
+      }
+    }
+    releasenote(0);
+    for (f = 0; f < 10; f++)
+    {
+      playroutine();
+      sid_fillbuffer(buf, 960, editorInfo.adparam, 0);
+    }
+    tested++;
+    // silent: audible for less than 3 frames (60 ms), i.e. only a click
+    if (loudframes < 3)
+    {
+      silent++;
+      printf("silent: %s (rms %.1f, loudest frame %.1f, %d audible frames)\n", e->path, sqrt(sum / n), framemax, loudframes);
+    }
+  }
+  restoreslot();
+  preview_end();
+  printf("tested %d, silent %d\n", tested, silent);
+  return silent == 0;
 }

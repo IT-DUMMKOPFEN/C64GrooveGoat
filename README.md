@@ -78,6 +78,10 @@ in `src/codecs` and built with the program.
   single SID playroutine.
 - `tools/sidtrace.c --c64` runs a runnable PRG with a minimal C64 environment;
   `tools/c64screen.py` renders its screen.
+- `GG_PREVIEWTEST=1 groovegoat -E0` (or `-E1` for the 8580) previews every instrument of the
+  library offline and lists the ones that stay silent; `GG_RANDOMTEST=folder` renders all
+  random instrument recipes. `tools/fixlibrary.py` repairs the library instruments whose
+  envelope is over within the first frame (used by `tools/package.sh`).
 - `GG_SCRIPT="..."` drives the user interface with scripted key presses and mouse clicks
   and takes screenshots (see `src/gautotest.c`).
 
