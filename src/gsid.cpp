@@ -139,7 +139,7 @@ void sid_setsolosid(int s)
   solosid = (s >= 0) && (s < MAX_SIDS) ? s : -1;
 }
 
-void sid_setpanning(int nsids, int stereo)
+void sid_setpanning(int nsids, int width)
 {
   int c;
   // Keep the sum of all SIDs below full scale: every SID gets 1/sqrt(n)
@@ -148,7 +148,7 @@ void sid_setpanning(int nsids, int stereo)
   for (c = 0; c < MAX_SIDS; c++)
   {
     int pan = 0;
-    if ((stereo) && (nsids > 1))
+    if ((width > 0) && (nsids > 1))
     {
       // Spread SIDs alternately left/right, inner pairs closer to centre
       switch (nsids)
@@ -157,6 +157,8 @@ void sid_setpanning(int nsids, int stereo)
         case 4: { static const int p[4] = {-80, 80, -35, 35}; pan = p[c & 3]; } break;
         default: { static const int p[8] = {-90, 90, -65, 65, -40, 40, -15, 15}; pan = p[c & 7]; } break;
       }
+      if (width > 100) width = 100;
+      pan = pan * width / 100;
     }
     sidpan[c] = pan;
     {

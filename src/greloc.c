@@ -2176,6 +2176,9 @@ static int exportdialog(EXPORTSETTINGS *es)
         if (rows[sel] == 0) rawkey = (mouseb & MOUSEB_RIGHT) ? KEY_LEFT : KEY_RIGHT;
         else if (rows[sel] == 5) rawkey = (mouseb & MOUSEB_RIGHT) ? KEY_LEFT : KEY_RIGHT;
         else rawkey = KEY_ENTER;
+        // the < and > arrows always step back / forward
+        if (ui_arrowat(mousex, mousey) < 0) rawkey = KEY_LEFT;
+        if (ui_arrowat(mousex, mousey) > 0) rawkey = KEY_RIGHT;
       }
       else if ((mousex < x0) || (mousex >= x0 + w) || (mousey < y0) || (mousey >= y0 + h)) return 0;
     }

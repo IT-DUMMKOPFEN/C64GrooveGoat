@@ -61,6 +61,17 @@ int ui_hitbutton(int mx, int my, int *param)
   return BTN_NONE;
 }
 
+// Is there a < or > arrow glyph at this screen cell? Returns -1 for the
+// left arrow (previous / decrease), 1 for the right arrow (next / increase)
+// and 0 otherwise.
+int ui_arrowat(int x, int y)
+{
+  unsigned c = getcell(x, y) & 0xffff;
+  if (c == GL_PREV) return -1;
+  if (c == GL_NEXT) return 1;
+  return 0;
+}
+
 // A button: label drawn with button colors; "active" shows it highlighted
 static int hoverbtn = 0;
 
@@ -86,6 +97,7 @@ static const char *buttonhint(int id)
     case BTN_KBDLAYOUT: return "Keyboard layout for shortcuts (EN: QWERTY, DE: QWERTZ - Z and Y swapped)";
     case BTN_LIBRARY: return "Instrument library: search, favourites, preview and load";
     case BTN_RANDOMINS: return "Random instrument generator (bass, drums, leads, pads, strings ...)";
+    case BTN_STEREO: return "Editor playback: Mono or Stereo with 100%, 90%, 80% or 70% width (right click: back)";
     case BTN_ADSRGRAPH: return "ADSR envelope of the instrument (Attack/Decay and Sustain/Release)";
   }
   return NULL;
@@ -219,7 +231,7 @@ static void drawsettingsbar(void)
   ui_drawbutton(x, SETTINGS_Y, " " GS_PLAYPOS " Pos ", BTN_PLAYPOS, 0, isplaying() && lastsonginit == PLAY_POS); x += 8;
   ui_drawbutton(x, SETTINGS_Y, " " GS_PLAYPAT " Patt ", BTN_PLAYPATT, 0, isplaying() && lastsonginit == PLAY_PATTERN); x += 9;
   ui_drawbutton(x, SETTINGS_Y, " " GS_STOP " Stop ", BTN_STOP, 0, 0); x += 9;
-  ui_drawbutton(x, SETTINGS_Y, " Follow ", BTN_FOLLOW, 0, followplay); x += 10;
+  ui_drawbutton(x, SETTINGS_Y, " Follow ", BTN_FOLLOW, 0, followplay); x += 9;
 
   printtext(x, SETTINGS_Y, MKCOL(15, C_PANEL), "SIDs");
   x += 5;
@@ -244,10 +256,12 @@ static void drawsettingsbar(void)
   x += 10;
   ui_drawbutton(x, SETTINGS_Y, " FV ", BTN_FV, 0, editorInfo.finevibrato); x += 5;
   ui_drawbutton(x, SETTINGS_Y, " PO ", BTN_PO, 0, editorInfo.optimizepulse); x += 5;
-  ui_drawbutton(x, SETTINGS_Y, " RO ", BTN_RO, 0, editorInfo.optimizerealtime); x += 6;
+  ui_drawbutton(x, SETTINGS_Y, " RO ", BTN_RO, 0, editorInfo.optimizerealtime); x += 5;
   ui_drawbutton(x, SETTINGS_Y, " INT ", BTN_INT, 0, interpolate & 1); x += 6;
-  ui_drawbutton(x, SETTINGS_Y, " FP ", BTN_FP, 0, (interpolate & 2) ? 1 : 0); x += 6;
-  ui_drawbutton(x, SETTINGS_Y, stereomode ? " Stereo " : " Mono ", BTN_STEREO, 0, 0);
+  ui_drawbutton(x, SETTINGS_Y, " FP ", BTN_FP, 0, (interpolate & 2) ? 1 : 0); x += 5;
+  if (stereomode) sprintf(buf, " Stereo %d%% ", stereowidth());
+  else strcpy(buf, " Mono ");
+  ui_drawbutton(x, SETTINGS_Y, buf, BTN_STEREO, 0, 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -586,9 +600,9 @@ static void drawinstrument(void)
   sprintf(buf, GS_PREV "%02X" GS_NEXT, editorInfo.einum);
   printtext(RP_X + 12, INS_Y, hc, buf);
   ui_addbutton(RP_X + 12, INS_Y, 4, BTN_INSTRNUM, 0);
-  sprintf(buf, "%-16s", instr[editorInfo.einum].name);
+  sprintf(buf, "%-15s", instr[editorInfo.einum].name);
   printtext(RP_X + 17, INS_Y, MKCOL(C_RB3, active ? C_BUTTONHI : C_HEADER), buf);
-  ui_drawbutton(RP_X + RP_W - 12, INS_Y, " " GS_DICE " ", BTN_RANDOMINS, 0, 0);
+  ui_drawbutton(RP_X + RP_W - 13, INS_Y, " " GS_DICE GS_DICER " ", BTN_RANDOMINS, 0, 0);
   ui_drawbutton(RP_X + RP_W - 9, INS_Y, " Library ", BTN_LIBRARY, 0, 0);
 
   fillarea(RP_X, INS_ROWS_Y, RP_W, 5, MKCOL(8, C_PANEL), ' ');

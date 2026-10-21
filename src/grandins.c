@@ -833,7 +833,7 @@ void randominstrument(void)
     char buf[200];
     int hitcat = -1, hitrow = -1, hitbtn = -1;
     int regenerate = 0, dopreview = 0;
-    const char *btns[4] = {" " GS_DICE " Generate (R) ", " " GS_PLAY " Preview (SPACE) ", " " GS_CHECK " Use it (ENTER) ", " Cancel (ESC) "};
+    const char *btns[4] = {" " GS_DICE GS_DICER " Generate (R) ", " " GS_PLAY " Preview (SPACE) ", " " GS_CHECK " Use it (ENTER) ", " Cancel (ESC) "};
     int bx[4];
 
     printstatus();
@@ -963,7 +963,8 @@ void randominstrument(void)
       else if (hitrow >= 0)
       {
         sel = hitrow;
-        rawkey = KEY_RIGHT;
+        // the < arrow steps back, everything else forward
+        rawkey = ui_arrowat(mousex, mousey) < 0 ? KEY_LEFT : KEY_RIGHT;
       }
       else if (hitbtn >= 0)
       {

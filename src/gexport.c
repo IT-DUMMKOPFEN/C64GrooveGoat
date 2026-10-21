@@ -147,7 +147,7 @@ static void render_start(RENDER *r, int rate, int stereo, int frames, int fadefr
 
   srand(1);
   sid_init(rate, editorInfo.sidmodel, editorInfo.ntsc, interpolate & 1, customclockrate, interpolate >> 1, numsids);
-  sid_setpanning(numsids, stereo ? stereomode : 0);
+  sid_setpanning(numsids, stereo ? 100 : 0);  // the stereo width setting is for the editor only
   sid_setsolosid(solo);
   for (c = 0; c < MAX_SIDS; c++) sid_setvoicemask(c, 0);
   if (solo >= 0) sid_setvoicemask(solo, mutemask);
@@ -726,6 +726,9 @@ static int avdialog(void)
         rawkey = (mouseb & MOUSEB_RIGHT) ? KEY_LEFT : KEY_RIGHT;
         if ((rows[sel] >= 8) && (rows[sel] <= 9)) rawkey = KEY_SPACE;
         if (rows[sel] == 3) rawkey = KEY_ENTER;
+        // the < and > arrows always step back / forward
+        if (ui_arrowat(mousex, mousey) < 0) rawkey = KEY_LEFT;
+        if (ui_arrowat(mousex, mousey) > 0) rawkey = KEY_RIGHT;
       }
       else if ((mousex < x0) || (mousex >= x0 + w) || (mousey < y0) || (mousey >= y0 + h)) return 0;
     }

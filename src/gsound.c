@@ -171,7 +171,7 @@ int sound_init(unsigned b, unsigned mr, unsigned writer, unsigned hardsid, unsig
 
   snd_lock();
   sid_init(playspeed, model, ntsc, interpolate & 1, customclockrate, interpolate >> 1, numsids);
-  sid_setpanning(numsids, stereomode);
+  sid_setpanning(numsids, stereowidth());
   snd_player = &sound_playrout;
   snd_setcustommixer(sound_mixer);
   initted = 1;

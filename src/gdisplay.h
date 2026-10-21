@@ -40,6 +40,7 @@ void resettime(void);
 void incrementtime(void);
 void setstatusmessage(const char *msg);
 int ui_hitbutton(int mx, int my, int *param);
+int ui_arrowat(int x, int y);
 void ui_addbutton(int x, int y, int w, int id, int param);
 void ui_drawbutton(int x, int y, const char *label, int id, int param, int active);
 void validatechnview(void);

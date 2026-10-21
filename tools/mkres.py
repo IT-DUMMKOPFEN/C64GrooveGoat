@@ -32,7 +32,7 @@ G = {
     'BAR8': 151, 'SPEAKER': 152, 'MUTE': 153, 'SOLO': 154, 'PREV': 155, 'NEXT': 156,
     'PRG': 157, 'GEAR': 158, 'UNDO': 159,
     # rarely used Latin-1 symbols replaced by UI glyphs
-    'WAVE': 164, 'FILM': 165, 'REDO': 166, 'STAR': 168, 'STAROFF': 172, 'DICE': 173,
+    'WAVE': 164, 'FILM': 165, 'REDO': 166, 'STAR': 168, 'STAROFF': 172, 'DICE': 173, 'DICER': 174,
     'SEARCH': 175, 'ENV': 127,
 }
 
@@ -51,6 +51,20 @@ def glyph_custom(code, cw, ch):
             name = k
     if name is None:
         return None
+
+    if name in ('DICE', 'DICER'):
+        # Big dice drawn over two cells: DICE is the left, DICER the right half
+        big = Image.new('L', (W * 2, H), 0)
+        bd = ImageDraw.Draw(big)
+        side = H * 0.74
+        x0, y0 = W - side / 2, cy - side / 2
+        bd.rounded_rectangle([x0, y0, x0 + side, y0 + side], radius=side * 0.2, fill=255)
+        r = side * 0.095
+        for (px, py) in ((-0.25, -0.25), (0.25, -0.25), (0.0, 0.0), (-0.25, 0.25), (0.25, 0.25)):
+            x, y = W + side * px, cy + side * py
+            bd.ellipse([x - r, y - r, x + r, y + r], fill=0)
+        half = big.crop((0, 0, W, H) if name == 'DICE' else (W, 0, W * 2, H))
+        return half.resize((cw, ch), Image.LANCZOS)
 
     def hl(x0, x1):
         d.rectangle([x0, cy - lw // 2, x1, cy - lw // 2 + lw - 1], fill=255)
@@ -259,12 +273,6 @@ def glyph_custom(code, cw, ch):
             d.polygon(pts, fill=255)
         else:
             d.polygon(pts, outline=255, width=max(SS, lw * 2 // 3))
-    elif name == 'DICE':
-        d.rounded_rectangle([W * 0.1, cy - W * 0.4, W * 0.9, cy + W * 0.4], radius=W * 0.14, fill=255)
-        r = W * 0.08
-        for (px, py) in ((0.3, -0.2), (0.7, -0.2), (0.5, 0.0), (0.3, 0.2), (0.7, 0.2)):
-            x, y = W * px, cy + W * py
-            d.ellipse([x - r, y - r, x + r, y + r], fill=0)
     elif name == 'SEARCH':
         r = W * 0.26
         ox, oy = cx - W * 0.08, cy - W * 0.08

@@ -152,6 +152,8 @@ const RESIMAGE *res_getimage(const char *name);
 #define GS_STAROFF "\xac"
 #define GL_DICE 173
 #define GS_DICE "\xad"
+#define GL_DICER 174
+#define GS_DICER "\xae"
 #define GL_SEARCH 175
 #define GS_SEARCH "\xaf"
 

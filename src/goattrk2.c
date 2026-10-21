@@ -60,7 +60,14 @@ unsigned interpolate = 3;
 unsigned residdelay = 0;
 unsigned hardsidbufinteractive = 20;
 unsigned hardsidbufplayback = 400;
-unsigned stereomode = 1;
+unsigned stereomode = 1;   // 0 = mono, 1-4 = stereo with 100%, 90%, 80%, 70% width
+
+// Stereo width of the editor playback in percent (0 = mono)
+int stereowidth(void)
+{
+  static const int w[5] = {0, 100, 90, 80, 70};
+  return w[stereomode <= 4 ? stereomode : 1];
+}
 unsigned themesetting = THEME_NIGHT;
 unsigned prgfrontend = 1;
 unsigned mastervolume = 80;
@@ -361,7 +368,7 @@ int main(int argc, char **argv)
   if (customclockrate < 100) customclockrate = 0;
   if (fileformat > FORMAT_BIN) fileformat = FORMAT_SID;
   themesetting &= 1;
-  stereomode &= 1;
+  if (stereomode > 4) stereomode = 1;
   if (mastervolume > 100) mastervolume = 100;
   // Older versions used 44100 Hz; most sound systems run at 48000 Hz, which
   // avoids resampling by the sound server
@@ -1248,12 +1255,28 @@ static void buttoncommand(int id, int param)
       do_sound_init();
       break;
     case BTN_STEREO:
-      stereomode ^= 1;
-      sid_setpanning(numsids, stereomode);
-      setstatusmessage(stereomode ? "Stereo output: SIDs are spread between left and right" : "Mono output: all SIDs centered");
+      // Mono -> Stereo 100% -> 90% -> 80% -> 70% -> Mono (right click: backwards)
+      if (mouseb & MOUSEB_RIGHT) stereomode = (stereomode + 4) % 5;
+      else stereomode = (stereomode + 1) % 5;
+      sid_setpanning(numsids, stereowidth());
+      if (stereomode)
+      {
+        char msg[100];
+        sprintf(msg, "Stereo output (%d%% width): SIDs are spread between left and right", stereowidth());
+        setstatusmessage(msg);
+      }
+      else setstatusmessage("Mono output: all SIDs centered");
       break;
     case BTN_OCTAVE:
-      if (mouseb & MOUSEB_RIGHT)
+      if (ui_arrowat(mousex, mousey) < 0)
+      {
+        if (editorInfo.epoctave > 0) editorInfo.epoctave--;
+      }
+      else if (ui_arrowat(mousex, mousey) > 0)
+      {
+        if (editorInfo.epoctave < 7) editorInfo.epoctave++;
+      }
+      else if (mouseb & MOUSEB_RIGHT)
       {
         if (editorInfo.epoctave > 0) editorInfo.epoctave--;
       }
@@ -1390,6 +1413,8 @@ void mousecommands(void)
     {
       switch (id)
       {
+        // The < and > arrows always step back / forward; on the value
+        // itself left click = next, right click = previous
         case BTN_PATTNUM:
         editorInfo.epchn = param;
         if (mouseb & MOUSEB_LEFT) nextpattern();
@@ -1397,13 +1422,17 @@ void mousecommands(void)
         break;
 
         case BTN_SUBTUNE:
-        if (mouseb & MOUSEB_LEFT) nextsong();
-        if (mouseb & MOUSEB_RIGHT) prevsong();
+        if (ui_arrowat(mousex, mousey) < 0) prevsong();
+        else if (ui_arrowat(mousex, mousey) > 0) nextsong();
+        else if (mouseb & MOUSEB_LEFT) nextsong();
+        else if (mouseb & MOUSEB_RIGHT) prevsong();
         break;
 
         case BTN_INSTRNUM:
-        if (mouseb & MOUSEB_LEFT) nextinstr();
-        if (mouseb & MOUSEB_RIGHT) previnstr();
+        if (ui_arrowat(mousex, mousey) < 0) previnstr();
+        else if (ui_arrowat(mousex, mousey) > 0) nextinstr();
+        else if (mouseb & MOUSEB_LEFT) nextinstr();
+        else if (mouseb & MOUSEB_RIGHT) previnstr();
         break;
 
         case BTN_SPEED:
@@ -1415,7 +1444,10 @@ void mousecommands(void)
             if (uibuttons[c2].id == BTN_SPEED)
             {
               undoCreateEditorInfoBackup();
-              if ((mousex < uibuttons[c2].x + uibuttons[c2].w / 2) || (mouseb & MOUSEB_RIGHT)) prevmultiplier();
+              int dir = ui_arrowat(mousex, mousey);
+              if (dir < 0) prevmultiplier();
+              else if (dir > 0) nextmultiplier();
+              else if ((mousex < uibuttons[c2].x + uibuttons[c2].w / 2) || (mouseb & MOUSEB_RIGHT)) prevmultiplier();
               else nextmultiplier();
               undoAddEditorSettingsToList();
               break;

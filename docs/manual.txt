@@ -127,10 +127,14 @@ does and its keyboard shortcut.
 |  RO           Realtime command optimization (skip realtime commands on tick 0)
 |  INT          reSID interpolation (better quality, more CPU time)
 |  FP           Use reSID-fp (distortion/nonlinearity emulation)
-|  Stereo/Mono  With 2 or more SIDs the SIDs are spread over the stereo field
+|  Stereo/Mono  With 2 or more SIDs the SIDs are spread over the stereo field. Click to
+|               switch Mono > Stereo 100% > 90% > 80% > 70% (right click: backwards).
+|               A smaller width moves the SIDs closer to the centre - nice for
+|               headphones. Only for playback in the editor; exports use 100%.
 
 Left click on a value increases it, right click decreases it where this makes sense (speed,
-octave, subtune and so on).
+octave, subtune and so on). A click on the arrow left or right of a value (as in SUBTUNE <01>
+or INSTRUMENT <01>) always steps back or forward.
 
 ## Status bar and volume
 
@@ -230,7 +234,9 @@ hardware.
 - The tempo commands (FXY with $03-$7F and EXY funktempo) change the tempo of all voices of all
   SIDs; FXY with $83-$FF only changes the current voice.
 - In stereo mode the SIDs are placed in the stereo field: with 2 SIDs one left and one right,
-  with 4 and 8 SIDs spread over the whole stereo field (odd SIDs left, even SIDs right).
+  with 4 and 8 SIDs spread over the whole stereo field (odd SIDs left, even SIDs right). The
+  stereo width (100%, 90%, 80% or 70%) of the Stereo button narrows the field for the editor
+  playback.
   Exported SID files contain no panning; the player decides.
 - SHIFT+1,2,3 in the pattern editor mutes voice 1-3 of the SID of the current voice; in the
   orderlist editor it swaps the orderlist with voice 1-3 of the same SID.
@@ -593,6 +599,7 @@ MP3 tags and shown in exported videos.
 |  Wheel            Scroll the panel under the mouse pointer
 |  Double click     Play the pattern from the clicked row
 |  Click P00        Next pattern of the voice (right click: previous)
+|  Click < or >     Previous / next value (subtune, instrument, octave, speed, dialogs)
 |  Click M / S      Mute / solo a voice (in the voice header)
 |  Drop a file      Load a song (.sng, .ggt) or an instrument (.ins)
 
@@ -896,6 +903,8 @@ before ADSR), as in GoatTracker.
 The Audio button (or CTRL+F9) renders the song with the SID emulation into an audio file. The
 rendering is done offline - much faster than real time - with exactly the settings of the editor
 (SID model, PAL/NTSC, number of SIDs, stereo placement, reSID/reSID-fp and interpolation).
+Stereo files always use the full stereo width (100%); the width setting of the Stereo button
+only applies to the playback in the editor.
 
 |  Format         WAV audio (16 bit PCM), MP3 audio or MP4 video
 |  Subtune        Which subtune to render

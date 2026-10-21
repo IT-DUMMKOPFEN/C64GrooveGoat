@@ -106,6 +106,7 @@ extern char *patchname;
 extern char *notename[];
 extern char textbuffer[MAX_PATHNAME];
 extern unsigned stereomode;
+int stereowidth(void);
 extern char appdir[MAX_PATHNAME];
 extern char instrlibpath[MAX_PATHNAME];
 extern char examplespath[MAX_PATHNAME];
