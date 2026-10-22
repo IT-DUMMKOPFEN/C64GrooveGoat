@@ -1,6 +1,6 @@
 #!/bin/bash
 # Builds the release packages of C64 GrooveGoat for Windows 11 (x64), Linux
-# (x86-64 AppImage) and macOS (Apple Silicon) into dist/.
+# (x86-64 AppImage and tar.gz) and macOS (Apple Silicon) into dist/.
 #
 #   tools/package.sh
 #
@@ -65,6 +65,9 @@ cp src/codecs/faac/COPYING $DIST/common/licenses/faac-COPYING.txt
 cp src/codecs/minih264/LICENSE $DIST/common/licenses/minih264-LICENSE.txt
 cp src/codecs/minimp4/LICENSE $DIST/common/licenses/minimp4-LICENSE.txt
 
+# readable for everybody (files from the repository may be private)
+chmod -R u+rwX,go+rX-w $DIST/common
+
 # Text files with CRLF line endings for Windows
 crlf() { sed 's/$/\r/' "$1" > "$2"; }
 
@@ -116,6 +119,69 @@ ARCH=x86_64 VERSION=$VERSION "$APPIMAGETOOL" --appimage-extract-and-run --no-app
   --runtime-file "$APPIMAGERUNTIME" $A $APPIMAGE_FILE > $DIST/appimage.log 2>&1 || { cat $DIST/appimage.log; exit 1; }
 chmod +x $APPIMAGE_FILE
 rm -rf $A
+
+echo "== Linux (tar.gz)"
+L=$DIST/$NAME-Linux-x86_64
+mkdir -p $L
+strip -o $L/groovegoat build/appimage/groovegoat
+chmod +x $L/groovegoat
+cp -r $DIST/common/instruments $DIST/common/examples $DIST/common/licenses $DIST/common/*.txt $L/
+python3 -c "
+from PIL import Image
+Image.open('res/logo1024.png').resize((256, 256), Image.LANCZOS).save('$L/groovegoat.png')"
+cat > $L/install.sh <<'INSTALL'
+#!/bin/sh
+# C64 GrooveGoat - install for the current user (no root rights needed).
+# Copies the program to ~/.local/share/groovegoat, links it as
+# ~/.local/bin/groovegoat and adds it to the application menu.
+set -e
+HERE="$(cd "$(dirname "$0")" && pwd)"
+DATA="${XDG_DATA_HOME:-$HOME/.local/share}"
+DEST="$DATA/groovegoat"
+BIN="$HOME/.local/bin"
+if [ ! -x "$HERE/groovegoat" ]; then echo "groovegoat not found next to install.sh"; exit 1; fi
+if [ "$HERE" != "$DEST" ]; then
+  if [ -e "$DEST" ] && [ ! -x "$DEST/groovegoat" ]; then
+    echo "$DEST exists and is not a C64 GrooveGoat installation - not touching it"; exit 1
+  fi
+  rm -rf "$DEST"
+  mkdir -p "$DEST"
+  cp -r "$HERE/." "$DEST/"
+fi
+mkdir -p "$BIN" "$DATA/applications" "$DATA/icons/hicolor/256x256/apps"
+ln -sf "$DEST/groovegoat" "$BIN/groovegoat"
+cp "$DEST/groovegoat.png" "$DATA/icons/hicolor/256x256/apps/groovegoat.png"
+cat > "$DATA/applications/groovegoat.desktop" <<DESKTOP
+[Desktop Entry]
+Type=Application
+Name=C64 GrooveGoat
+GenericName=SID Music Editor
+Comment=Multi-SID music editor for the Commodore 64
+Exec="$DEST/groovegoat" %f
+Icon=groovegoat
+Terminal=false
+Categories=AudioVideo;Audio;
+Keywords=C64;SID;tracker;chiptune;GoatTracker;music;
+DESKTOP
+command -v update-desktop-database > /dev/null 2>&1 && update-desktop-database "$DATA/applications" > /dev/null 2>&1 || true
+command -v gtk-update-icon-cache > /dev/null 2>&1 && gtk-update-icon-cache -q "$DATA/icons/hicolor" > /dev/null 2>&1 || true
+echo "C64 GrooveGoat installed to $DEST"
+echo "Start it from the application menu or with: $BIN/groovegoat"
+INSTALL
+cat > $L/uninstall.sh <<'UNINSTALL'
+#!/bin/sh
+# C64 GrooveGoat - remove the installation made by install.sh.
+# Your songs and the settings in ~/.groovegoat are kept.
+DATA="${XDG_DATA_HOME:-$HOME/.local/share}"
+DEST="$DATA/groovegoat"
+if [ -x "$DEST/groovegoat" ]; then rm -rf "$DEST"; fi
+[ -L "$HOME/.local/bin/groovegoat" ] && rm -f "$HOME/.local/bin/groovegoat"
+rm -f "$DATA/applications/groovegoat.desktop" "$DATA/icons/hicolor/256x256/apps/groovegoat.png"
+command -v update-desktop-database > /dev/null 2>&1 && update-desktop-database "$DATA/applications" > /dev/null 2>&1 || true
+echo "C64 GrooveGoat removed (settings in ~/.groovegoat are kept)"
+UNINSTALL
+chmod +x $L/install.sh $L/uninstall.sh
+(cd $DIST && tar --owner=0 --group=0 -czf $NAME-Linux-x86_64.tar.gz $NAME-Linux-x86_64)
 
 echo "== macOS"
 M=$DIST/$NAME-macOS-AppleSilicon

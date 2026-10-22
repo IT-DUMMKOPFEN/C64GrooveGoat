@@ -51,7 +51,7 @@ by Lasse Öörni (Cadaver) and the
 
 ## Downloads
 
-Ready-to-run packages for Windows 11 (x64), macOS (Apple Silicon) and Linux (x86-64 AppImage) are attached
+Ready-to-run packages for Windows 11 (x64), macOS (Apple Silicon) and Linux (x86-64, AppImage or tar.gz) are attached
 to the [Releases](https://github.com/IT-DUMMKOPFEN/C64GrooveGoat/releases) of this repository
 and can be built with `tools/package.sh` (see below).
 

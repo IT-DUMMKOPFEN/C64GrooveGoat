@@ -60,6 +60,18 @@ Linux (x86-64, AppImage)
   The instrument library and the example songs are inside the AppImage; the
   file selector has the buttons "Library" and "Examples" to open them.
 
+Linux (x86-64, tar.gz - without AppImage)
+  Unpack the archive and start the program in the unpacked folder:
+    tar xzf C64-GrooveGoat-0.9b-Linux-x86_64.tar.gz
+    cd C64-GrooveGoat-0.9b-Linux-x86_64
+    ./groovegoat
+  Keep the "instruments" and "examples" folders next to the program.
+  Optional: ./install.sh installs it for the current user (no root rights)
+  to ~/.local/share/groovegoat, adds "C64 GrooveGoat" to the application
+  menu and the command ~/.local/bin/groovegoat. ./uninstall.sh removes it
+  again. Same requirements as the AppImage (glibc 2.35 or newer, X11 or
+  Wayland); SDL 2 is built into the program, FUSE is not needed.
+
 
 First steps
 -----------
