@@ -111,7 +111,7 @@ jobs:
           sudo apt-get install -y build-essential pkg-config python3-pil \
             libasound2-dev libpulse-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
             libxfixes-dev libxi-dev libxss-dev libxkbcommon-dev libdrm-dev libgbm-dev \
-            libgl1-mesa-dev libegl1-mesa-dev libdbus-1-dev libudev-dev
+            libgl1-mesa-dev libegl1-mesa-dev libdbus-1-dev libudev-dev desktop-file-utils
 
       - name: Set TOOLS
         run: |
