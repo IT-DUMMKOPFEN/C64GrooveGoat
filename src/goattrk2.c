@@ -73,6 +73,9 @@ unsigned prgfrontend = 1;
 unsigned mastervolume = 80;
 unsigned showwelcome = 1;
 unsigned kbdlayoutsetting = 2;
+unsigned usbsid = 0;
+char usbsidboards[MAX_PATHNAME];
+char usbsidmap[MAX_PATHNAME];
 float basepitch = 0.0f;
 float equaldivisionsperoctave = 12.0f;
 int tuningcount = 0;
@@ -128,6 +131,9 @@ static char *usage[] = {
   "-Yxx Path to a Scala tuning file .scl",
   "-Zxx Set random reSID write delay in cycles (0 = off) DEFAULT=off",
   "-Txx Set theme (0 = night, 1 = day)",
+  "-uxx Use USBSID-Pico (0 = off, 1 = on)",
+  "-sxx USBSID-Pico board serials, comma separated (DEFAULT = all boards)",
+  "-mxx USBSID-Pico SID per song SID, comma separated (SERIAL:N, - = auto, 0 = off)",
   "-N   Use NTSC timing",
   "-P   Use PAL timing (DEFAULT)",
   "-W   Write sound output to a file SIDAUDIO.RAW",
@@ -324,6 +330,19 @@ int main(int argc, char **argv)
       case 'J': sscanf(&argv[c][2], "%185s", specialnotenames); break;
       case 'Y': sscanf(&argv[c][2], "%255s", scalatuningfilepath); break;
       case 'T': sscanf(&argv[c][2], "%u", &themesetting); break;
+      case 'u': { int v = 0; sscanf(&argv[c][2], "%d", &v); usbsid = (v > 0) ? 1 : 0; } break;
+      case 's': snprintf(usbsidboards, sizeof usbsidboards, "%s", &argv[c][2]); break;
+      case 'm':
+      {
+        // The config reader takes one word: drop spaces and tabs
+        const char *src = &argv[c][2];
+        size_t len = 0;
+
+        for (; *src && len < sizeof usbsidmap - 1; src++)
+          if (*src != ' ' && *src != '\t') usbsidmap[len++] = *src;
+        usbsidmap[len] = 0;
+      }
+      break;
       }
     }
     else
@@ -368,6 +387,7 @@ int main(int argc, char **argv)
   if (customclockrate < 100) customclockrate = 0;
   if (fileformat > FORMAT_BIN) fileformat = FORMAT_SID;
   themesetting &= 1;
+  if (usbsid > 1) usbsid = 1;
   if (stereomode > 4) stereomode = 1;
   if (mastervolume > 100) mastervolume = 100;
   // Older versions used 44100 Hz; most sound systems run at 48000 Hz, which
@@ -522,6 +542,14 @@ int main(int argc, char **argv)
   }
   else
     setstatusmessage("Welcome to C64 GrooveGoat " PROGRAMVERSION " - press F12 or click Help for the keyboard reference");
+  if ((usbsid) && (sound_usbsidlost()))
+    setstatusmessage("USBSID-Pico not found, using reSID");
+  else if ((usbsid) && (!usbsidboards[0]) && (!usbsidmap[0]) && (sound_usbsidboardcount() > 1))
+  {
+    char hint[80];
+    snprintf(hint, sizeof hint, "USBSID-Pico: %d boards, %d SIDs, Alt+U picks boards and SIDs", sound_usbsidboardcount(), sound_usbsidtotalsids());
+    setstatusmessage(hint);
+  }
 
   if (getenv("GG_AUTOTEST"))
   {
@@ -683,9 +711,14 @@ static void loadconfig(void)
   getparam(configfile, &mastervolume);
   getparam(configfile, &showwelcome);
   getparam(configfile, &kbdlayoutsetting);
+  getparam(configfile, &usbsid);
+  getstringparam(configfile, usbsidboards);
+  getstringparam(configfile, usbsidmap);
   fclose(configfile);
   if (!strcmp(specialnotenames, "-")) specialnotenames[0] = 0;
   if (!strcmp(scalatuningfilepath, "-")) scalatuningfilepath[0] = 0;
+  if (!strcmp(usbsidboards, "-")) usbsidboards[0] = 0;
+  if (!strcmp(usbsidmap, "-")) usbsidmap[0] = 0;
 }
 
 static void saveconfig(void)
@@ -742,7 +775,10 @@ static void saveconfig(void)
     ";PRG export includes the player frontend (0 = no, 1 = yes)\n%d\n\n"
     ";Output volume in percent (0-100)\n%d\n\n"
     ";Show the welcome window at startup (0 = no, 1 = yes)\n%d\n\n"
-    ";Keyboard layout for shortcuts (0 = EN QWERTY, 1 = DE QWERTZ, 2 = detect)\n%d\n\n",
+    ";Keyboard layout for shortcuts (0 = EN QWERTY, 1 = DE QWERTZ, 2 = detect)\n%d\n\n"
+    ";Use USBSID-Pico (0 = off, 1 = on)\n%d\n\n"
+    ";USBSID-Pico board serials, comma separated (- = all boards)\n%s\n\n"
+    ";USBSID-Pico SID per song SID, comma separated (SERIAL:N, - = auto, 0 = off; - alone = all auto)\n%s\n\n",
     b,
     mr,
     hardsid,
@@ -788,7 +824,10 @@ static void saveconfig(void)
     prgfrontend,
     mastervolume,
     showwelcome,
-    kbdlayout);
+    kbdlayout,
+    usbsid,
+    usbsidboards[0] ? usbsidboards : "-",
+    usbsidmap[0] ? usbsidmap : "-");
   fclose(configfile);
 }
 
@@ -916,10 +955,32 @@ static void runautotest(void)
 // Main loop helpers
 // ---------------------------------------------------------------------------
 
+static void usbsidpoll(void)
+{
+  int event = sound_usbsidpoll();
+
+  if (event == USBSID_EVENT_NONE) return;
+  stopsong();
+  // Clear first: a message set by sound_init (chip not found, SIDs missing) stays
+  statusmessage[0] = 0;
+  do_sound_init();
+  if (event == USBSID_EVENT_LOST) setstatusmessage("USBSID-Pico board lost, playing on reSID");
+  else if (statusmessage[0]) return;
+  else if (sound_usbsidtotalsids() < numsids)
+  {
+    char msg[80];
+
+    snprintf(msg, sizeof msg, "USBSID-Pico reconnected, song uses %d SIDs, %d connected", numsids, sound_usbsidtotalsids());
+    setstatusmessage(msg);
+  }
+  else setstatusmessage("USBSID-Pico reconnected");
+}
+
 void waitkey(void)
 {
   for (;;)
   {
+    usbsidpoll();
     displayupdate();
     getkey();
     if ((rawkey) || (key)) break;
@@ -933,6 +994,7 @@ void waitkeymouse(void)
 {
   for (;;)
   {
+    usbsidpoll();
     displayupdate();
     getkey();
     if ((rawkey) || (key)) break;
@@ -1081,6 +1143,15 @@ void docommand(void)
     rawkey = 0;
   }
 
+  // ALT+U USBSID-Pico boards. Consumed in this block, otherwise the pattern editor
+  // takes it as a jam note
+  if ((altpressed) && (!ctrlpressed) && (!shiftpressed) && (!metapressed) && (rawkey == KEY_U))
+  {
+    usbsiddialog();
+    key = 0;
+    rawkey = 0;
+  }
+
   GTUNDO_OBJECT *ed = undoCreateEditorInfo();
   int oldundo = undoCounter;
 
@@ -1199,6 +1270,7 @@ static void buttoncommand(int id, int param)
     case BTN_HELP: onlinehelp(0, 0); break;
     case BTN_MANUAL: showmanual(); break;
     case BTN_HISTORY: showhistory(); break;
+    case BTN_USBSID: usbsiddialog(); break;
     case BTN_INFO: showinfo(); break;
     case BTN_PLAY: initsong(editorInfo.esnum, PLAY_BEGINNING); followplay = shiftpressed; break;
     case BTN_PLAYPOS: initsong(editorInfo.esnum, PLAY_POS); followplay = shiftpressed; break;
@@ -1259,6 +1331,7 @@ static void buttoncommand(int id, int param)
       if (mouseb & MOUSEB_RIGHT) stereomode = (stereomode + 4) % 5;
       else stereomode = (stereomode + 1) % 5;
       sid_setpanning(numsids, stereowidth());
+      sound_usbsidstereo(stereomode != 0);
       if (stereomode)
       {
         char msg[100];

@@ -118,6 +118,9 @@ extern unsigned themesetting;
 extern char statusmessage[256];
 extern unsigned mastervolume;
 extern unsigned showwelcome;
+extern unsigned usbsid;
+extern char usbsidboards[MAX_PATHNAME];
+extern char usbsidmap[MAX_PATHNAME];
 extern int chnview;
 extern int ordchnview;
 
@@ -144,6 +147,7 @@ void calculatefreqtable(void);
 void setspecialnotenames(void);
 void readscalatuningfile(void);
 void do_sound_init(void);
+void usbsiddialog(void);
 void changenumsids(int n);
 void togglethemekey(void);
 void newsong(void);
