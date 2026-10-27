@@ -135,7 +135,8 @@ does and its keyboard shortcut.
 |  Stereo/Mono  With 2 or more SIDs the SIDs are spread over the stereo field. Click to
 |               switch Mono > Stereo 100% > 90% > 80% > 70% (right click: backwards).
 |               A smaller width moves the SIDs closer to the centre - nice for
-|               headphones. Only for playback in the editor; exports use 100%.
+|               headphones. Only for playback in the editor; exports use 100%. The
+|               width only applies to the reSID playback, not to USBSID-Pico boards.
 
 Left click on a value increases it, right click decreases it where this makes sense (speed,
 octave, subtune and so on). A click on the arrow left or right of a value (as in SUBTUNE <01>
@@ -145,7 +146,8 @@ or INSTRUMENT <01>) always steps back or forward.
 
 The bottom lines show the octave, edit/jam mode, autoadvance mode, note entry mode (Keys),
 keyboard layout (Kbd), the step size, the Undo and Redo buttons, the play state and time, the
-positions of the visible voices and the SID addresses.
+positions of the visible voices and the SID addresses. Versions built with USBSID-Pico support
+also show the USB button (see USBSID-Pico below).
 
 The volume slider at the bottom right sets the output volume of the editor from 0% to 100%
 (default 80%). Click or drag on the slider, or use the mouse wheel over it; a click on the
@@ -242,7 +244,8 @@ hardware.
   with 4 and 8 SIDs spread over the whole stereo field (odd SIDs left, even SIDs right). The
   stereo width (100%, 90%, 80% or 70%) of the Stereo button narrows the field for the editor
   playback.
-  Exported SID files contain no panning; the player decides.
+  Exported SID files contain no panning; the player decides. With USBSID-Pico output the
+  placement and width do not apply: the boards get plain SID register writes.
 - SHIFT+1,2,3 in the pattern editor mutes voice 1-3 of the SID of the current voice; in the
   orderlist editor it swaps the orderlist with voice 1-3 of the same SID.
 
@@ -285,6 +288,7 @@ hardware.
 |  SHIFT+ESC    Optimize music data, or clear music data and set the default pattern length
 |  ESC          Exit the program (asks to save changes)
 |  ALT+ENTER    Toggle fullscreen
+|  ALT+U        USBSID-Pico boards & SIDs (versions built with USBSID-Pico support)
 
 SHIFT and CTRL can be used in place of each other in the editor commands (SHIFT+X and CTRL+X
 both cut). [ ] or ( ) work in place of < >. On a Mac, CMD works like CTRL and FN+F1..F12 gives
@@ -1007,7 +1011,12 @@ The format is chosen by the extension (.wav, .mp3 or .mp4). See "Command line".
 |  -Qxx   Equal divisions per octave (12 default)
 |  -Rxx   Realtime command optimization (0 off, 1 on)
 |  -Sxx   Speed multiplier (0 = 25Hz, 1 = 1x, 2 = 2x ...)
+|  -sxx   USBSID-Pico board serials, comma separated (default all boards); lowercase s,
+|         not the speed multiplier -S
+|  -mxx   USBSID-Pico chip for each song SID, comma separated (SERIAL:N, - = auto, 0 = off);
+|         lowercase m, not the mixing rate -M
 |  -Txx   Theme (0 night, 1 day)
+|  -uxx   USBSID-Pico output (0 off, 1 on; versions built with USBSID-Pico support)
 |  -Vxx   Fine vibrato conversion (0 off, 1 on)
 |  -Xxx   Window (0) or fullscreen (1)
 |  -Yxx   Scala tuning file (.scl)
@@ -1045,6 +1054,140 @@ a video, an image viewer) do not cause crackling. If you still hear dropouts on 
 busy computer, start the program with a bigger buffer, for example -B200 (200 milliseconds).
 The default sample rate is 48000 Hz; -M44100 selects 44100 Hz.
 
+## USBSID-Pico
+
+Versions built with USBSID-Pico support can play the song on real SID chips through one or more
+USBSID-Pico boards instead of the SID emulation. Start the program with -u1:
+
+    groovegoat -u1 song.ggt
+    groovegoat -u1 -sSERIAL1,SERIAL2 song.ggt
+    groovegoat -u1 -mB0A36492C05BE03D:2,-,0 song.ggt
+
+- Without -s every attached board is used, in USB bus and port order. -s lists the serial
+  numbers of the boards to use, in SID order: the first board provides SID 1, 2 ... and the next
+  boards follow. The serial numbers are shown in the Alt+U window.
+- By default song SID n plays on the nth chip of the opened boards (the order of the SIDs on a
+  board is the one set in the board configuration). A board has up to 4 SIDs; two boards with
+  4 SIDs each play an 8 SID song. The SID map (below) picks other chips. SIDs of the song without
+  a chip stay silent and the status bar tells how many SIDs the song uses and how many are
+  connected.
+- Playback is cycle exact and follows the clock of the board (PAL or NTSC). The latency of the
+  output is about 30 ms.
+- The SID emulation keeps running without sound and keeps the envelope meters working. Settings
+  that only act on the SID emulation have no effect on the boards: output volume, interpolation
+  (-I), -Z, a custom SID clock (-F) and writing sidaudio.raw (-W). The
+  SID model (6581 / 8580) is the one of the chip on the board.
+- Audio export (WAV, MP3) and video export (MP4) always render with the SID emulation and never
+  play on the boards.
+- If a board is unplugged or stops answering, playback stops, the program switches to the SID
+  emulation and shows a message. As soon as the boards are attached again, they are opened again
+  and the output switches back to USBSID-Pico, also when no board was attached at the start. The
+  SID map stays as it was.
+
+The USBSID-Pico window (ALT+U, or click the USB button in the status bar) sets the output, the
+boards and the SID map in one place. Opening it stops the song. It has three parts:
+
+- Output: [x] USBSID-Pico on or [ ] USBSID-Pico off, with the state at the right: "Connected: N
+  boards, M SIDs", "Not connected, playing on reSID", "Output off, playing on reSID" or "Output:
+  lost, playing on reSID". Switching the output on reads the attached boards again.
+- Boards: one row for each board with the columns # (position among the boards in use, which is
+  the board number after Apply, "-" for boards not in use), Use ([x] = use this board), Serial,
+  SIDs (number of SIDs), Chips (6581, 8580, none, ? or FM for the FM chip of a v1.5 board) and
+  PCB (board version) and State. The state is empty for a board that is attached and not open,
+  "in use" for a board the program has open, "busy" for a board that is attached but claimed by
+  another program or did not open (it cannot be marked) and "missing" for a board named in the
+  -s list or in the SID map that is not attached (its mark and its map entries are kept: a
+  board unplugged for a while keeps its place). Without a board the window shows "No board
+  attached". With the output off the SIDs, Chips and PCB columns show "-". More than 8 boards
+  scroll with the cursor and show "and N more".
+- Song SIDs: one row for each song SID (SID 1 to SID 8), with its address, the choice and, after
+  the arrow, where it plays: for example "Board 1 SID 2  8580", "silent" for an off entry or
+  "no chip available". The choice is "auto" (the first free chip in board order, FM chips are
+  skipped), "off" (this song SID is silent on the boards) or "Board b SID s" (a chosen chip). A
+  chosen chip plays one song SID only: it is not offered again for another SID. If the chosen
+  chip is not there (the board is not attached or not in use), the entry is shown as missing, the
+  song SID falls back to auto and the status bar says "USBSID-Pico: chip for SID n not found,
+  using auto". Rows beyond the number of SIDs of the song are dimmed and kept for songs with
+  more SIDs. The right side of the heading shows how many SIDs the song uses.
+
+Keys in the window:
+
+|  UP / DOWN       Move the cursor over the output row, the board rows and the song SID rows
+|  TAB             Move over the rows, Apply and Cancel (SHIFT+TAB backwards)
+|  SPACE           Output row: switch the output; board row: use or do not use the board
+|  SHIFT+UP/DOWN   Move the board row up or down (the order of the boards is the SID order)
+|  LEFT / RIGHT    Song SID row: next or previous choice (auto, off, the chips of the boards in
+|                  use); output row: switch the output
+|  DEL, BACKSPACE  Song SID row: auto
+|  0               Song SID row: off
+|  ENTER           Apply and reconnect (on Cancel: cancel)
+|  A or R          Apply and reconnect
+|  C or ESC        Cancel
+
+Mouse: click [x] to switch the output or to mark a board; click the choice of a song SID for the
+next chip, right click for the previous one, or turn the wheel over a song SID row; click Apply
+or Cancel; a click outside the window cancels. Closing the program window cancels.
+
+Apply stores the output, the boards and the map, closes the boards and opens them again with
+the new settings (the song stays stopped) and shows how many SIDs are connected. Cancel
+keeps all settings as they were. If all attached boards are marked in bus order, or none, the board
+list is stored empty, which means every board including boards plugged in later. When the
+order differs, the explicit list of serial numbers is saved. Map entries of a board
+that is not marked turn auto. The settings are saved in the settings file when the program
+exits.
+
+The SID map is a comma separated list with one entry for each song SID, in song SID order:
+
+|  -         auto (first free chip)
+|  0         off (the song SID is silent on the boards)
+|  SERIAL:N  chip N (1 is the first) of the board with this serial number
+
+Entries missing at the end are auto; an empty map or "-" alone means all auto, which is the
+default order described above. Examples:
+
+    -mB0A36492C05BE03D:2,-,0       SID 1 on chip 2 of that board, SID 2 auto, SID 3 off
+    -mE7C2000000000000:1,B0A36492C05BE03D:3
+                                   SID 1 on board E7C2.., chip 1; SID 2 on the other board
+
+A map entry names a board that is opened even when -s does not list it (after the -s boards, in
+map order). A malformed entry counts as auto. The map is not mirrored: a song with more SIDs than
+chips leaves the extra song SIDs silent.
+
+Status bar and messages:
+
+- The USB button in the status bar shows " USB off " (output off), " USB wait " (boards lost,
+  playing on the SID emulation) or " USB n SID(s) " (n chips play song SIDs). Click it to open the
+  USBSID-Pico window. Hover for the tooltip.
+- With the output on, the SID chips window (click the SID address button) has a USB column for
+  each song SID: "USB: Board b SID s 6581" (the chip that plays it, type 6581, 8580 or FM),
+  "USB: off" (off in the map), "USB: -" (no chip) or "USB: reSID" (the boards are not
+  connected, the SID emulation plays).
+- At the start, when two or more boards are opened and neither -s nor -m is set, the status
+  bar says "USBSID-Pico: N boards, M SIDs, Alt+U picks boards and SIDs".
+- "USBSID-Pico: N SID(s) connected" after the output starts or Apply. "USBSID-Pico: song uses N
+  SIDs, M connected" if SIDs of the song have no chip. "USBSID-Pico not found, using reSID" if no
+  board opened. "USBSID-Pico board lost, playing on reSID" and "USBSID-Pico reconnected" when a
+  board drops out and comes back.
+
+Other notes:
+
+- The STEREO button also sets USBSID-Pico v1.3+ boards to mono or stereo (no reboot, the setting
+  is not stored on the board). The board keeps its own setting until the button is clicked.
+  This only switches the board audio between mono and stereo. It is not the SID placement of
+  the editor playback: the stereo width has no effect on boards.
+- Linux: allow access to the board for normal users with the udev rule
+  69-usbsid-permissions.rules from the USBSID-Pico repository (copy it to /etc/udev/rules.d, then
+  run "sudo udevadm control --reload-rules && sudo udevadm trigger" and replug the board).
+- Windows: install the WinUSB driver for the interface "USBSID-Pico Data" of the board once with
+  Zadig (zadig.akeo.ie): select the interface, choose WinUSB and click "Replace Driver".
+- Configuration: the settings file has three entries for USBSID-Pico: use USBSID-Pico (0 or 1),
+  the board serials (comma separated, "-" for all boards) and the SID map (comma separated,
+  "-" for all auto). The -u, -s and -m command line options set them and, like the other command
+  line options, are saved to the settings file when the program exits. Older settings files
+  without the map entry load with all auto.
+- Programs built with USBSID-Pico support are licensed under the GNU General Public License
+  version 3 or later (see Credits).
+
 # Credits
 
 C64 GrooveGoat 0.9b by IT-Dummkopfen.
@@ -1068,6 +1211,8 @@ C64 GrooveGoat 0.9b by IT-Dummkopfen.
 |  minimp4 MP4 muxer                    lieff, github.com/lieff (CC0, public domain)
 |  SIDGen instrument library            6581 & 8580 instrument sets
 |  SID file format (PSID v2/v3/v5)      High Voltage SID Collection
+|  USBSID-Pico driver                   LouD, github.com/LouDnl (GPL v3 or later with exception)
+|  libusb 1.0                           libusb project (LGPL 2.1)
 
 License: C64 GrooveGoat is free software under the GNU General Public License version 2 or
 later, like GoatTracker 2. The C64 playroutines (player.s, altplayer.s, mplayer.s and the PRG
@@ -1078,3 +1223,8 @@ and video files you export.
 The LAME and faac encoders are licensed under the GNU Lesser General Public License; their
 complete source code is part of the C64 GrooveGoat source code (src/codecs). minih264 and
 minimp4 are public domain (CC0).
+
+Versions built with USBSID-Pico support contain the USBSID-Pico driver (GNU GPL version 3 or
+later, with the exception in its LICENSE-EXCEPTION file) and libusb (GNU LGPL 2.1). Such builds
+are distributed under the GNU General Public License version 3 or later. The license
+texts are in the licenses folder of the release packages.
