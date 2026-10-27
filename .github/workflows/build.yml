@@ -60,7 +60,7 @@ jobs:
 
       - name: Build
         run: |
-          make TARGET=linux SDLINC=/usr/include/SDL2 SDLLIB=-lSDL2 USBSID=${{ matrix.usbsid }} BUILDDIR=$BUILDDIR -j4
+          make TARGET=linux SDLINC=/usr/include/SDL2 SDLLIB=-lSDL2 USBSID=${{ matrix.usbsid }} BUILDDIR=$BUILDDIR -o src/gres.c -j4
 
       - name: Check USBSID symbols
         run: |
@@ -149,7 +149,7 @@ jobs:
 
       - name: Build
         run: |
-          make TARGET=appimage TOOLS="$TOOLS" -j4
+          make TARGET=appimage TOOLS="$TOOLS" -o src/gres.c -j4
 
       - name: Check USBSID symbols
         run: nm -C build/appimage/groovegoat | grep -q usbsid_open
@@ -230,7 +230,7 @@ jobs:
 
       - name: Build
         run: |
-          make TARGET=win TOOLS="$TOOLS" -j4
+          make TARGET=win TOOLS="$TOOLS" -o src/gres.c -j4
 
       - name: Check USBSID support
         run: |
