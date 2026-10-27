@@ -83,3 +83,13 @@ SIDGen instrument library ("SIDGen instruments for GoatTracker 2")
 
 SID file format (PSID v2, v3 and the v5 multi-SID extension)
   High Voltage SID Collection - https://www.hvsc.c64.org
+
+USBSID-Pico driver (USBSID-Pico output)
+  LouD - https://github.com/LouDnl/USBSID-Pico-driver
+  GNU GPL v3 or later with the exception in LICENSE-EXCEPTION (see
+  licenses/USBSID-Pico-driver-LICENSE.txt). Builds with USBSID-Pico support are
+  distributed under the GNU GPL v3 or later.
+
+libusb 1.0 (USBSID-Pico output)
+  The libusb project - https://libusb.info
+  GNU Lesser General Public License 2.1 (see licenses/libusb-COPYING.txt).

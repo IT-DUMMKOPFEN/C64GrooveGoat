@@ -1,0 +1,340 @@
+name: CI build
+
+# Builds every Makefile target: linux (USBSID 1 and 0), appimage, win, mac.
+# Also called by tagged-build.yml and release.yml (workflow_call), which attach
+# the packages of the pkg-* artifacts to a GitHub release.
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Git ref (branch, tag or sha) to build, empty = the selected one'
+        required: false
+        default: ''
+        type: string
+  workflow_call:
+    inputs:
+      ref:
+        description: 'Git ref (branch, tag or sha) to build, empty = the caller ref'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  # toolchain pins, also the cache keys. The llvm-mingw and SDL2 versions must
+  # match the directory names in the Makefile (MINGW, SDLMINGW); libusb 1.0.29
+  # is pinned by tools/libusb.sh
+  LLVM_MINGW_VER: '20261006'
+  SDL_VER: '2.32.10'
+  LIBUSB_VER: '1.0.29'
+  APPIMAGETOOL_VER: '1.9.0'
+  TOOLS_CACHE_REV: 'v1'
+
+jobs:
+  linux:
+    name: linux (USBSID=${{ matrix.usbsid }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        usbsid: [1, 0]
+    env:
+      BUILDDIR: build/ci-usbsid${{ matrix.usbsid }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          submodules: recursive
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libsdl2-dev libusb-1.0-0-dev python3-pil
+
+      - name: Build
+        run: |
+          make TARGET=linux SDLINC=/usr/include/SDL2 SDLLIB=-lSDL2 USBSID=${{ matrix.usbsid }} BUILDDIR=$BUILDDIR -o src/gres.c -j4
+
+      - name: Check USBSID symbols
+        run: |
+          if [ "${{ matrix.usbsid }}" = "1" ]; then
+            nm -C "$BUILDDIR/groovegoat" | grep -q usbsid_open
+          else
+            if nm -C "$BUILDDIR/groovegoat" | grep -q usbsid_open; then
+              echo "usbsid_open present in a USBSID=0 build"
+              exit 1
+            fi
+          fi
+
+      - name: Smoke test, CLI export
+        run: |
+          "$BUILDDIR/groovegoat" --export=out.sid examples/solar_voyage_2sid.sng
+          test -s out.sid
+
+      - name: Smoke test, headless screenshot
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+          GG_AUTOTEST: ${{ github.workspace }}/shot.png
+        run: |
+          "$BUILDDIR/groovegoat" examples/solar_voyage_2sid.sng
+          test -s "$GITHUB_WORKSPACE/shot.png"
+
+      - name: Upload binary
+        if: matrix.usbsid == 1
+        uses: actions/upload-artifact@v4
+        with:
+          name: groovegoat-linux-usbsid
+          path: build/ci-usbsid1/groovegoat
+          if-no-files-found: error
+
+  appimage:
+    name: appimage (static SDL2 + libusb)
+    # oldest runner image, so the glibc requirement stays low
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          submodules: recursive
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config python3-pil \
+            libasound2-dev libpulse-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
+            libxfixes-dev libxi-dev libxss-dev libxkbcommon-dev libdrm-dev libgbm-dev \
+            libgl1-mesa-dev libegl1-mesa-dev libdbus-1-dev libudev-dev desktop-file-utils
+
+      - name: Set TOOLS
+        run: |
+          mkdir -p "$RUNNER_TEMP/tools"
+          echo "TOOLS=$RUNNER_TEMP/tools" >> "$GITHUB_ENV"
+
+      - name: Cache static SDL2, static libusb, appimagetool
+        id: tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ runner.temp }}/tools/sdlstatic
+            ${{ runner.temp }}/tools/libusb-appimage
+            ${{ runner.temp }}/tools/appimage
+          key: tools-appimage-${{ env.SDL_VER }}-${{ env.LIBUSB_VER }}-${{ env.APPIMAGETOOL_VER }}-${{ env.TOOLS_CACHE_REV }}
+
+      - name: Build static SDL2 (backends are loaded with dlopen)
+        if: steps.tools.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$TOOLS/src/sdl-build" "$TOOLS/appimage"
+          curl -fL -o "$TOOLS/src/SDL2-$SDL_VER.tar.gz" \
+            "https://github.com/libsdl-org/SDL/releases/download/release-$SDL_VER/SDL2-$SDL_VER.tar.gz"
+          tar -xzf "$TOOLS/src/SDL2-$SDL_VER.tar.gz" -C "$TOOLS/src/sdl-build" --strip-components=1
+          cd "$TOOLS/src/sdl-build"
+          ./configure --prefix="$TOOLS/sdlstatic" --enable-static --disable-shared
+          make -j"$(nproc)"
+          make install
+          curl -fL -o "$TOOLS/appimage/appimagetool.AppImage" \
+            "https://github.com/AppImage/appimagetool/releases/download/$APPIMAGETOOL_VER/appimagetool-x86_64.AppImage"
+          chmod +x "$TOOLS/appimage/appimagetool.AppImage"
+
+      - name: Build static libusb
+        if: steps.tools.outputs.cache-hit != 'true'
+        run: tools/libusb.sh appimage
+
+      - name: Build
+        run: |
+          make TARGET=appimage TOOLS="$TOOLS" -o src/gres.c -j4
+
+      - name: Check USBSID symbols
+        run: nm -C build/appimage/groovegoat | grep -q usbsid_open
+
+      - name: Smoke test, CLI export
+        run: |
+          build/appimage/groovegoat --export=out.sid examples/solar_voyage_2sid.sng
+          test -s out.sid
+
+      - name: Smoke test, headless screenshot
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+          GG_AUTOTEST: ${{ github.workspace }}/shot.png
+        run: |
+          build/appimage/groovegoat examples/solar_voyage_2sid.sng
+          test -s "$GITHUB_WORKSPACE/shot.png"
+
+      - name: Package (AppImage, tar.gz)
+        env:
+          APPIMAGETOOL: ${{ runner.temp }}/tools/appimage/appimagetool.AppImage
+          LIBUSBDIR: ${{ runner.temp }}/tools/libusb-appimage
+        run: .github/scripts/package.sh linux dist
+
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: pkg-linux
+          path: dist/*
+          if-no-files-found: error
+
+  win:
+    name: win (llvm-mingw cross, static libusb)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          submodules: recursive
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential python3-pil zip
+
+      - name: Set TOOLS
+        run: |
+          mkdir -p "$RUNNER_TEMP/tools"
+          echo "TOOLS=$RUNNER_TEMP/tools" >> "$GITHUB_ENV"
+          echo "MINGW=$RUNNER_TEMP/tools/llvm-mingw-$LLVM_MINGW_VER-ucrt-ubuntu-22.04-x86_64" >> "$GITHUB_ENV"
+
+      - name: Cache llvm-mingw, SDL2 mingw, static libusb
+        id: tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ runner.temp }}/tools/llvm-mingw-${{ env.LLVM_MINGW_VER }}-ucrt-ubuntu-22.04-x86_64
+            ${{ runner.temp }}/tools/SDL2-${{ env.SDL_VER }}
+            ${{ runner.temp }}/tools/libusb-win
+          key: tools-win-${{ env.LLVM_MINGW_VER }}-${{ env.SDL_VER }}-${{ env.LIBUSB_VER }}-${{ env.TOOLS_CACHE_REV }}
+
+      - name: Fetch llvm-mingw and SDL2 mingw development files
+        if: steps.tools.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$TOOLS/src"
+          curl -fL -o "$TOOLS/src/llvm-mingw.tar.xz" \
+            "https://github.com/mstorsjo/llvm-mingw/releases/download/$LLVM_MINGW_VER/llvm-mingw-$LLVM_MINGW_VER-ucrt-ubuntu-22.04-x86_64.tar.xz"
+          tar -xJf "$TOOLS/src/llvm-mingw.tar.xz" -C "$TOOLS"
+          curl -fL -o "$TOOLS/src/SDL2-mingw.tar.gz" \
+            "https://github.com/libsdl-org/SDL/releases/download/release-$SDL_VER/SDL2-devel-$SDL_VER-mingw.tar.gz"
+          tar -xzf "$TOOLS/src/SDL2-mingw.tar.gz" -C "$TOOLS"
+          test -d "$TOOLS/SDL2-$SDL_VER/x86_64-w64-mingw32"
+          test -x "$MINGW/bin/x86_64-w64-mingw32-clang"
+
+      - name: Build static libusb
+        if: steps.tools.outputs.cache-hit != 'true'
+        run: tools/libusb.sh win
+
+      - name: Build
+        run: |
+          make TARGET=win TOOLS="$TOOLS" -o src/gres.c -j4
+
+      - name: Check USBSID support
+        run: |
+          grep -aq 'USBSID-Pico: no board could be opened' build/win/GrooveGoat.exe
+
+      - name: Package (zip)
+        env:
+          LIBUSBDIR: ${{ runner.temp }}/tools/libusb-win
+        run: .github/scripts/package.sh win dist
+
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: pkg-win
+          path: dist/*
+          if-no-files-found: error
+
+  mac:
+    name: mac (macos-14 arm64, SDK from xcrun)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          submodules: recursive
+
+      - name: Install lld and llvm-ar
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: '1'
+          HOMEBREW_NO_INSTALL_CLEANUP: '1'
+          HOMEBREW_NO_ANALYTICS: '1'
+        run: |
+          brew install lld llvm
+          # Homebrew LLVM clang is the app compiler (see Build step), real llvm-ar /
+          # llvm-ranlib are used by tools/libusb.sh via PATH (no symlink shims:
+          # the Apple ar stub resolves by argv0 and fails with "Failed to locate")
+          echo "$(brew --prefix lld)/bin" >> "$GITHUB_PATH"
+
+      - name: Set TOOLS and SDK
+        run: |
+          mkdir -p "$RUNNER_TEMP/tools"
+          echo "TOOLS=$RUNNER_TEMP/tools" >> "$GITHUB_ENV"
+          echo "MACSDK=$(xcrun --sdk macosx --show-sdk-path)" >> "$GITHUB_ENV"
+          xcrun --sdk macosx --show-sdk-version
+          which ld64.lld
+          ls "$(brew --prefix llvm)/bin/llvm-ar"
+
+      - name: Cache SDL2.framework and static libusb
+        id: tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ runner.temp }}/tools/sdlmac
+            ${{ runner.temp }}/tools/libusb-mac
+          key: tools-mac-macos14-${{ env.SDL_VER }}-${{ env.LIBUSB_VER }}-${{ env.TOOLS_CACHE_REV }}
+
+      - name: Fetch SDL2.framework
+        if: steps.tools.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$TOOLS/src" "$TOOLS/sdlmac/SDL2"
+          curl -fL -o "$TOOLS/src/SDL2.dmg" \
+            "https://github.com/libsdl-org/SDL/releases/download/release-$SDL_VER/SDL2-$SDL_VER.dmg"
+          MNT="$RUNNER_TEMP/sdl-dmg"
+          mkdir -p "$MNT"
+          hdiutil attach -nobrowse -readonly -mountpoint "$MNT" "$TOOLS/src/SDL2.dmg"
+          ditto "$MNT/SDL2.framework" "$TOOLS/sdlmac/SDL2/SDL2.framework"
+          hdiutil detach "$MNT"
+          test -d "$TOOLS/sdlmac/SDL2/SDL2.framework/Headers"
+
+      - name: Build static libusb
+        if: steps.tools.outputs.cache-hit != 'true'
+        # brew llvm first in PATH: libusb.sh uses plain "clang" and llvm-ar from PATH
+        run: |
+          PATH="$(brew --prefix llvm)/bin:$PATH" tools/libusb.sh mac
+
+      - name: Build
+        # -o src/gres.c: do not regenerate the resources (needs Pillow)
+        # Homebrew LLVM clang, not Apple clang: Apple clang defines
+        # __apple_build_version__, enabling a vtbl2q_u8 branch in minih264e.h that fails
+        run: |
+          LLVM="$(brew --prefix llvm)/bin"
+          make TARGET=mac TOOLS="$TOOLS" MACSDK="$MACSDK" CC="$LLVM/clang" CXX="$LLVM/clang++" -o src/gres.c -j4
+
+      - name: Check USBSID support
+        run: |
+          grep -aq 'USBSID-Pico: no board could be opened' build/mac/groovegoat
+          file build/mac/groovegoat
+
+      - name: Smoke test, CLI export
+        env:
+          DYLD_FRAMEWORK_PATH: ${{ runner.temp }}/tools/sdlmac/SDL2
+        run: |
+          build/mac/groovegoat --export=out.sid examples/solar_voyage_2sid.sng
+          test -s out.sid
+
+      - name: Package (zip with .app)
+        env:
+          SDLFW: ${{ runner.temp }}/tools/sdlmac/SDL2
+          LIBUSBDIR: ${{ runner.temp }}/tools/libusb-mac
+        run: .github/scripts/package.sh mac dist
+
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: pkg-mac
+          path: dist/*
+          if-no-files-found: error

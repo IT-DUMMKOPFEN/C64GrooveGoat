@@ -97,8 +97,15 @@ static const char *buttonhint(int id)
     case BTN_KBDLAYOUT: return "Keyboard layout for shortcuts (EN: QWERTY, DE: QWERTZ - Z and Y swapped)";
     case BTN_LIBRARY: return "Instrument library: search, favourites, preview and load";
     case BTN_RANDOMINS: return "Random instrument generator (bass, drums, leads, pads, strings ...)";
+#ifdef USE_USBSID
+    case BTN_STEREO: return "Playback: Mono or Stereo 100/90/80/70% width (right click: back), also USBSID-Pico v1.3";
+#else
     case BTN_STEREO: return "Editor playback: Mono or Stereo with 100%, 90%, 80% or 70% width (right click: back)";
+#endif
     case BTN_ADSRGRAPH: return "ADSR envelope of the instrument (Attack/Decay and Sustain/Release)";
+#ifdef USE_USBSID
+    case BTN_USBSID: return "USBSID-Pico output: boards, SID map and reconnect - Alt+U";
+#endif
   }
   return NULL;
 }
@@ -772,6 +779,30 @@ static void drawstatusarea(void)
   ui_drawbutton(x, STATUS_Y, " " GS_UNDO " Undo ", BTN_UNDO, 0, 0);
   x += 9;
   ui_drawbutton(x, STATUS_Y, " " GS_REDO " Redo ", BTN_REDO, 0, 0);
+
+#ifdef USE_USBSID
+  // USBSID-Pico output state, left of the play state (ends at MAX_COLUMNS - 24)
+  {
+    const char *label;
+    if (!usbsid)
+      label = " USB off ";
+    else if (sound_usbsidlost())
+      label = " USB wait ";
+    else if (sound_usbsidactive())
+    {
+      // Chips playing the song SIDs, not every SID on the boards
+      int c, n = numsids > USBSID_MAXSIDS ? USBSID_MAXSIDS : numsids, playing = 0;
+
+      for (c = 0; c < n; c++)
+        if (sound_usbsidtarget(c, NULL) >= 0) playing++;
+      sprintf(buf, " USB %d SID%s ", playing, playing == 1 ? "" : "s");
+      label = buf;
+    }
+    else
+      label = " USB off ";
+    ui_drawbutton(MAX_COLUMNS - 35, STATUS_Y, label, BTN_USBSID, 0, usbsid && sound_usbsidactive());
+  }
+#endif
 
   // Play status and time
   if (editorInfo.multiplier)

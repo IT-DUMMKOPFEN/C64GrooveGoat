@@ -9,6 +9,12 @@
 # signing the macOS app (RCODESIGN), a static SDL 2 for the AppImage
 # (SDLSTATIC, see the Makefile) and appimagetool with the type 2 runtime
 # (APPIMAGETOOL, APPIMAGERUNTIME).
+#
+# With USBSID-Pico support (USBSID=1 default, driver submodule present, see the
+# Makefile) the packages also get the driver and libusb license texts and the
+# macOS app states the GNU GPL v3 or later. Whether a target has the support
+# is read from its built binary, because the Makefile can switch it off. LIBUSBDIR selects the libusb prefix
+# or source folder searched for its COPYING file; USBSID=0 builds without.
 set -e
 cd "$(dirname "$0")/.."
 
@@ -22,6 +28,19 @@ SDLFW=$TOOLS/sdlmac/SDL2/SDL2.framework
 APPIMAGETOOL=${APPIMAGETOOL:-$TOOLS/appimage/appimagetool.AppImage}
 APPIMAGERUNTIME=${APPIMAGERUNTIME:-$TOOLS/appimage/runtime-x86_64}
 DIST=dist
+USBSID=${USBSID:-1}
+USBSIDDRV=src/driver/usbsid
+[ -f $USBSIDDRV/src/USBSID_Manager.cpp ] || USBSID=0
+# The Makefile switches USBSID off by itself (libusb or SDK missing), so what
+# a package really contains is read from the built binary after the build
+# (see usbsid_in), with the driver presence above as fallback
+usbsid_in() {
+  if [ -f "$1" ]; then
+    grep -aq 'USBSID-Pico: no board could be opened' "$1" && echo 1 || echo 0
+  else
+    echo "$USBSID"
+  fi
+}
 
 [ -d "$INSTRUMENTS/6581" ] || { echo "instrument library not found: $INSTRUMENTS"; exit 1; }
 
@@ -31,6 +50,16 @@ make TARGET=linux -j8 > /dev/null
 make TARGET=appimage -j8 > /dev/null
 make TARGET=win -j8 > /dev/null
 make TARGET=mac -j8 > /dev/null
+
+# USBSID-Pico support per target, from the built binaries
+USB_APPIMAGE=$(usbsid_in build/appimage/groovegoat)
+USB_WIN=$(usbsid_in build/win/GrooveGoat.exe)
+USB_MAC=$(usbsid_in build/mac/groovegoat)
+USB_ANY=0
+for u in $USB_APPIMAGE $USB_WIN $USB_MAC; do [ "$u" = 1 ] && USB_ANY=1; done
+echo "USBSID-Pico support: linux/appimage $USB_APPIMAGE, windows $USB_WIN, macOS $USB_MAC"
+LICENSE_NOTE="GNU GPL v2"
+[ "$USB_MAC" = 1 ] && LICENSE_NOTE="GNU GPL v3 or later"
 
 rm -rf $DIST
 mkdir -p $DIST/common/examples
@@ -64,6 +93,27 @@ cp src/codecs/lame/COPYING $DIST/common/licenses/LAME-COPYING.txt
 cp src/codecs/faac/COPYING $DIST/common/licenses/faac-COPYING.txt
 cp src/codecs/minih264/LICENSE $DIST/common/licenses/minih264-LICENSE.txt
 cp src/codecs/minimp4/LICENSE $DIST/common/licenses/minimp4-LICENSE.txt
+if [ "$USB_ANY" = 1 ]; then
+  cp $USBSIDDRV/LICENSE $DIST/common/licenses/USBSID-Pico-driver-LICENSE.txt
+  cp $USBSIDDRV/LICENSE-EXCEPTION $DIST/common/licenses/USBSID-Pico-driver-LICENSE-EXCEPTION.txt
+  # libusb COPYING from the static libusb prefix or its source folder, if present
+  for d in "$LIBUSBDIR" \
+           "$TOOLS"/libusb-appimage "$TOOLS"/libusb-appimage/share/doc/libusb \
+           "$TOOLS"/libusb-win "$TOOLS"/libusb-win/share/doc/libusb \
+           "$TOOLS"/libusb-mac "$TOOLS"/libusb-mac/share/doc/libusb \
+           "$TOOLS"/src/libusb-appimage-build "$TOOLS"/src/libusb-win-build "$TOOLS"/src/libusb-mac-build \
+           "$TOOLS"/src/libusb-1.0.29 /usr/share/doc/libusb-1.0-0; do
+    for f in COPYING COPYING.gz; do
+      [ -n "$d" ] && [ -f "$d/$f" ] || continue
+      case $f in
+        *.gz) zcat "$d/$f" > $DIST/common/licenses/libusb-COPYING.txt ;;
+        *)    cp "$d/$f" $DIST/common/licenses/libusb-COPYING.txt ;;
+      esac
+      break 2
+    done
+  done
+  [ -f $DIST/common/licenses/libusb-COPYING.txt ] || echo "warning: libusb COPYING not found, set LIBUSBDIR"
+fi
 
 # readable for everybody (files from the repository may be private)
 chmod -R u+rwX,go+rX-w $DIST/common
@@ -212,7 +262,7 @@ cat > "$APP/Contents/Info.plist" <<EOF
   <key>LSMinimumSystemVersion</key><string>11.0</string>
   <key>LSApplicationCategoryType</key><string>public.app-category.music</string>
   <key>NSHighResolutionCapable</key><true/>
-  <key>NSHumanReadableCopyright</key><string>C64 GrooveGoat $VERSION by IT-Dummkopfen - GNU GPL v2</string>
+  <key>NSHumanReadableCopyright</key><string>C64 GrooveGoat $VERSION by IT-Dummkopfen - $LICENSE_NOTE</string>
   <key>CFBundleDocumentTypes</key>
   <array>
     <dict>

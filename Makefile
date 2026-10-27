@@ -5,6 +5,14 @@
 #   make TARGET=win       Windows x64 cross build (llvm-mingw + SDL2 mingw devel)
 #   make TARGET=mac       macOS Apple Silicon cross build (clang + lld + SDK + SDL2.framework)
 #
+#   USBSID=0|1            USBSID-Pico output (default 1). Switches itself off, with a
+#                         message, when the driver submodule (src/driver/usbsid, run
+#                         git submodule update --init) or libusb is missing for the
+#                         TARGET, or when the macOS SDK has no libc++
+#   LIBUSBDIR=<dir>       appimage, win, mac: prefix of the static libusb 1.0.29
+#                         (default $(TOOLS)/libusb-$(TARGET)), built by
+#                         tools/libusb.sh TARGET. linux uses pkg-config libusb-1.0
+#
 # Paths to the toolchains can be overridden on the command line.
 
 TARGET ?= linux
@@ -16,7 +24,7 @@ SRCDIR = src
 
 CSRC = goattrk2.c gsong.c gorder.c gpattern.c ginstr.c gtable.c gplay.c gdisplay.c \
        gfile.c greloc.c ghelp.c gsound.c gconsole.c gundo.c gplatform.c gaudio.c \
-       gfileio.c gdialog.c gres.c gsonglen.c gautotest.c gexport.c gvideo.c gadsr.c ginslib.c grandins.c gbackup.c
+       gfileio.c gdialog.c gusbsiddlg.c gres.c gsonglen.c gautotest.c gexport.c gvideo.c gadsr.c ginslib.c grandins.c gbackup.c
 CXXSRC = gsid.cpp
 RESIDSRC = resid/envelope.cpp resid/extfilt.cpp resid/filter.cpp resid/pot.cpp resid/sid.cpp \
        resid/wave.cpp resid/wave6581__ST.cpp resid/wave6581_P_T.cpp resid/wave6581_PS_.cpp \
@@ -36,7 +44,7 @@ CXXFLAGS_EXTRA = -fno-exceptions -fno-rtti
 ifeq ($(TARGET),linux)
 CC = gcc
 CXX = g++
-SDLINC ?= $(TOOLS)/SDL2src/include
+SDLINC ?= $(if $(wildcard $(TOOLS)/SDL2src/include/SDL.h),$(TOOLS)/SDL2src/include,$(patsubst -I%,%,$(filter -I%,$(shell sdl2-config --cflags 2>/dev/null))))
 SDLLIB ?= /usr/lib/x86_64-linux-gnu/libSDL2-2.0.so.0
 COMMONFLAGS += -I$(SDLINC) -D_REENTRANT -fno-stack-protector -U_FORTIFY_SOURCE
 LDFLAGS = -Wl,-rpath,'$$ORIGIN/lib' -Wl,--as-needed
@@ -85,6 +93,57 @@ LIBS = -framework SDL2 -lSystem
 EXE = $(BUILDDIR)/groovegoat
 endif
 
+# USBSID-Pico support (driver in the src/driver/usbsid submodule, libusb 1.0)
+USBSID ?= 1
+USBSIDDIR = $(SRCDIR)/driver/usbsid/src
+USBSIDSRC = driver/usbsid/src/USBSID.cpp driver/usbsid/src/USBSID_Manager.cpp
+USBSIDOFF =
+ifeq ($(USBSID),1)
+ifeq ($(wildcard $(USBSIDDIR)/USBSID_Manager.cpp),)
+USBSIDOFF = driver missing, run git submodule update --init
+endif
+ifeq ($(USBSIDOFF),)
+ifeq ($(TARGET),linux)
+ifeq ($(shell pkg-config --exists libusb-1.0 2>/dev/null && echo yes),yes)
+LIBUSB_CFLAGS ?= $(shell pkg-config --cflags libusb-1.0)
+LIBUSB_LIBS ?= $(shell pkg-config --libs libusb-1.0)
+else
+USBSIDOFF = libusb-1.0 not found (pkg-config)
+endif
+else
+LIBUSBDIR ?= $(TOOLS)/libusb-$(TARGET)
+ifeq ($(wildcard $(LIBUSBDIR)/lib/libusb-1.0.a),)
+USBSIDOFF = static libusb not found in $(LIBUSBDIR), run tools/libusb.sh $(TARGET)
+else
+LIBUSB_CFLAGS ?= -I$(LIBUSBDIR)/include/libusb-1.0
+ifeq ($(TARGET),appimage)
+LIBUSB_LIBS ?= $(LIBUSBDIR)/lib/libusb-1.0.a -lpthread
+endif
+ifeq ($(TARGET),win)
+LIBUSB_LIBS ?= $(LIBUSBDIR)/lib/libusb-1.0.a -lpthread
+endif
+ifeq ($(TARGET),mac)
+ifeq ($(and $(wildcard $(MACSDK)/usr/include/c++/v1/vector),$(wildcard $(MACSDK)/usr/lib/libc++.tbd)),)
+USBSIDOFF = macOS SDK has no libc++
+else
+LIBUSB_LIBS ?= $(LIBUSBDIR)/lib/libusb-1.0.a -framework IOKit -framework CoreFoundation -framework Security -lobjc -lc++
+endif
+endif
+endif
+endif
+endif
+ifneq ($(USBSIDOFF),)
+$(info USBSID-Pico support disabled: $(USBSIDOFF))
+USBSID = 0
+endif
+endif
+ifeq ($(USBSID),1)
+COMMONFLAGS += -DUSE_USBSID
+USBSIDOBJS = $(addprefix $(BUILDDIR)/,gusbsid.o $(USBSIDSRC:.cpp=.o))
+$(USBSIDOBJS): CXXFLAGS_EXTRA = -std=c++17 $(LIBUSB_CFLAGS)
+LIBS += $(LIBUSB_LIBS)
+endif
+
 # Audio/video codecs: LAME (MP3, LGPL), faac (AAC, LGPL)
 LAMESRC = $(notdir $(wildcard $(SRCDIR)/codecs/lame/*.c))
 FAACSRC = $(notdir $(wildcard $(SRCDIR)/codecs/faac/*.c))
@@ -92,6 +151,19 @@ CODECOBJS = $(addprefix $(BUILDDIR)/codecs/lame/,$(LAMESRC:.c=.o)) $(addprefix $
        $(BUILDDIR)/codecs/h264impl.o $(BUILDDIR)/codecs/mp4impl.o
 
 OBJS = $(addprefix $(BUILDDIR)/,$(CSRC:.c=.o) $(CXXSRC:.cpp=.o) $(RESIDSRC:.cpp=.o) $(ASMSRC:.c=.o)) $(CODECOBJS)
+OBJS += $(USBSIDOBJS)
+
+# Objects that depend on USE_USBSID are rebuilt when the effective USBSID state
+# of the BUILDDIR changes (after the automatic switch-off above). The stamp
+# file is rewritten only when its content differs, so its mtime moves only then.
+.DEFAULT_GOAL := all
+USBSIDSTAMP = $(BUILDDIR)/usbsid.stamp
+USBSIDDEPOBJS = $(addprefix $(BUILDDIR)/,goattrk2.o gsound.o ghelp.o gdisplay.o gusbsid.o gusbsiddlg.o)
+$(USBSIDDEPOBJS): $(USBSIDSTAMP)
+
+$(USBSIDSTAMP): FORCE
+	@mkdir -p $(dir $@)
+	@echo "USBSID=$(USBSID)" | cmp -s - $@ || echo "USBSID=$(USBSID)" > $@
 
 all: $(EXE)
 
@@ -124,8 +196,13 @@ $(BUILDDIR)/groovegoat_res.o: res/groovegoat.rc res/groovegoat.ico
 	$(WINDRES) -I res -o $@ res/groovegoat.rc
 
 ifeq ($(TARGET),mac)
+ifeq ($(USBSID),1)
+$(EXE): $(OBJS)
+	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
+else
 $(EXE): $(OBJS) $(BUILDDIR)/macstub.o
 	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
+endif
 $(BUILDDIR)/macstub.o: $(SRCDIR)/macstub/cxxrt.c
 	@mkdir -p $(dir $@)
 	$(CC) $(COMMONFLAGS) -c -o $@ $<
@@ -137,4 +214,6 @@ endif
 clean:
 	rm -rf build
 
-.PHONY: all clean
+FORCE:
+
+.PHONY: all clean FORCE

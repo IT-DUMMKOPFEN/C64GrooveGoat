@@ -1,0 +1,65 @@
+name: Tagged build
+
+# Push a tag like v0.9b: builds all platforms (build.yml) and publishes a
+# GitHub release with the packages and SHA256SUMS. A manually created release
+# for the same tag is reused, its assets are overwritten.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build all platforms
+    uses: ./.github/workflows/build.yml
+    with:
+      ref: ${{ github.ref }}
+    permissions:
+      contents: read
+
+  publish:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ github.ref_name }}
+    steps:
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: pkg-*
+          merge-multiple: true
+          path: release-assets
+
+      - name: Checksums
+        run: |
+          cd release-assets
+          sha256sum * > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Create draft release if missing
+        run: |
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            # a version with a letter suffix (v0.9b) is a beta
+            PRE=""
+            if echo "$TAG" | grep -Eq '^v[0-9.]+[A-Za-z]'; then PRE="--prerelease"; fi
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft $PRE \
+              --verify-tag --title "C64 GrooveGoat $TAG" --generate-notes
+          fi
+
+      - name: Upload assets
+        run: gh release upload "$TAG" release-assets/* --repo "$GITHUB_REPOSITORY" --clobber
+
+      - name: Publish release
+        run: gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false

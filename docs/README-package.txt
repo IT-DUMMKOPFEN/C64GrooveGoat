@@ -22,6 +22,7 @@ based on GoatTracker 2 by Lasse Oorni (Cadaver) and its "Silver Fork".
   addresses, runnable C64 programs (.prg) with a player screen, raw PRG/BIN
 - Audio export: WAV (also every voice as its own file) and MP3
 - Video export: MP4 (720p) with an oscilloscope for every voice
+- USBSID-Pico output: plays on real SID chips (-u1), see below
 - Night theme in the original C64 blue and a day theme
 - Built-in manual with search (Help -> Manual), the history of C64 SID music
   (Help -> History) and keyboard reference (F12)
@@ -73,6 +74,18 @@ Linux (x86-64, tar.gz - without AppImage)
   Wayland); SDL 2 is built into the program, FUSE is not needed.
 
 
+USBSID-Pico (real SID chips)
+----------------------------
+
+Start the program with -u1 to play on every attached USBSID-Pico board, or with
+-u1 -sSERIAL1,SERIAL2 for chosen boards. Alt+U (or the USB button on the status
+row) sets output, boards, board order and the song SID to chip map; -m sets the map.
+Windows: install the WinUSB driver for the interface "USBSID-Pico Data" once
+with Zadig (zadig.akeo.ie). Linux: copy the udev rule
+69-usbsid-permissions.rules from the USBSID-Pico repository to
+/etc/udev/rules.d and replug the board. See the manual chapter "USBSID-Pico".
+
+
 First steps
 -----------
 
@@ -101,7 +114,8 @@ Files in this package
                  6581/ for the old and 8580/ for the new SID chip
   examples/      example songs: "Solar Voyage" by IT-Dummkopfen (2 SIDs, also as
                  .sid and runnable .prg) and the GoatTracker 2 example songs
-  licenses/      license texts of the included MP3/AAC/H.264 encoders
+  licenses/      license texts of the included MP3/AAC/H.264 encoders and of the
+                 USBSID-Pico driver and libusb
   Manual.txt     the manual (also built into the program)
   CREDITS.txt    credits and licenses of the used software
   COPYING.txt    GNU General Public License
@@ -111,7 +125,8 @@ License
 -------
 
 C64 GrooveGoat is free software under the GNU General Public License v2 or
-later. The C64 playroutines and the PRG player do not fall under the GPL:
+later (GNU GPL v3 or later in builds with USBSID-Pico support, see CREDITS.txt).
+The C64 playroutines and the PRG player do not fall under the GPL:
 the music you create and export (SID, PRG, WAV, MP3, MP4) is yours to use for
 any purpose. The source code is available at
 https://github.com/IT-DUMMKOPFEN/C64GrooveGoat
