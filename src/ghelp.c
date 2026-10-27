@@ -75,6 +75,9 @@ static const char *genkeys[] = {
   "SHIFT+ESC     Clear/optimize musicdata",
   "ESC           Exit program",
   "ALT+ENTER     Toggle fullscreen",
+#ifdef USE_USBSID
+  "ALT+U         USBSID-Pico boards & SIDs",
+#endif
   NULL
 };
 
@@ -716,6 +719,7 @@ static const char *credits[] = {
   "minih264 / minimp4 (H.264, MP4)      lieff (github.com/lieff) - CC0 public domain",
   "SIDGen instrument library            6581 & 8580 instrument sets",
   "SID file format (PSID v2/v3/v5)      High Voltage SID Collection",
+  "USBSID-Pico driver                   LouD (github.com/LouDnl) - GPL v3+ with exception",
   "",
   "License: GNU General Public License v2 or later. The C64 playroutine and",
   "the songs, SID, PRG, audio and video files you create are free to use for",
@@ -873,6 +877,26 @@ void showwelcomewindow(void)
 // SID settings: addresses used for export and listening
 // ---------------------------------------------------------------------------
 
+#ifdef USE_USBSID
+// Text of the USB column of the SID chips window for song SID n
+static void sidinfo_usbtext(int n, char *buf, int size)
+{
+  USBSID_SIDINFO chip;
+
+  if (!usbsid) return;
+  if (!sound_usbsidactive())
+    snprintf(buf, size, "USB: reSID");
+  else if (sound_usbsidtarget(n, &chip) >= 0)
+    snprintf(buf, size, "USB: Board %d SID %d %s", chip.board, chip.slot,
+      chip.type == USBSID_TYPE_6581 ? "6581" : chip.type == USBSID_TYPE_8580 ? "8580" :
+      chip.type == USBSID_TYPE_FMOPL ? "FM" : "?");
+  else if (sound_usbsidmapoff(usbsidmap, n))
+    snprintf(buf, size, "USB: off");
+  else
+    snprintf(buf, size, "USB: -");
+}
+#endif
+
 void showsidinfo(void)
 {
   int w = 72;
@@ -903,6 +927,14 @@ void showsidinfo(void)
       printblankc(x + 3, ry, MKCOL(8, bg), 40);
       sprintf(buf, "SID %d   voices %2d-%2d   $%04X   pan %+4d", c + 1, c * 3 + 1, c * 3 + 3, sidaddr[c], sidpan[c]);
       printtext(x + 4, ry, MKCOL(15, bg), buf);
+#ifdef USE_USBSID
+      {
+        char ubuf[40];
+        ubuf[0] = 0;
+        sidinfo_usbtext(c, ubuf, sizeof ubuf);
+        printtext(x + 45, ry, MKCOL(7, C_PANEL), ubuf);
+      }
+#endif
       if ((mousey == ry) && (mousex >= x + 3) && (mousex < x + 43)) hit = c;
     }
     printtext(x + 3, y + h - 3, MKCOL(C_BUTTONTEXT, C_BUTTON), " Reset to $D400,$D420... ");
