@@ -82,10 +82,10 @@ jobs:
         env:
           SDL_VIDEODRIVER: dummy
           SDL_AUDIODRIVER: dummy
-          GG_AUTOTEST: shot.png
+          GG_AUTOTEST: ${{ github.workspace }}/shot.png
         run: |
           "$BUILDDIR/groovegoat" examples/solar_voyage_2sid.sng
-          test -s shot.png
+          test -s "$GITHUB_WORKSPACE/shot.png"
 
       - name: Upload binary
         if: matrix.usbsid == 1
@@ -163,10 +163,10 @@ jobs:
         env:
           SDL_VIDEODRIVER: dummy
           SDL_AUDIODRIVER: dummy
-          GG_AUTOTEST: shot.png
+          GG_AUTOTEST: ${{ github.workspace }}/shot.png
         run: |
           build/appimage/groovegoat examples/solar_voyage_2sid.sng
-          test -s shot.png
+          test -s "$GITHUB_WORKSPACE/shot.png"
 
       - name: Package (AppImage, tar.gz)
         env:
