@@ -4,6 +4,9 @@
 ; BASIC line "10 SYS2061", shows the info screen (RLE packed screen + colors),
 ; plays the music from a CIA timer interrupt, counts the play time and lets
 ; the user switch subtunes with +/- (or cursor left/right), 1-9 and SPACE.
+; Optionally a piano keyboard shows the notes of all voices; it is updated in
+; the main loop (never in the interrupt), so the music timing stays exact at
+; every speed.
 ;
 ; Format of Magnus Lind's assembler from Exomizer (no SED/CLD mnemonics, so
 ; they are written as bytes).
@@ -18,6 +21,9 @@ rlevalue        = $fe
 
 SCREEN          = $0400
 COLORS          = $d800
+KEYCOL          = $033c                 ;96 bytes: colour of every key (0 = off)
+WHITECOL        = 1
+BLACKCOL        = 0
 RAINBOWROW      = COLORS + POS_RAINBOW
 
                 .ORG ($0801)
@@ -131,25 +137,28 @@ spriteinit:
                 jsr setsong
                 cli
 
-        ;Main loop: key handling & rainbow animation
+        ;Main loop: key handling, piano keyboard & rainbow animation. Timed
+        ;by the music calls of the interrupt: PIANODIV calls = one frame
 
 mainloop:
-waitline:
-                lda $d012
-                cmp #$fa
-                bne waitline
-waitline2:
-                lda $d012
-                cmp #$fa
-                beq waitline2
-              .IF (RAINBOWANIM != 0)
+                lda calls
+                sec
+                sbc lastcalls
+                cmp #PIANODIV
+                bcc mainkeys
+                lda calls
+                sta lastcalls
+              .IF (PIANO != 0)
+                jsr pianoupdate
+              .ENDIF
                 inc animcount
                 lda animcount
-                and #$07
-                bne noanim
+                cmp #ANIMSTEPS
+                bcc mainkeys
+                lda #$00
+                sta animcount
                 jsr rotaterainbow
-noanim:
-              .ENDIF
+mainkeys:
                 jsr $ffe4                       ;GETIN
                 beq mainloop
                 cmp #$2b                        ;+
@@ -257,6 +266,7 @@ irq:
                 lda playing
                 beq irqskip
                 jsr MUSICPLAY
+                inc calls
                 inc frames
                 bne irqnohi
                 inc frames+1
@@ -335,6 +345,110 @@ rotateloop:
                 pla
                 sta RAINBOWROW+37
                 rts
+
+              .IF (PIANO != 0)
+
+        ;Piano keyboard. 1: colour of every key from the note and the gate
+        ;of the voices (gate bit = waveform AND gate as written to the SID)
+
+pianoupdate:
+                lda #$00
+                ldx #95
+pclear:
+                sta KEYCOL,x
+                dex
+                bpl pclear
+                ldy #PIANOCHN-1
+pchn:
+                ldx pianochnofs,y
+                lda PIANOWAVE,x
+                and PIANOGATE,x
+                lsr
+                bcc pchnnext
+                lda PIANONOTE,x
+                cmp #96
+                bcs pchnnext
+                tax
+                lda pianochncol,y
+                sta KEYCOL,x
+pchnnext:
+                dey
+                bpl pchn
+
+        ;2. colours of the keys: two halves of 4 octaves
+
+                lda #((COLORS+PIANOPOS1) % 256)
+                ldx #((COLORS+PIANOPOS1) / 256)
+                ldy #0
+                jsr pianohalf
+                lda #((COLORS+PIANOPOS2) % 256)
+                ldx #((COLORS+PIANOPOS2) / 256)
+                ldy #48
+
+        ;A/X = colour RAM of the black key row, Y = first note of the half
+
+pianohalf:
+                sta pbstore+1
+                stx pbstore+2
+                clc
+                adc #40
+                sta pwstore+1
+                txa
+                adc #$00
+                sta pwstore+2
+                sty pnote
+                lda #$00
+                sta pcol
+                sta pwhite
+phloop:
+                ldx pwhite
+                lda pnote
+                clc
+                adc whitesemi,x
+                tax
+                lda KEYCOL,x
+                bne phwset
+                lda #WHITECOL
+phwset:
+                ldy pcol
+pwstore:
+                sta $ffff,y
+                ldy pwhite
+                lda hasblack,y
+                beq phnoblack
+                lda KEYCOL+1,x
+                bne phbset
+                lda #BLACKCOL                   ;= 0, always branches
+                beq phbset
+phnoblack:
+                lda #BGCOL                      ;no black key: invisible
+phbset:
+                ldy pcol
+pbstore:
+                sta $ffff,y
+                inc pcol
+                inc pwhite
+                lda pwhite
+                cmp #$07
+                bne phloop
+                lda #$00
+                sta pwhite
+                lda pnote
+                clc
+                adc #12
+                sta pnote
+                lda pcol
+                cmp #28
+                bne phloop
+                rts
+
+whitesemi:      .BYTE (0,2,4,5,7,9,11)
+hasblack:       .BYTE (1,1,0,1,1,1,0)
+pnote:          .BYTE (0)
+pcol:           .BYTE (0)
+pwhite:         .BYTE (0)
+
+              .ENDIF
 
         ;Unpacker helpers
 
@@ -421,5 +535,7 @@ frames:         .BYTE (0,0)
 seconds:        .BYTE (0)
 minutes:        .BYTE (0)
 animcount:      .BYTE (0)
+calls:          .BYTE (0)
+lastcalls:      .BYTE (0)
 
         ;Song length table and packed screen will be inserted here

@@ -1,4 +1,4 @@
-C64 GrooveGoat 0.91b
+C64 GrooveGoat 0.92b
 ===================
 
 A multi-SID music editor for the Commodore 64 by IT-Dummkopfen,
@@ -15,7 +15,7 @@ based on GoatTracker 2 by Lasse Oorni (Cadaver) and its "Silver Fork".
   leads, pads, arpeggios and more, with SID filter options
 - Graphical ADSR envelope
 - Piano keyboard with the played notes of all voices (click a key to play,
-  CTRL+B on/off), also in the MP4 video
+  CTRL+B on/off), also in the MP4 video and in runnable C64 programs
 - Pattern tool buttons (transpose, mark, cut/copy/paste) and tooltips
 - Loads and saves GoatTracker 2 (.sng), GoatTracker Stereo (.sng) and the
   C64 GrooveGoat format (.ggt, for 4 and 8 SIDs); instruments (.ins)
@@ -53,20 +53,20 @@ macOS (Apple Silicon / M chips, macOS 11 or newer)
 
 Linux (x86-64, AppImage)
   Make the AppImage executable and start it:
-    chmod +x C64_GrooveGoat-0.91b-x86_64.AppImage
-    ./C64_GrooveGoat-0.91b-x86_64.AppImage
+    chmod +x C64_GrooveGoat-0.92b-x86_64.AppImage
+    ./C64_GrooveGoat-0.92b-x86_64.AppImage
   (or in the file manager: Properties -> Permissions -> "Allow executing").
   Nothing else has to be installed. Needs glibc 2.35 or newer (Ubuntu 22.04,
   Debian 12, Fedora 36 or newer) and an X11 or Wayland desktop (via XWayland).
   If the AppImage does not start because FUSE is missing, run it with
-    ./C64_GrooveGoat-0.91b-x86_64.AppImage --appimage-extract-and-run
+    ./C64_GrooveGoat-0.92b-x86_64.AppImage --appimage-extract-and-run
   The instrument library and the example songs are inside the AppImage; the
   file selector has the buttons "Library" and "Examples" to open them.
 
 Linux (x86-64, tar.gz - without AppImage)
   Unpack the archive and start the program in the unpacked folder:
-    tar xzf C64-GrooveGoat-0.91b-Linux-x86_64.tar.gz
-    cd C64-GrooveGoat-0.91b-Linux-x86_64
+    tar xzf C64-GrooveGoat-0.92b-Linux-x86_64.tar.gz
+    cd C64-GrooveGoat-0.92b-Linux-x86_64
     ./groovegoat
   Keep the "instruments" and "examples" folders next to the program.
   Optional: ./install.sh installs it for the current user (no root rights)

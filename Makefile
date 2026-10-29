@@ -9,7 +9,7 @@
 
 TARGET ?= linux
 TOOLS ?= $(abspath ../tools)
-VERSION = 0.91b
+VERSION = 0.92b
 
 BUILDDIR = build/$(TARGET)
 SRCDIR = src

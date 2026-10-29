@@ -115,6 +115,10 @@ void asm_echo(const char *msg);
 void asm_include(const char *msg);
 
 int assemble(struct membuf *source, struct membuf *dest);
+/* values[i] = value of symbol names[i] after the next successful assembly
+ * (-1 if not defined) */
+void asm_set_capture(const char **names, int *values, int count);
+void asm_do_capture(void);
 void output_atoms(struct membuf *out, struct vec *mem);
 void asm_src_buffer_push(struct membuf *buf);
 

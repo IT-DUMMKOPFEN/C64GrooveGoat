@@ -373,6 +373,36 @@ static const char *resolve_expr2(struct expr *e, i32 *valp)
     return p;
 }
 
+/* C64 GrooveGoat: look up the values of symbols after a successful
+ * assembly (e.g. the addresses of player variables). */
+static const char **s_capnames = NULL;
+static int *s_capvalues = NULL;
+static int s_capcount = 0;
+
+void asm_set_capture(const char **names, int *values, int count)
+{
+    s_capnames = names;
+    s_capvalues = values;
+    s_capcount = count;
+}
+
+void asm_do_capture(void)
+{
+    int i;
+    for(i = 0; i < s_capcount; ++i)
+    {
+        struct expr *e;
+        i32 v;
+        s_capvalues[i] = -1;
+        if(find_symref(s_capnames[i], &e) == NULL &&
+           resolve_expr2(e, &v) == NULL)
+        {
+            s_capvalues[i] = v;
+        }
+    }
+    s_capcount = 0;
+}
+
 static i32 resolve_expr(struct expr *e)
 {
     i32 val;

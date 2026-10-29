@@ -2889,7 +2889,9 @@ int assemble(struct membuf *source, struct membuf *dest)
     if(val == 0)
     {
         output_atoms(dest, asm_atoms);
+        asm_do_capture();
     }
+    else asm_set_capture(NULL, NULL, 0);
     parse_free();
     vec_free(asm_atoms, NULL);
     yycleanup();

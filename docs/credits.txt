@@ -1,4 +1,4 @@
-C64 GrooveGoat 0.91b
+C64 GrooveGoat 0.92b
 Copyright (C) 2026 IT-Dummkopfen
 
 C64 GrooveGoat is a multi-SID music editor for the Commodore 64 SID chip. It

@@ -95,6 +95,7 @@ struct membuf src = STATIC_MEMBUF_INIT;
 struct membuf dest = STATIC_MEMBUF_INIT;
 
 extern unsigned prgfrontend;
+extern unsigned prgpiano;
 
 // Export settings & results
 typedef struct
@@ -117,6 +118,8 @@ typedef struct
   int playersize;
   int songtblsize, songdatasize, patttblsize, pattdatasize, instrsize, tblsize;
   int ghostaddr;
+  // player variables for the piano keyboard of the PRG player (-1 = unknown)
+  int chnnote, chngate, chnwave, numchn, multi;
 } PACKRESULT;
 
 static char errortext[256];
@@ -755,6 +758,7 @@ static int packmusic(EXPORTSETTINGS *es, PACKRESULT *res)
   int ok = 0;
 
   memset(res, 0, sizeof(PACKRESULT));
+  res->chnnote = res->chngate = res->chnwave = res->numchn = -1;
   membuf_free(&src);
   membuf_free(&dest);
 
@@ -1473,11 +1477,22 @@ static int packmusic(EXPORTSETTINGS *es, PACKRESULT *res)
         }
       }
 
-      // Assemble
-      if (assemble(&src, &dest))
+      // Assemble (and remember where the channel variables are, for the
+      // piano keyboard of the runnable PRG)
       {
-        seterror("ASSEMBLY OF THE PLAYROUTINE FAILED (INTERNAL ERROR)");
-        goto PRCLEANUP;
+        static const char *capnames[4] = {"mt_chnnote", "mt_chngate", "mt_chnwave", "NUMCHANNELS"};
+        int capvalues[4];
+        asm_set_capture(capnames, capvalues, 4);
+        if (assemble(&src, &dest))
+        {
+          seterror("ASSEMBLY OF THE PLAYROUTINE FAILED (INTERNAL ERROR)");
+          goto PRCLEANUP;
+        }
+        res->chnnote = capvalues[0];
+        res->chngate = capvalues[1];
+        res->chnwave = capvalues[2];
+        res->numchn = capvalues[3];
+        res->multi = multi;
       }
 
       packedsize = membuf_memlen(&dest);
@@ -1704,10 +1719,25 @@ static void c64char(C64SCREEN *s, int x, int y, int color, unsigned char code)
 #define PRG_HILITE 1
 #define PRG_VALUE 3
 
-// Screen positions used by the frontend code (updated at runtime)
-#define POS_SUBTUNE (13 * 40 + 13)
-#define POS_LENGTH (13 * 40 + 31)
-#define POS_TIME (14 * 40 + 13)
+// Piano keyboard on the player screen (option): two halves of 4 octaves,
+// each a row of black keys above a row of white keys
+#define PIANO_X 6
+#define PIANO_ROW1 17                 // C-0 ... B-3
+#define PIANO_ROW2 20                 // C-4 ... B-7
+static const int pianovoicecol[3] = {10, 7, 3};   // light red, yellow, cyan
+static const int pianohasblack[7] = {1, 1, 0, 1, 1, 1, 0};
+
+static int prgpianoon(PACKRESULT *res)
+{
+  return (prgpianocmd >= 0 ? prgpianocmd : (int)prgpiano) && (res->chnnote >= 0) && (res->chngate >= 0) && (res->chnwave >= 0) && (res->numchn > 0);
+}
+
+// Screen positions used by the frontend code (updated at runtime); with the
+// piano keyboard the info lines move up
+static int pianolayout = 0;
+#define POS_SUBTUNE ((pianolayout ? 12 : 13) * 40 + 13)
+#define POS_LENGTH ((pianolayout ? 12 : 13) * 40 + 31)
+#define POS_TIME ((pianolayout ? 13 : 14) * 40 + 13)
 #define POS_RAINBOW (7 * 40 + 1)
 // Logo sprites (x/y expanded, 48x42 pixels) at column 2, row 1
 #define LOGOX (24 + 2 * 8)
@@ -1718,6 +1748,7 @@ static void buildprgscreen(C64SCREEN *s, PACKRESULT *res)
   int c;
   char buf[64];
   static const int rainbow[5] = {2, 8, 7, 5, 14};
+  int p = pianolayout = prgpianoon(res);
 
   memset(s->scr, 32, 1000);
   memset(s->col, PRG_TEXT, 1000);
@@ -1753,31 +1784,55 @@ static void buildprgscreen(C64SCREEN *s, PACKRESULT *res)
   c64text(s, 2, 11, PRG_TEXT, "RELEASED:");
   c64text(s, 13, 11, PRG_VALUE, copyrightname);
 
-  c64text(s, 2, 13, PRG_TEXT, "SUBTUNE:");
+  c64text(s, 2, 13 - p, PRG_TEXT, "SUBTUNE:");
   sprintf(buf, "01/%02d", res->songs);
-  c64text(s, 13, 13, PRG_HILITE, buf);
-  c64text(s, 23, 13, PRG_TEXT, "LENGTH:");
-  c64text(s, 31, 13, PRG_HILITE, "00:00");
-  c64text(s, 2, 14, PRG_TEXT, "TIME:");
-  c64text(s, 13, 14, PRG_HILITE, "00:00");
+  c64text(s, 13, 13 - p, PRG_HILITE, buf);
+  c64text(s, 23, 13 - p, PRG_TEXT, "LENGTH:");
+  c64text(s, 31, 13 - p, PRG_HILITE, "00:00");
+  c64text(s, 2, 14 - p, PRG_TEXT, "TIME:");
+  c64text(s, 13, 14 - p, PRG_HILITE, "00:00");
 
-  c64text(s, 2, 16, PRG_TEXT, "SIDS:");
+  c64text(s, 2, 16 - 2 * p, PRG_TEXT, "SIDS:");
   sprintf(buf, "%d X %s  %s  %s", numsids, editorInfo.sidmodel ? "8580" : "6581", editorInfo.ntsc ? "NTSC" : "PAL",
     editorInfo.multiplier ? (editorInfo.multiplier == 1 ? "1X SPEED" : "MULTISPEED") : "25HZ");
   if (editorInfo.multiplier > 1)
     sprintf(buf, "%d X %s  %s  %dX SPEED", numsids, editorInfo.sidmodel ? "8580" : "6581", editorInfo.ntsc ? "NTSC" : "PAL", editorInfo.multiplier);
-  c64text(s, 13, 16, PRG_VALUE, buf);
-  c64text(s, 2, 17, PRG_TEXT, numsids > 1 ? "ADDRESSES:" : "ADDRESS:");
+  c64text(s, 13, 16 - 2 * p, PRG_VALUE, buf);
+  c64text(s, 2, 17 - 2 * p, PRG_TEXT, numsids > 1 ? "ADDRESSES:" : "ADDRESS:");
   for (c = 0; c < numsids; c++)
   {
     sprintf(buf, "$%04X", numsids > 1 ? sidaddr_export(c) : sidaddr_export(0));
-    c64text(s, 13 + (c % 4) * 6, 17 + c / 4, PRG_VALUE, buf);
+    c64text(s, 13 + (c % 4) * 6, 17 - 2 * p + c / 4, PRG_VALUE, buf);
   }
-  c64text(s, 2, 20, PRG_TEXT, "VOICES:");
   sprintf(buf, "%d", numchannels);
-  c64text(s, 13, 20, PRG_VALUE, buf);
-
-  c64text(s, 2, 22, PRG_TEXT, "+/- OR 1-9: SUBTUNE   SPACE: RESTART");
+  if (p)
+  {
+    int h, k;
+    c64text(s, 23, 13, PRG_TEXT, "VOICES:");
+    c64text(s, 31, 13, PRG_VALUE, buf);
+    // keyboard: white keys with a 2 pixel gap (reverse of the right 1/4
+    // bar), black keys as right half blocks in the row above
+    for (h = 0; h < 2; h++)
+    {
+      int row = h ? PIANO_ROW2 : PIANO_ROW1;
+      c64text(s, 2, row + 1, 15, h ? "C4" : "C0");
+      for (k = 0; k < 28; k++)
+      {
+        c64char(s, PIANO_X + k, row + 1, 1, 0xe7);
+        // the whole row holds black key characters in black (packs well);
+        // where no black key is, the player colours them like the background
+        // with its first update
+        c64char(s, PIANO_X + k, row, 0, 0xe1);
+      }
+    }
+    c64text(s, 2, 23, PRG_TEXT, "+/- OR 1-9: SUBTUNE   SPACE: RESTART");
+  }
+  else
+  {
+    c64text(s, 2, 20, PRG_TEXT, "VOICES:");
+    c64text(s, 13, 20, PRG_VALUE, buf);
+    c64text(s, 2, 22, PRG_TEXT, "+/- OR 1-9: SUBTUNE   SPACE: RESTART");
+  }
 }
 
 // RLE: $FF count value; everything else literal
@@ -1846,10 +1901,22 @@ static int buildprgfrontend(EXPORTSETTINGS *es, PACKRESULT *res, unsigned char *
   insertdefine("TIMERLO", speedvalue & 0xff);
   insertdefine("TIMERHI", speedvalue >> 8);
   insertdefine("CALLSPERSEC", callspersec);
-  // The rainbow bar is only animated at 1x and 25 Hz: with 2x and more the
-  // music interrupt runs so often that the main loop misses the raster line
-  // it waits for, and the animation would stutter or stop
-  insertdefine("RAINBOWANIM", editorInfo.multiplier <= 1 ? 1 : 0);
+  // The main loop is timed by the music calls (not by a raster line, which
+  // it would miss at 2x and more): PIANODIV calls = one screen frame
+  insertdefine("PIANODIV", editorInfo.multiplier > 1 ? editorInfo.multiplier : 1);
+  insertdefine("ANIMSTEPS", editorInfo.multiplier ? 8 : 4);
+  insertdefine("PIANO", pianolayout);
+  if (pianolayout)
+  {
+    insertdefine("PIANONOTE", res->chnnote);
+    insertdefine("PIANOGATE", res->chngate);
+    insertdefine("PIANOWAVE", res->chnwave);
+    insertdefine("PIANOCHN", res->numchn);
+    if (getenv("GG_PIANODEBUG"))
+      fprintf(stderr, "piano: note $%04X gate $%04X wave $%04X channels %d multi %d\n", res->chnnote, res->chngate, res->chnwave, res->numchn, res->multi);
+    insertdefine("PIANOPOS1", PIANO_ROW1 * 40 + PIANO_X);
+    insertdefine("PIANOPOS2", PIANO_ROW2 * 40 + PIANO_X);
+  }
   insertdefine("POS_SUBTUNE", POS_SUBTUNE);
   insertdefine("POS_LENGTH", POS_LENGTH);
   insertdefine("POS_TIME", POS_TIME);
@@ -1873,6 +1940,20 @@ static int buildprgfrontend(EXPORTSETTINGS *es, PACKRESULT *res, unsigned char *
     for (int i = 0; i < 5; i++) t[i] = petscii_screencode(tb[i]);
     insertbytes(t, 5);
   }
+  if (pianolayout)
+  {
+    // offset of the channel variables and colour of every voice
+    unsigned char ofs[MAX_CHN], col[MAX_CHN];
+    for (c = 0; c < res->numchn; c++)
+    {
+      ofs[c] = res->multi ? (c / 3) * 32 + (c % 3) * 7 : c * 7;
+      col[c] = pianovoicecol[c % 3];
+    }
+    insertlabel("pianochnofs");
+    insertbytes(ofs, res->numchn);
+    insertlabel("pianochncol");
+    insertbytes(col, res->numchn);
+  }
   insertlabel("screendata");
   insertbytes(packed, packedlen);
   insertlabel("frontendend");
@@ -1886,7 +1967,8 @@ static int buildprgfrontend(EXPORTSETTINGS *es, PACKRESULT *res, unsigned char *
   fesize = membuf_memlen(&dest);
   if (0x0801 + fesize > es->base)
   {
-    sprintf(errortext, "THE PLAYER SCREEN NEEDS $0801-$%04X, PLEASE SET THE PLAYER ADDRESS TO $%04X OR HIGHER", 0x0801 + fesize - 1, (0x0801 + fesize + 0xff) & 0xff00);
+    sprintf(errortext, "THE PLAYER SCREEN NEEDS $0801-$%04X, PLEASE SET THE PLAYER ADDRESS TO $%04X OR HIGHER%s", 0x0801 + fesize - 1, (0x0801 + fesize + 0xff) & 0xff00,
+      pianolayout ? " (OR SWITCH THE PIANO KEYBOARD OFF)" : "");
     membuf_free(&src);
     membuf_free(&dest);
     return 0;
@@ -1997,7 +2079,8 @@ static int exportdialog(EXPORTSETTINGS *es)
     unsigned addrs[MAX_SIDS];
     int addrok = 1;
 
-    // Rows: 0 format, 1 player address, 2 zeropage, 3 SID layout / addresses, 10+ options, 30 export, 31 cancel
+    // Rows: 0 format, 1 player address, 2 zeropage, 3 SID layout / addresses,
+    // 7 piano keyboard (runnable PRG), 10+ options, 30 export, 31 cancel
     numrows = 0;
     rows[numrows++] = 0;
     rows[numrows++] = 1;
@@ -2019,6 +2102,7 @@ static int exportdialog(EXPORTSETTINGS *es)
     {
       for (c = 0; c < numsids; c++) rows[numrows++] = 20 + c;
     }
+    if (es->format == EXP_PRGPLAYER) rows[numrows++] = 7;
     for (c = 0; c < MAX_OPTIONS; c++)
     {
       if ((numsids > 1) && (c == 4)) continue; // zeropage ghostregs
@@ -2098,6 +2182,10 @@ static int exportdialog(EXPORTSETTINGS *es)
         case 6:
         sprintf(buf, "SID 2 starts at   $%04X%s", v5start ? v5start : v5stdstart[v5cfg], v5start ? "" : " (standard)");
         ry = y0 + 6;
+        break;
+        case 7:
+        sprintf(buf, "Piano keyboard    [%c] Show the played notes on the player screen", prgpiano ? 'x' : ' ');
+        ry = y0 + 12;
         break;
       }
       if ((r >= 20) && (r < 30))
@@ -2273,6 +2361,10 @@ static int exportdialog(EXPORTSETTINGS *es)
             if (v5cfg > 6) v5cfg = 0;
           } while ((v5max[v5cfg] < numsids) && (--tries));
           v5start = 0;
+        }
+        else if (r == 7)
+        {
+          prgpiano ^= 1;
         }
         else if (r == 6)
         {

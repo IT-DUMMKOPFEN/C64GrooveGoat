@@ -1,4 +1,4 @@
-# C64 GrooveGoat 0.91b - Manual
+# C64 GrooveGoat 0.92b - Manual
 
 C64 GrooveGoat is a tracker-style music editor for the SID sound chip of the Commodore 64. It is
 based on GoatTracker 2 by Lasse Oorni (Cadaver) and the "Silver Fork" of Joel Ricci. It adds:
@@ -8,7 +8,8 @@ based on GoatTracker 2 by Lasse Oorni (Cadaver) and the "Silver Fork" of Joel Ri
 - an instrument library with more than 5000 instruments, search, favourites and preview
 - a random instrument generator for bass, drums, woodwinds, guitars, brass, strings and more
 - a graphical ADSR envelope display
-- a piano keyboard over 8 octaves that shows the played notes of all voices (also in videos)
+- a piano keyboard over 8 octaves that shows the played notes of all voices (also in videos
+  and on the screen of runnable C64 programs)
 - buttons for the pattern tools (transpose, mark, select pattern, cut, copy, paste) and
   tooltips with the name and the shortcut of every button
 - undo and redo, automatic backup copies and crash recovery
@@ -66,7 +67,7 @@ A song consists of:
 |               "examples" folders must stay next to the program.
 |  macOS        Unpack the ZIP file and move "C64 GrooveGoat.app" to Applications. On the
 |               first start use right click > Open (the app is not notarized by Apple).
-|  Linux        Make the AppImage executable (chmod +x C64_GrooveGoat-0.91b-x86_64.AppImage)
+|  Linux        Make the AppImage executable (chmod +x C64_GrooveGoat-0.92b-x86_64.AppImage)
 |               and start it. The instrument library and the examples are inside the
 |               AppImage. If your system lacks FUSE, start it with --appimage-extract-and-run.
 |  Linux tar.gz Unpack the archive and start ./groovegoat in the unpacked folder (the
@@ -844,6 +845,8 @@ The SID and PRG buttons (toolbar) and F9 open the export dialog:
 |  Player address   Start address of the music (page aligned, default $1000)
 |  Zeropage         Two zeropage bytes used by the playroutine (default $FC-$FD)
 |  SID address(es)  Where the SID chips are (see below)
+|  Piano keyboard   Runnable PRG only: show the played notes on the player screen (on by
+|                   default, the setting is saved)
 |  Options          Playroutine options (see below)
 
 UP/DOWN selects a line, LEFT/RIGHT changes values, ENTER edits a value or starts the export.
@@ -893,9 +896,23 @@ subtune, its length and the play time, and the number, model and addresses of th
 |  1-9                 select subtune 1-9
 |  SPACE               restart the subtune
 
-The rainbow bar on the player screen is animated for songs at normal speed (1x and 25 Hz).
-With 2x and faster the music interrupt runs so often that the animation could not run smoothly
-any more, so the bar is shown without animation.
+With the option "Piano keyboard" (on by default) the player screen shows a piano keyboard with
+the notes that are playing. All 8 octaves do not fit next to each other into the 40 columns of
+the C64 screen, so the keyboard is split in the middle: C-0 to B-3 on top, C-4 to B-7 below,
+each with a row of black keys above the white keys. The keys light up in the colour of the
+voice that plays them - voice 1 of a SID in light red, voice 2 in yellow, voice 3 in cyan, as in
+the editor - while its gate is on. The info lines above move up a little to make room.
+
+The keyboard and the rainbow animation are updated in the main program, never in the music
+interrupt: the player counts the calls of the playroutine and redraws the keyboard once per
+screen frame (at 1x, 2x, 3x ... and 25 Hz alike), changing only the colours. The music timing
+is therefore exactly the same with and without the keyboard, also with 8 SIDs at high speeds;
+if the computer is very busy, the keyboard is just redrawn a little less often. The rainbow bar
+is animated at every speed.
+
+The keyboard makes the player screen about 300 bytes larger. If the player screen does not fit
+below the player address (songs with many subtunes and 8 SIDs), the export asks you to set the
+player address higher or to switch the piano keyboard off.
 
 The player screen occupies $0801 up to about $1000, so the music must start at $1000 or higher
 and end below $D000. The song length is calculated by playing the subtune until all voices have
@@ -1070,6 +1087,8 @@ Export and rendering without opening a window:
 |  --export=FILE      Export the song and exit
 |  --format=FMT       sid (default), prg (runnable), prgmusic, bin
 |  --address=XXXX     Player address (hex)
+|  --piano=0|1        Runnable PRG: without / with the piano keyboard (default: the setting of
+|                     the export dialog)
 |  --options=N        Playroutine options as a number (8 buffered, 16 sound effects,
 |                     32 volume, 64 author-info, 256 no optimization, 512 full buffering)
 |  --sids=N           Change the number of SIDs before exporting
@@ -1092,7 +1111,7 @@ The default sample rate is 48000 Hz; -M44100 selects 44100 Hz.
 
 # Credits
 
-C64 GrooveGoat 0.91b by IT-Dummkopfen.
+C64 GrooveGoat 0.92b by IT-Dummkopfen.
 
 |  GoatTracker 2 editor & playroutine   Lasse Oorni (Cadaver), Covert Bitops
 |  GoatTracker 2 "Silver Fork"          Joel Ricci (github.com/joelricci/goattracker2)

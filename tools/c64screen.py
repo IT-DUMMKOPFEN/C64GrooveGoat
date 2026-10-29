@@ -1,6 +1,7 @@
 # Renders a C64 text screen dump (1000 screen codes + 1000 colors + border
 # + background) to a PNG for checking the PRG player screen. Letters use a
-# generic font; PETSCII block graphics used by the player are drawn exactly.
+# generic font; PETSCII block graphics used by the player are drawn exactly
+# (or everything, with GG_CHARGEN set to a character ROM image).
 import sys
 from PIL import Image, ImageDraw, ImageFont
 PAL=[(0,0,0),(255,255,255),(136,57,50),(103,182,189),(139,63,150),(85,160,73),(64,49,141),(191,206,114),
@@ -15,8 +16,21 @@ try:
     font=ImageFont.truetype(sys.argv[3] if len(sys.argv)>3 else 'res/fonts/FiraCode-Bold.ttf', 9*S)
 except Exception:
     font=ImageFont.load_default()
+# With GG_CHARGEN pointing to a C64 character ROM image (not included) the
+# characters are drawn exactly
+import os
+ROM=None
+if os.environ.get('GG_CHARGEN'):
+    ROM=open(os.environ['GG_CHARGEN'],'rb').read()
 for i in range(1000):
     r,c=divmod(i,40); x=(32+c*8)*S; y=(32+r*8)*S
+    if ROM:
+        fgc=PAL[col[i]&15]
+        for yy in range(8):
+            bits=ROM[scr[i]*8+yy]
+            for xx in range(8):
+                if bits&(0x80>>xx): dr.rectangle([x+xx*S,y+yy*S,x+xx*S+S-1,y+yy*S+S-1],fill=fgc)
+        continue
     sc=scr[i]; fg=PAL[col[i]&15]; rev=sc&0x80; code=sc&0x7f
     cellbg=fg if rev else PAL[bg]; cellfg=PAL[bg] if rev else fg
     if rev: dr.rectangle([x,y,x+8*S-1,y+8*S-1],fill=cellbg)

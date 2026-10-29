@@ -71,6 +71,8 @@ int stereowidth(void)
 }
 unsigned themesetting = THEME_NIGHT;
 unsigned prgfrontend = 1;
+unsigned prgpiano = 1;          // piano keyboard on the screen of a runnable PRG
+int prgpianocmd = -1;           // --piano=0/1 on the command line (not saved)
 unsigned mastervolume = 80;
 unsigned showwelcome = 1;
 unsigned kbdlayoutsetting = 2;
@@ -137,6 +139,7 @@ static char *usage[] = {
   "--export=FILE      Export the song given on the command line and exit",
   "--format=FMT       Export format: sid (default), prg (runnable), prgmusic, bin",
   "--address=XXXX     Player address for the export (hex)",
+  "--piano=0|1        Runnable PRG: without / with the piano keyboard",
   "--render=FILE      Render the song to FILE.wav, FILE.mp3 or FILE.mp4 (video) and exit",
   "--seconds=N        Render length (default: song length + fade-out)",
   "--fade=N           Fade-out in seconds",
@@ -256,6 +259,11 @@ int main(int argc, char **argv)
         if (!strncmp(argv[c], "--seconds=", 10))
         {
           renderseconds = atoi(argv[c] + 10);
+          break;
+        }
+        if (!strncmp(argv[c], "--piano=", 8))
+        {
+          prgpianocmd = atoi(argv[c] + 8) ? 1 : 0;
           break;
         }
         if (!strcmp(argv[c], "--stems"))
@@ -686,8 +694,10 @@ static void loadconfig(void)
   getparam(configfile, &showwelcome);
   getparam(configfile, &kbdlayoutsetting);
   getparam(configfile, &showpiano);
+  getparam(configfile, &prgpiano);
   fclose(configfile);
   showpiano &= 1;
+  prgpiano &= 1;
   if (!strcmp(specialnotenames, "-")) specialnotenames[0] = 0;
   if (!strcmp(scalatuningfilepath, "-")) scalatuningfilepath[0] = 0;
 }
@@ -747,7 +757,8 @@ static void saveconfig(void)
     ";Output volume in percent (0-100)\n%d\n\n"
     ";Show the welcome window at startup (0 = no, 1 = yes)\n%d\n\n"
     ";Keyboard layout for shortcuts (0 = EN QWERTY, 1 = DE QWERTZ, 2 = detect)\n%d\n\n"
-    ";Show the piano keyboard (0 = no, 1 = yes)\n%d\n\n",
+    ";Show the piano keyboard (0 = no, 1 = yes)\n%d\n\n"
+    ";Piano keyboard on the screen of runnable PRGs (0 = no, 1 = yes)\n%d\n\n",
     b,
     mr,
     hardsid,
@@ -794,7 +805,8 @@ static void saveconfig(void)
     mastervolume,
     showwelcome,
     kbdlayout,
-    showpiano);
+    showpiano,
+    prgpiano);
   fclose(configfile);
 }
 
