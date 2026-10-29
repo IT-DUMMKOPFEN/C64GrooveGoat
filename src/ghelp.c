@@ -72,6 +72,7 @@ static const char *genkeys[] = {
   "CTRL/CMD+Y    Redo (also CTRL+SHIFT+Z)",
   "CTRL/CMD+R    Random instrument generator",
   "CTRL/CMD+L    Instrument library",
+  "CTRL/CMD+B    Piano keyboard on/off",
   "SHIFT+ESC     Clear/optimize musicdata",
   "ESC           Exit program",
   "ALT+ENTER     Toggle fullscreen",
@@ -95,7 +96,8 @@ static const char *mousekeys[] = {
   "Click P00     Next pattern (right: prev.)",
   "Click M / S   Mute / solo a channel",
   "Drop a file   Load song or instrument",
-  "Hover         Button help in the message line",
+  "Hover         Button help, after 1 s tooltip",
+  "Click piano   Play a note (drag: glissando)",
   NULL
 };
 
@@ -189,6 +191,10 @@ static const char *newkeys[] = {
   "Audio/Video   Export WAV, MP3 or MP4 video",
   "Backups       .bak on save, autosave every",
   "              2 min., restore after a crash",
+  "Piano         Played notes of all voices,",
+  "              click a key to play (CTRL+B)",
+  "Pattern tools Transpose, mark, cut/copy/paste",
+  "              buttons above the pattern editor",
   NULL
 };
 

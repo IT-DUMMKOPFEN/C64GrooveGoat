@@ -18,6 +18,7 @@ typedef struct
   int nsids;            // 1, 2, 4 or 8
   int totalframes;      // number of video frames (for the progress bar)
   int daytheme;         // 0 = C64 night blue, 1 = light
+  int piano;            // piano keyboard with the played notes below the scopes
   const char *title;
   const char *author;
   const char *info;     // e.g. "2 x 8580 - PAL"

@@ -32,12 +32,13 @@ typedef struct
   int stems;        // WAV: also every voice in its own file
   int respectmute;  // leave muted voices muted
   int videotheme;   // 0 night, 1 day
+  int videopiano;   // piano keyboard below the oscilloscopes
 } AVSETTINGS;
 
 extern int initted;
 extern unsigned customclockrate;
 
-static AVSETTINGS avs = {AV_WAV, 0, 1, 180, 5, 1, 44100, 320, 0, 0, 0};
+static AVSETTINGS avs = {AV_WAV, 0, 1, 180, 5, 1, 44100, 320, 0, 0, 0, 1};
 
 static const char *formatnames[] = {"WAV audio", "MP3 audio", "MP4 video (720p)"};
 static const char *formatext[] = {".wav", ".mp3", ".mp4"};
@@ -471,6 +472,7 @@ static int rendermp4(const char *name, int frames, int fadeframes, char *error, 
   vp.nsids = numsids;
   vp.totalframes = videoframes;
   vp.daytheme = avs.videotheme;
+  vp.piano = avs.videopiano;
   vp.title = songname;
   vp.author = authorname;
   vp.info = info;
@@ -594,7 +596,7 @@ static int avdialog(void)
 
     // 0 format, 1 subtune, 2 length mode, 3 custom time, 4 fade, 5 channels,
     // 6 sample rate, 7 bitrate, 8 stems, 9 respect mute, 10 video theme,
-    // 14 export, 15 cancel
+    // 11 video piano, 14 export, 15 cancel
     numrows = 0;
     rows[numrows++] = 0;
     rows[numrows++] = 1;
@@ -607,6 +609,7 @@ static int avdialog(void)
     if (avs.format == AV_WAV) rows[numrows++] = 8;
     rows[numrows++] = 9;
     if (avs.format == AV_MP4) rows[numrows++] = 10;
+    if (avs.format == AV_MP4) rows[numrows++] = 11;
     rows[numrows++] = 14;
     rows[numrows++] = 15;
     if (first)
@@ -651,6 +654,7 @@ static int avdialog(void)
         case 8: sprintf(buf, "[%c] Also save every voice as its own mono WAV (%d files)", avs.stems ? 'x' : ' ', numchannels); break;
         case 9: sprintf(buf, "[%c] Keep muted voices muted", avs.respectmute ? 'x' : ' '); break;
         case 10: sprintf(buf, "Video colours     " GS_PREV " %s " GS_NEXT, avs.videotheme ? "Day (light)" : "Night (C64 blue)"); break;
+        case 11: sprintf(buf, "Piano keyboard    " GS_PREV " %s " GS_NEXT, avs.videopiano ? "On (played notes)" : "Off"); break;
       }
       if (r == 14)
       {
@@ -694,7 +698,7 @@ static int avdialog(void)
     printtext(x0 + 21, y + 2, MKCOL(8, C_PANEL), buf);
     if (avs.format == AV_MP4)
     {
-      sprintf(buf, "%d oscilloscopes, song name, author, play time", numchannels);
+      sprintf(buf, "%d oscilloscopes, %ssong name, author, play time", numchannels, avs.videopiano ? "piano keyboard, " : "");
       printtext(x0 + 3, y + 3, MKCOL(14, C_PANEL), "Video:");
       printtext(x0 + 21, y + 3, MKCOL(8, C_PANEL), buf);
     }
@@ -797,6 +801,7 @@ static int avdialog(void)
           case 8: avs.stems ^= 1; break;
           case 9: avs.respectmute ^= 1; break;
           case 10: avs.videotheme ^= 1; break;
+          case 11: avs.videopiano ^= 1; break;
           case 14:
           if ((rawkey == KEY_ENTER) || (rawkey == KEY_SPACE)) return 1;
           break;

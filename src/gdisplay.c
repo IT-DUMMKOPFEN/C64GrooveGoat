@@ -7,6 +7,7 @@
 
 #include "goattrk2.h"
 #include "gres.h"
+#include "gpiano.h"
 
 char *notename[] =
  {"C-0", "C#0", "D-0", "D#0", "E-0", "F-0", "F#0", "G-0", "G#0", "A-0", "A#0", "B-0",
@@ -165,6 +166,8 @@ void printmainscreen(void)
   fliptoscreen();
 }
 
+static void drawtooltip(void);
+
 void displayupdate(void)
 {
   if (cursorflashdelay >= 6)
@@ -174,6 +177,7 @@ void displayupdate(void)
     cursorflash &= 3;
   }
   printstatus();
+  drawtooltip();   // only on the main screen, not behind dialogs
   fliptoscreen();
 }
 
@@ -321,6 +325,28 @@ static void drawpatterns(void)
   }
   sprintf(buf, "%d SID%s  %d channels", numsids, numsids > 1 ? "s" : "", numchannels);
   printtext(PATT_X + PATT_W - strlen(buf) - 1, PATT_Y, MKCOL(C_HEADERTEXT, editorInfo.editmode == EDIT_PATTERN ? C_BUTTONHI : C_HEADER), buf);
+
+  // Tool row: transpose, mark, select pattern, cut / copy / paste
+  {
+    int lc = MKCOL(7, C_PANEL);
+    int x = PATT_X + 2;
+    printblankc(PATT_X, PATT_TOOLS_Y, lc, PATT_W);
+    printtext(x, PATT_TOOLS_Y, lc, "Transpose"); x += 10;
+    ui_drawbutton(x, PATT_TOOLS_Y, " -1 ", BTN_TRANSDN, 0, 0); x += 5;
+    ui_drawbutton(x, PATT_TOOLS_Y, " +1 ", BTN_TRANSUP, 0, 0); x += 5;
+    ui_drawbutton(x, PATT_TOOLS_Y, " -12 ", BTN_OCTDN, 0, 0); x += 6;
+    ui_drawbutton(x, PATT_TOOLS_Y, " +12 ", BTN_OCTUP, 0, 0); x += 7;
+    printtext(x, PATT_TOOLS_Y, lc, "Mark"); x += 5;
+    ui_drawbutton(x, PATT_TOOLS_Y, " " GS_UP " ", BTN_MARKUP, 0, 0); x += 4;
+    ui_drawbutton(x, PATT_TOOLS_Y, " " GS_DOWN " ", BTN_MARKDN, 0, 0); x += 4;
+    ui_drawbutton(x, PATT_TOOLS_Y, " All ", BTN_MARKALL, 0, editorInfo.epmarkchn != -1); x += 7;
+    printtext(x, PATT_TOOLS_Y, lc, "Pattern"); x += 8;
+    ui_drawbutton(x, PATT_TOOLS_Y, " " GS_PREV " ", BTN_PATTPREV, 0, 0); x += 4;
+    ui_drawbutton(x, PATT_TOOLS_Y, " " GS_NEXT " ", BTN_PATTNEXT, 0, 0); x += 5;
+    ui_drawbutton(x, PATT_TOOLS_Y, " Cut ", BTN_CUT, 0, 0); x += 6;
+    ui_drawbutton(x, PATT_TOOLS_Y, " Copy ", BTN_COPY, 0, 0); x += 7;
+    ui_drawbutton(x, PATT_TOOLS_Y, " Paste ", BTN_PASTE, 0, 0);
+  }
 
   // Background of the pattern area
   fillarea(PATT_X, PATT_CHNHDR_Y, PATT_W, VISIBLEPATTROWS + 1, MKCOL(8, C_PANEL), ' ');
@@ -772,6 +798,8 @@ static void drawstatusarea(void)
   ui_drawbutton(x, STATUS_Y, " " GS_UNDO " Undo ", BTN_UNDO, 0, 0);
   x += 9;
   ui_drawbutton(x, STATUS_Y, " " GS_REDO " Redo ", BTN_REDO, 0, 0);
+  x += 9;
+  ui_drawbutton(x, STATUS_Y, " " GS_NOTE " Piano ", BTN_PIANO, 0, showpiano);
 
   // Play status and time
   if (editorInfo.multiplier)
@@ -880,6 +908,138 @@ static void drawstatusarea(void)
   }
 }
 
+// ---------------------------------------------------------------------------
+// Piano keyboard
+// ---------------------------------------------------------------------------
+
+static void drawpiano(void)
+{
+  unsigned keys[PIANO_KEYS];
+  unsigned *buf = rgbcanvas_begin(MAX_COLUMNS, PIANO_H);
+  PIANOFONT f = {res_font2, 16, 32};
+  int r;
+  fillarea(0, PIANO_SEP_Y, MAX_COLUMNS, 1, MKCOL(8, 0), ' ');
+  piano_getstate(keys);
+  piano_render(buf, RGBCANVAS_STRIDE, MAX_COLUMNS * 16, PIANO_H * 32, keys,
+    theme == THEME_DAY ? &piano_day : &piano_night, &f);
+  rgbcanvas_draw(0, PIANO_Y);
+  for (r = 0; r < PIANO_H; r++) ui_addbutton(0, PIANO_Y + r, MAX_COLUMNS, BTN_PIANOKEY, 0);
+}
+
+// ---------------------------------------------------------------------------
+// Tooltips: name and shortcut of the button under the mouse pointer, shown
+// after the pointer rested on it for a second
+// ---------------------------------------------------------------------------
+
+static int tooltip(int id, const char **name, const char **keys)
+{
+  *keys = "";
+  switch (id)
+  {
+    case BTN_NEW: *name = "New song"; break;
+    case BTN_OPEN: *name = "Load song"; *keys = "F10"; break;
+    case BTN_SAVE: case BTN_SAVEAS: *name = "Save song"; *keys = "F11"; break;
+    case BTN_INSLOAD: *name = "Load instrument"; *keys = "F10 in the instrument editor"; break;
+    case BTN_INSSAVE: *name = "Save instrument"; *keys = "F11 in the instrument editor"; break;
+    case BTN_EXPORTSID: *name = "Export SID file"; *keys = "F9"; break;
+    case BTN_EXPORTPRG: *name = "Export C64 program (.prg)"; break;
+    case BTN_EXPORTAUDIO: *name = "Export audio (WAV / MP3)"; *keys = "CTRL+F9"; break;
+    case BTN_EXPORTVIDEO: *name = "Export MP4 video"; *keys = "CTRL+SHIFT+F9"; break;
+    case BTN_THEME: *name = "Night / day theme"; break;
+    case BTN_HELP: *name = "Keyboard reference and manual"; *keys = "F12"; break;
+    case BTN_INFO: *name = "Version, credits and licenses"; break;
+    case BTN_PLAY: *name = "Play from the beginning"; *keys = "F1 (SHIFT+F1: follow)"; break;
+    case BTN_PLAYPOS: *name = "Play from the orderlist position"; *keys = "F2 (SHIFT+F2: follow)"; break;
+    case BTN_PLAYPATT: *name = "Play the current pattern"; *keys = "F3 (SHIFT+F3: follow)"; break;
+    case BTN_STOP: *name = "Stop"; *keys = "F4"; break;
+    case BTN_FOLLOW: *name = "Follow the play position"; *keys = "SHIFT+F1 / F2 / F3"; break;
+    case BTN_SIDS1: case BTN_SIDS2: case BTN_SIDS4: case BTN_SIDS8: *name = "Number of SID chips"; break;
+    case BTN_MODEL: *name = "SID model 6581 / 8580"; *keys = "SHIFT+F8"; break;
+    case BTN_NTSC: *name = "PAL / NTSC timing"; break;
+    case BTN_SPEED: *name = "Speed multiplier"; *keys = "SHIFT+F5 / SHIFT+F6"; break;
+    case BTN_HR: *name = "Hard restart ADSR"; *keys = "SHIFT+F7"; break;
+    case BTN_FV: *name = "Fine vibrato"; break;
+    case BTN_PO: *name = "Pulse optimization"; break;
+    case BTN_RO: *name = "Realtime command optimization"; break;
+    case BTN_INT: *name = "reSID interpolation"; *keys = "SHIFT+F9"; break;
+    case BTN_FP: *name = "reSID-fp (distortion emulation)"; break;
+    case BTN_STEREO: *name = "Mono / stereo width of the editor"; *keys = "right click: back"; break;
+    case BTN_OCTAVE: *name = "Octave for note entry"; *keys = "/ and *"; break;
+    case BTN_RECORD: *name = "Edit mode / jam mode"; *keys = "SPACE"; break;
+    case BTN_AUTOADV: *name = "Autoadvance mode"; *keys = "SHIFT+Z"; break;
+    case BTN_KEYMODE: *name = "Note entry keys (Tracker, DMC, Janko)"; break;
+    case BTN_KBDLAYOUT: *name = "Keyboard layout EN / DE"; break;
+    case BTN_UNDO: *name = "Undo"; *keys = "CTRL+Z"; break;
+    case BTN_REDO: *name = "Redo"; *keys = "CTRL+Y"; break;
+    case BTN_PIANO: *name = "Piano keyboard on / off"; *keys = "CTRL+B"; break;
+    case BTN_PIANOKEY: *name = "Click a key to play the note (current instrument and voice)"; break;
+    case BTN_CHNVIEW: *name = "Show the voices of these SIDs"; break;
+    case BTN_ORDVIEW: *name = "Scroll the orderlist voices"; break;
+    case BTN_SUBTUNE: *name = "Subtune"; *keys = "< > in the orderlist"; break;
+    case BTN_INSTRNUM: *name = "Instrument"; *keys = "- +"; break;
+    case BTN_MUTE: *name = "Mute voice"; *keys = "SHIFT+F4"; break;
+    case BTN_SOLO: *name = "Solo voice"; break;
+    case BTN_PATTNUM: *name = "Pattern of this voice (right click: previous)"; *keys = "< >"; break;
+    case BTN_SIDADDR: *name = "SID chips and addresses"; break;
+    case BTN_LIBRARY: *name = "Instrument library"; *keys = "CTRL+L"; break;
+    case BTN_RANDOMINS: *name = "Random instrument generator"; *keys = "CTRL+R"; break;
+    case BTN_ADSRGRAPH: *name = "ADSR envelope"; break;
+    case BTN_VOLUME: *name = "Output volume"; break;
+    case BTN_TRANSUP: *name = "Transpose half step up"; *keys = "SHIFT+Q"; break;
+    case BTN_TRANSDN: *name = "Transpose half step down"; *keys = "SHIFT+A"; break;
+    case BTN_OCTUP: *name = "Transpose octave up"; *keys = "SHIFT+W"; break;
+    case BTN_OCTDN: *name = "Transpose octave down"; *keys = "SHIFT+S"; break;
+    case BTN_MARKUP: *name = "Mark pattern upwards"; *keys = "SHIFT+CRSR UP"; break;
+    case BTN_MARKDN: *name = "Mark pattern downwards"; *keys = "SHIFT+CRSR DOWN"; break;
+    case BTN_MARKALL: *name = "Mark / unmark entire pattern"; *keys = "SHIFT+L"; break;
+    case BTN_PATTPREV: *name = "Select previous pattern"; *keys = "SHIFT+CRSR LEFT"; break;
+    case BTN_PATTNEXT: *name = "Select next pattern"; *keys = "SHIFT+CRSR RIGHT"; break;
+    case BTN_CUT: *name = "Cut pattern"; *keys = "SHIFT+X"; break;
+    case BTN_COPY: *name = "Copy pattern"; *keys = "SHIFT+C"; break;
+    case BTN_PASTE: *name = "Paste pattern"; *keys = "SHIFT+V"; break;
+    default: return 0;
+  }
+  return 1;
+}
+
+#define TOOLTIPDELAY 1000      // milliseconds
+
+static void drawtooltip(void)
+{
+  static int tipid = BTN_NONE, tipx = -1, tipy = -1, tipclicked = 0;
+  static Uint32 tipstart = 0;
+  int param = 0;
+  int id = ui_hitbutton(mousex, mousey, &param);
+  const char *name, *keys;
+  char buf[160];
+  int len, x, y;
+
+  if ((id != tipid) || (mousex != tipx) || (mousey != tipy))
+  {
+    tipid = id;
+    tipx = mousex;
+    tipy = mousey;
+    tipstart = SDL_GetTicks();
+    tipclicked = 0;
+    return;
+  }
+  if (mouseb) tipclicked = 1;
+  if ((tipclicked) || (id == BTN_NONE)) return;
+  if (SDL_GetTicks() - tipstart < TOOLTIPDELAY) return;
+  if (!tooltip(id, &name, &keys)) return;
+
+  if (keys[0]) snprintf(buf, sizeof buf, " %s   %s ", name, keys);
+  else snprintf(buf, sizeof buf, " %s ", name);
+  len = strlen(buf);
+  x = mousex - 1;
+  if (x + len > MAX_COLUMNS) x = MAX_COLUMNS - len;
+  if (x < 0) x = 0;
+  y = mousey + 1;
+  if (y >= MAX_ROWS - 1) y = mousey - 1;
+  printtext(x, y, MKCOL(C_HEADERTEXT, C_HEADER), buf);
+  if (keys[0]) printtext(x + 1 + strlen(name) + 3, y, MKCOL(C_RB3, C_HEADER), keys);
+}
+
 void printstatus(void)
 {
   menu = 0;
@@ -896,6 +1056,7 @@ void printstatus(void)
   drawtables();
   printblankc(RP_X, TBL_ROWS_Y + VISIBLETABLEROWS, MKCOL(8, 0), RP_W);
   drawnames();
+  if (showpiano) drawpiano();
   drawstatusarea();
 }
 

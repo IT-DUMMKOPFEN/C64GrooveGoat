@@ -18,6 +18,7 @@
 #include "gres.h"
 #include "gvideo.h"
 #include "goattrk2.h"
+#include "gpiano.h"
 
 #define H264E_MAX_THREADS 4
 #include "codecs/minih264/minih264e.h"
@@ -33,7 +34,11 @@
 #define AREA_X 16
 #define AREA_Y 132
 #define AREA_W (VIDEO_W - 32)
-#define AREA_H (VIDEO_H - AREA_Y - 14)
+#define AREA_H_FULL (VIDEO_H - AREA_Y - 14)
+// piano keyboard below the oscilloscopes (optional)
+#define PIANO_VH 64
+#define PIANO_VY (VIDEO_H - 14 - PIANO_VH)
+#define AREA_H (v->p.piano ? PIANO_VY - 10 - AREA_Y : AREA_H_FULL)
 
 typedef struct
 {
@@ -84,6 +89,7 @@ struct GGVIDEO
   RECT panel[MAXVOICES];
   int error;
   char errortext[160];
+  unsigned *pianobuf;      // AREA_W x PIANO_VH, 0xRRGGBB
 };
 
 // ---------------------------------------------------------------------------
@@ -504,6 +510,30 @@ static void drawvoiceinfo(GGVIDEO *v, int ch)
   fillrect(v->frame, r->x + r->w - 12, r->y + r->h - 6 - h, 3, h, col, 200);
 }
 
+// Piano keyboard with the notes of all voices (the playroutine state of the
+// latest rendered audio, like the gate indicators of the voices)
+static void drawpiano(GGVIDEO *v)
+{
+  unsigned keys[PIANO_KEYS];
+  PIANOCOLORS col = (vt == &daytheme) ? piano_day : piano_night;
+  PIANOFONT f = {res_font1, 8, 16};
+  int x, y, c;
+  for (c = 0; c < 3; c++) col.voice[c] = vt->voice[c];
+  piano_getstate(keys);
+  piano_render(v->pianobuf, AREA_W, AREA_W, PIANO_VH, keys, &col, &f);
+  for (y = 0; y < PIANO_VH; y++)
+  {
+    unsigned char *d = v->frame + ((PIANO_VY + y) * VIDEO_W + AREA_X) * 3;
+    const unsigned *s = v->pianobuf + y * AREA_W;
+    for (x = 0; x < AREA_W; x++, d += 3)
+    {
+      d[0] = (s[x] >> 16) & 0xff;
+      d[1] = (s[x] >> 8) & 0xff;
+      d[2] = s[x] & 0xff;
+    }
+  }
+}
+
 static void renderframe(GGVIDEO *v, int f)
 {
   char buf[64], buf2[32];
@@ -538,6 +568,7 @@ static void renderframe(GGVIDEO *v, int f)
     drawscope(v, i, centre);
     drawvoiceinfo(v, i);
   }
+  if ((v->p.piano) && (v->pianobuf)) drawpiano(v);
 }
 
 // RGB -> YUV 4:2:0, BT.709 limited range
@@ -703,7 +734,8 @@ GGVIDEO *video_open(const VIDEOPARAMS *p, char *error, int errorsize)
   v->frame = (unsigned char *)malloc(VIDEO_W * VIDEO_H * 3);
   v->yuv = (unsigned char *)malloc(VIDEO_W * VIDEO_H * 3 / 2);
   v->hist = (short *)calloc(MAXVOICES * HIST, sizeof(short));
-  if ((!v->bg) || (!v->frame) || (!v->yuv) || (!v->hist))
+  if (v->p.piano) v->pianobuf = (unsigned *)malloc(AREA_W * PIANO_VH * sizeof(unsigned));
+  if ((!v->bg) || (!v->frame) || (!v->yuv) || (!v->hist) || ((v->p.piano) && (!v->pianobuf)))
   {
     snprintf(error, errorsize, "Out of memory");
     video_close(v, 1);
@@ -917,6 +949,7 @@ int video_close(GGVIDEO *v, int abort)
   free(v->frame);
   free(v->yuv);
   free(v->hist);
+  free(v->pianobuf);
   free(v->aacbuf);
   free(v->aacout);
   free(v);

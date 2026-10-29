@@ -142,12 +142,14 @@ waitline2:
                 lda $d012
                 cmp #$fa
                 beq waitline2
+              .IF (RAINBOWANIM != 0)
                 inc animcount
                 lda animcount
                 and #$07
                 bne noanim
                 jsr rotaterainbow
 noanim:
+              .ENDIF
                 jsr $ffe4                       ;GETIN
                 beq mainloop
                 cmp #$2b                        ;+

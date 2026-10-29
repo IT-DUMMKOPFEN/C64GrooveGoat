@@ -1846,6 +1846,10 @@ static int buildprgfrontend(EXPORTSETTINGS *es, PACKRESULT *res, unsigned char *
   insertdefine("TIMERLO", speedvalue & 0xff);
   insertdefine("TIMERHI", speedvalue >> 8);
   insertdefine("CALLSPERSEC", callspersec);
+  // The rainbow bar is only animated at 1x and 25 Hz: with 2x and more the
+  // music interrupt runs so often that the main loop misses the raster line
+  // it waits for, and the animation would stutter or stop
+  insertdefine("RAINBOWANIM", editorInfo.multiplier <= 1 ? 1 : 0);
   insertdefine("POS_SUBTUNE", POS_SUBTUNE);
   insertdefine("POS_LENGTH", POS_LENGTH);
   insertdefine("POS_TIME", POS_TIME);

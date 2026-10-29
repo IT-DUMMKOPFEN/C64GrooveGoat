@@ -12,8 +12,9 @@
 // Pattern editor
 #define PATT_X 0
 #define PATT_Y 2                      // panel header row
-#define PATT_CHNHDR_Y 3               // channel header row
-#define PATT_ROWS_Y 4                 // first pattern row
+#define PATT_TOOLS_Y 3                // pattern tool buttons (transpose, mark, cut ...)
+#define PATT_CHNHDR_Y 4               // channel header row
+#define PATT_ROWS_Y 5                 // first pattern row
 #define PATT_W 94
 #define VISIBLECHANNELS 6
 #define CHN_W 15                      // width of one channel column
@@ -44,8 +45,15 @@
 #define TBL_ROWS_Y 21
 #define TBL_X(t) (RP_X + 1 + (t) * 11)
 
-#define NAMES_Y 42                    // song info header
-#define NAMES_ROWS_Y 43
+// The piano keyboard (on/off) takes 3 rows plus a separator above the status
+// area; the pattern editor, the tables and the song info move up for it
+extern unsigned showpiano;
+#define PIANO_H 3
+#define PIANO_Y (STATUS_Y - 1 - PIANO_H)           // 43
+#define PIANO_SEP_Y (PIANO_Y - 1)                  // 42
+
+#define NAMES_Y (showpiano ? 38 : 42)          // song info header
+#define NAMES_ROWS_Y (NAMES_Y + 1)
 #define NAMES_X (RP_X + 1)
 #define NAMES_VAL_X (RP_X + 11)
 

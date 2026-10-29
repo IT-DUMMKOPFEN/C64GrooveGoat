@@ -1,4 +1,4 @@
-# C64 GrooveGoat 0.9b - Manual
+# C64 GrooveGoat 0.91b - Manual
 
 C64 GrooveGoat is a tracker-style music editor for the SID sound chip of the Commodore 64. It is
 based on GoatTracker 2 by Lasse Oorni (Cadaver) and the "Silver Fork" of Joel Ricci. It adds:
@@ -8,6 +8,9 @@ based on GoatTracker 2 by Lasse Oorni (Cadaver) and the "Silver Fork" of Joel Ri
 - an instrument library with more than 5000 instruments, search, favourites and preview
 - a random instrument generator for bass, drums, woodwinds, guitars, brass, strings and more
 - a graphical ADSR envelope display
+- a piano keyboard over 8 octaves that shows the played notes of all voices (also in videos)
+- buttons for the pattern tools (transpose, mark, select pattern, cut, copy, paste) and
+  tooltips with the name and the shortcut of every button
 - undo and redo, automatic backup copies and crash recovery
 - export of SID files for multi-SID players and of runnable C64 programs with a player screen
 - export of WAV (also every voice as a single file) and MP3 audio, and of MP4 videos with an
@@ -63,7 +66,7 @@ A song consists of:
 |               "examples" folders must stay next to the program.
 |  macOS        Unpack the ZIP file and move "C64 GrooveGoat.app" to Applications. On the
 |               first start use right click > Open (the app is not notarized by Apple).
-|  Linux        Make the AppImage executable (chmod +x C64_GrooveGoat-0.9b-x86_64.AppImage)
+|  Linux        Make the AppImage executable (chmod +x C64_GrooveGoat-0.91b-x86_64.AppImage)
 |               and start it. The instrument library and the examples are inside the
 |               AppImage. If your system lacks FUSE, start it with --appimage-extract-and-run.
 |  Linux tar.gz Unpack the archive and start ./groovegoat in the unpacked folder (the
@@ -82,12 +85,14 @@ The window is divided into these areas:
     | Toolbar: New Open Save | Load Ins Save Ins | SID PRG Audio Video | Help Info |
     | Settings: Play Pos Patt Stop Follow | SIDs 1 2 4 8 | model PAL speed HR ...    |
     +----------------------------------------------+-------------------------------+
-    | PATTERNS (one column per voice)              | ORDERLIST                     |
-    |                                              | INSTRUMENT    (dice) Library  |
-    |                                              | ADSR envelope graph           |
-    |                                              | WAVE  PULSE  FILTER  SPEED    |
+    | PATTERNS                     2 SIDs  6 ch.   | ORDERLIST                     |
+    | Transpose -1 +1 -12 +12  Mark  Pattern  Cut  | INSTRUMENT    (dice) Library  |
+    | 1.1 P00 MS  1.2 P05 MS ... (voice headers)   | ADSR envelope graph           |
+    | pattern rows, one column per voice           | WAVE  PULSE  FILTER  SPEED    |
     |                                              | SONG INFO                     |
     +----------------------------------------------+-------------------------------+
+    | Piano keyboard C0 ... B7 with the played notes (on/off: Piano button, CTRL+B) |
+    +------------------------------------------------------------------------------+
     | Status: octave, edit/jam mode, advance, keys, Kbd EN/DE, step, undo, redo     |
     | Positions of the voices, play time, SID addresses                            |
     | Message line                                                   Vol slider    |
@@ -97,7 +102,24 @@ The window can be resized freely; the contents are scaled. ALT+ENTER switches to
 On high resolution ("Retina") screens a sharper font is used automatically.
 
 When the mouse pointer is over a button, the message line at the bottom shows what the button
-does and its keyboard shortcut.
+does. When the pointer rests on a button for a second, a tooltip next to it shows the name of
+the function and its keyboard shortcut.
+
+## Piano keyboard
+
+The piano keyboard above the status bar spans all 8 octaves of the note range (C-0 to B-7). The
+keys of the notes that are playing light up in the colour of their voice - voice 1 of a SID in
+red, voice 2 in yellow and voice 3 in blue, as in the video export - while the note is held
+(gate on), during playback as well as when you play notes in jam or edit mode. When several
+voices play the same note, the key is divided into stripes. Muted voices are not shown.
+
+Click a key to play its note with the current instrument on the voice of the pattern cursor;
+the note sounds as long as you hold the mouse button, and dragging over the keys plays a
+glissando. The keys above G#7 cannot be played (the highest note of the playroutine).
+
+The Piano button in the status bar or CTRL+B (CMD+B on a Mac) switches the keyboard on and off;
+it is on by default and the setting is saved. Without the piano the pattern editor, the tables
+and the song info get the space back (4 more rows).
 
 ## Toolbar
 
@@ -144,8 +166,8 @@ or INSTRUMENT <01>) always steps back or forward.
 ## Status bar and volume
 
 The bottom lines show the octave, edit/jam mode, autoadvance mode, note entry mode (Keys),
-keyboard layout (Kbd), the step size, the Undo and Redo buttons, the play state and time, the
-positions of the visible voices and the SID addresses.
+keyboard layout (Kbd), the step size, the Undo, Redo and Piano buttons, the play state and
+time, the positions of the visible voices and the SID addresses.
 
 The volume slider at the bottom right sets the output volume of the editor from 0% to 100%
 (default 80%). Click or drag on the slider, or use the mouse wheel over it; a click on the
@@ -304,6 +326,19 @@ With a German keyboard switch the status bar button to "Kbd: DE" so that CTRL+Z 
 the keys labelled Z and Y (see "Keyboard layout").
 
 ## Pattern editor (F5)
+
+The row below the PATTERNS header has buttons for the most used pattern commands. They work
+like their shortcuts on the voice of the pattern cursor (and switch to the pattern editor):
+
+|  Transpose -1 +1     Transpose half step down / up (SHIFT+A / SHIFT+Q)
+|  Transpose -12 +12   Transpose octave down / up (SHIFT+S / SHIFT+W)
+|  Mark up / down      Extend the marked rows up / down (SHIFT+CRSR UP / DOWN)
+|  Mark All            Mark / unmark the entire pattern (SHIFT+L)
+|  Pattern < >         Previous / next pattern of the voice (SHIFT+CRSR LEFT / RIGHT)
+|  Cut Copy Paste      Cut, copy, paste pattern data (SHIFT+X / C / V)
+
+The transpose buttons change the marked rows or, without a mark, the whole pattern. Holding the
+mouse button on a transpose, mark or pattern button repeats it.
 
 |  Z-M, Q-P     Enter notes (piano layout, see "A first song"; German keyboard: Y-M, Q-P)
 |  0-9, A-F     Enter instrument numbers, commands and data bytes
@@ -598,7 +633,8 @@ MP3 tags and shown in exported videos.
 ## Mouse
 
 |  Click            Move the cursor, press buttons
-|  Hover            The message line explains the button under the mouse pointer
+|  Hover            The message line explains the button under the mouse pointer;
+|                   after a second a tooltip shows its name and shortcut
 |  Right click      Decrease a value; on a Mac CTRL+click works as right click
 |  Right drag       Mark pattern, orderlist or table data
 |  Wheel            Scroll the panel under the mouse pointer
@@ -607,6 +643,7 @@ MP3 tags and shown in exported videos.
 |  Click < or >     Previous / next value (subtune, instrument, octave, speed, dialogs)
 |  Click M / S      Mute / solo a voice (in the voice header)
 |  Drop a file      Load a song (.sng, .ggt) or an instrument (.ins)
+|  Click piano key  Play the note while the button is held (drag: glissando)
 
 # Song data reference
 
@@ -856,6 +893,10 @@ subtune, its length and the play time, and the number, model and addresses of th
 |  1-9                 select subtune 1-9
 |  SPACE               restart the subtune
 
+The rainbow bar on the player screen is animated for songs at normal speed (1x and 25 Hz).
+With 2x and faster the music interrupt runs so often that the animation could not run smoothly
+any more, so the bar is shown without animation.
+
 The player screen occupies $0801 up to about $1000, so the music must start at $1000 or higher
 and end below $D000. The song length is calculated by playing the subtune until all voices have
 reached their loop point (at most 30 minutes).
@@ -968,6 +1009,10 @@ combinations), whether the voice is filtered, a gate indicator and a bar with th
 The display is triggered on the rising zero crossing, so periodic waveforms stand still. Voice 1
 is drawn in red, voice 2 in yellow and voice 3 in blue.
 
+Below the oscilloscopes a piano keyboard (C-0 to B-7) shows the notes that are playing, in the
+colours of the voices, like the piano keyboard of the editor. It can be switched off with the
+option "Piano keyboard" in the export dialog; then the oscilloscopes use the full height.
+
 The dialog offers the same options as the audio export (subtune, length, fade-out, stereo/mono,
 muted voices) plus the video colours: "Night" (C64 blue, the default) or "Day" (light). The
 song name and author come from the song name editor (F8). Rendering a video takes roughly half
@@ -1047,7 +1092,7 @@ The default sample rate is 48000 Hz; -M44100 selects 44100 Hz.
 
 # Credits
 
-C64 GrooveGoat 0.9b by IT-Dummkopfen.
+C64 GrooveGoat 0.91b by IT-Dummkopfen.
 
 |  GoatTracker 2 editor & playroutine   Lasse Oorni (Cadaver), Covert Bitops
 |  GoatTracker 2 "Silver Fork"          Joel Ricci (github.com/joelricci/goattracker2)

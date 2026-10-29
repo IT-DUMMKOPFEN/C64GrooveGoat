@@ -2,7 +2,7 @@
 #define GOATTRK2_H
 
 #define PROGRAMNAME "C64 GrooveGoat"
-#define PROGRAMVERSION "0.9b"
+#define PROGRAMVERSION "0.91b"
 #define PROGRAMAUTHOR "IT-Dummkopfen"
 #define PATCHNAME "based on GoatTracker v2.76 (Silver Fork)"
 
@@ -47,9 +47,9 @@
 #define KEY_DMC 1
 #define KEY_JANKO 2
 
-#define VISIBLEPATTROWS 42
+#define VISIBLEPATTROWS (showpiano ? 37 : 41)
 #define VISIBLEORDERLIST 13
-#define VISIBLETABLEROWS 20
+#define VISIBLETABLEROWS (showpiano ? 16 : 20)
 #define VISIBLEFILES 30
 
 #define PGUPDNREPEAT 8
@@ -107,6 +107,7 @@ extern char *notename[];
 extern char textbuffer[MAX_PATHNAME];
 extern unsigned stereomode;
 int stereowidth(void);
+void togglepiano(void);
 extern char appdir[MAX_PATHNAME];
 extern char instrlibpath[MAX_PATHNAME];
 extern char examplespath[MAX_PATHNAME];

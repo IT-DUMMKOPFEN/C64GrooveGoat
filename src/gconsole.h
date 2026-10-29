@@ -64,6 +64,13 @@ void drawrainbow(int x, int y, int length);
 #define CANVAS_STRIDE (CANVAS_MAXCW * 16)
 unsigned char *canvas_begin(int id, int cw, int ch);
 void canvas_draw(int id, int x, int y, int color);
+// Full colour canvas (one per screen, e.g. the piano keyboard): 0xRRGGBB
+// pixels at 16x32 pixels per cell, scaled down at normal resolution
+#define RGBCANVAS_MAXCW MAX_COLUMNS
+#define RGBCANVAS_MAXCH 4
+#define RGBCANVAS_STRIDE (RGBCANVAS_MAXCW * 16)
+unsigned *rgbcanvas_begin(int cw, int ch);
+void rgbcanvas_draw(int x, int y);
 void getkey(void);
 int savescreenshot(const char *filename);
 extern char autoshotname[1024];
@@ -77,6 +84,7 @@ extern int key, rawkey, symkey, shiftpressed, ctrlpressed, altpressed, metapress
 extern int mouseb, prevmouseb;
 extern int mouseheld;
 extern int mousex, mousey;
+extern int mousepx, mousepy;   // mouse position in 1/16 (x) and 1/32 (y) cell units
 extern int mousewheel;
 extern int theme;
 extern unsigned bigwindow;

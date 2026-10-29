@@ -31,6 +31,8 @@ int mouseb = 0;
 int prevmouseb = 0;
 int mousex = 0;
 int mousey = 0;
+int mousepx = 0;
+int mousepy = 0;
 int mousewheel = 0;
 int mouseheld = 0;
 int theme = THEME_NIGHT;
@@ -308,6 +310,47 @@ void canvas_draw(int id, int x, int y, int color)
       if ((x + cx < 0) || (x + cx >= MAX_COLUMNS) || (y + cy < 0) || (y + cy >= MAX_ROWS)) continue;
       idx = (x + cx) + (y + cy) * MAX_COLUMNS;
       setcharcolor(scrbuffer + idx, CANVAS_BASE + id * CANVAS_CELLS + cy * canvascw[id] + cx, color);
+      if ((changed) && (prevscrbuffer)) prevscrbuffer[idx] = 0xffffffff;
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Full colour canvas
+// ---------------------------------------------------------------------------
+
+#define RGBCANVAS_BASE 0xd000
+
+static unsigned rgbbuf[RGBCANVAS_MAXCH * 32 * RGBCANVAS_STRIDE];
+static unsigned rgbprev[RGBCANVAS_MAXCH * 32 * RGBCANVAS_STRIDE];
+static int rgbcw = 1, rgbch = 1;
+
+unsigned *rgbcanvas_begin(int cw, int ch)
+{
+  if (cw > RGBCANVAS_MAXCW) cw = RGBCANVAS_MAXCW;
+  if (ch > RGBCANVAS_MAXCH) ch = RGBCANVAS_MAXCH;
+  if (cw < 1) cw = 1;
+  if (ch < 1) ch = 1;
+  rgbcw = cw;
+  rgbch = ch;
+  return rgbbuf;
+}
+
+void rgbcanvas_draw(int x, int y)
+{
+  int cx, cy;
+  int changed;
+  if (!scrbuffer) return;
+  changed = memcmp(rgbbuf, rgbprev, rgbch * 32 * RGBCANVAS_STRIDE * sizeof(unsigned)) != 0;
+  if (changed) memcpy(rgbprev, rgbbuf, rgbch * 32 * RGBCANVAS_STRIDE * sizeof(unsigned));
+  for (cy = 0; cy < rgbch; cy++)
+  {
+    for (cx = 0; cx < rgbcw; cx++)
+    {
+      int idx;
+      if ((x + cx < 0) || (x + cx >= MAX_COLUMNS) || (y + cy < 0) || (y + cy >= MAX_ROWS)) continue;
+      idx = (x + cx) + (y + cy) * MAX_COLUMNS;
+      scrbuffer[idx] = RGBCANVAS_BASE + cy * rgbcw + cx;
       if ((changed) && (prevscrbuffer)) prevscrbuffer[idx] = 0xffffffff;
     }
   }
@@ -648,6 +691,29 @@ static void rendercell(int x, int y, unsigned cell)
   Uint32 *dst = fb + (y * ch) * fbw + x * cw;
   int px, py;
 
+  if ((glyph >= RGBCANVAS_BASE) && (glyph < CANVAS_BASE))
+  {
+    int idx = glyph - RGBCANVAS_BASE;
+    int tx = idx % rgbcw, ty = idx / rgbcw;
+    const unsigned *a = rgbbuf + (ty * 32) * RGBCANVAS_STRIDE + tx * 16;
+    for (py = 0; py < ch; py++)
+    {
+      for (px = 0; px < cw; px++)
+      {
+        if (scale == 1)
+        {
+          const unsigned *q = a + (py * 2) * RGBCANVAS_STRIDE + px * 2;
+          unsigned r = ((q[0] >> 16) & 0xff) + ((q[1] >> 16) & 0xff) + ((q[RGBCANVAS_STRIDE] >> 16) & 0xff) + ((q[RGBCANVAS_STRIDE + 1] >> 16) & 0xff);
+          unsigned g = ((q[0] >> 8) & 0xff) + ((q[1] >> 8) & 0xff) + ((q[RGBCANVAS_STRIDE] >> 8) & 0xff) + ((q[RGBCANVAS_STRIDE + 1] >> 8) & 0xff);
+          unsigned b = (q[0] & 0xff) + (q[1] & 0xff) + (q[RGBCANVAS_STRIDE] & 0xff) + (q[RGBCANVAS_STRIDE + 1] & 0xff);
+          dst[px] = 0xff000000 | (((r + 2) >> 2) << 16) | (((g + 2) >> 2) << 8) | ((b + 2) >> 2);
+        }
+        else dst[px] = 0xff000000 | a[py * RGBCANVAS_STRIDE + px];
+      }
+      dst += fbw;
+    }
+    return;
+  }
   if (glyph >= CANVAS_BASE)
   {
     int id = (glyph - CANVAS_BASE) / CANVAS_CELLS;
@@ -833,6 +899,8 @@ void getkey(void)
   mouseb = win_mousebuttons;
   mousex = win_mousex / (CELLW * (scale ? scale : 1));
   mousey = win_mousey / (CELLH * (scale ? scale : 1));
+  mousepx = win_mousex * 16 / (CELLW * (scale ? scale : 1));
+  mousepy = win_mousey * 32 / (CELLH * (scale ? scale : 1));
   if (mousex >= MAX_COLUMNS) mousex = MAX_COLUMNS - 1;
   if (mousey >= MAX_ROWS) mousey = MAX_ROWS - 1;
   mousewheel = win_mousewheel;

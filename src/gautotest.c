@@ -9,6 +9,7 @@
 //   PERIOD SLASH        keys, prefix S+ (shift), C+ (ctrl) or A+ (alt)
 //   click:X,Y           left click on text cell X,Y (rclick: right click)
 //   move:X,Y            move the mouse pointer to text cell X,Y
+//   down:X,Y / up:X,Y   press / release the left mouse button at cell X,Y
 //   dclick:X,Y          double click
 //   wheel:X,Y,N         mouse wheel N steps over cell X,Y
 //   wait:N              wait N frames
@@ -164,6 +165,14 @@ static int dotoken(const char *tok)
       pushmouse(x, y, button, 0);
       pushmouse(x, y, button, 1);
     }
+    return 1;
+  }
+  if ((!strncmp(tok, "down:", 5)) || (!strncmp(tok, "up:", 3)))
+  {
+    // press or release the left mouse button (to hold it over several ticks)
+    int x = 0, y = 0;
+    sscanf(strchr(tok, ':') + 1, "%d,%d", &x, &y);
+    pushmouse(x, y, SDL_BUTTON_LEFT, tok[0] == 'd');
     return 1;
   }
   if (!strncmp(tok, "move:", 5))

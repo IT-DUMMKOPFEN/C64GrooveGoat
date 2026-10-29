@@ -30,6 +30,7 @@
 #include "ginslib.h"
 #include "grandins.h"
 #include "gres.h"
+#include "gpiano.h"
 
 int menu = 0;
 int recordmode = 1;
@@ -73,6 +74,7 @@ unsigned prgfrontend = 1;
 unsigned mastervolume = 80;
 unsigned showwelcome = 1;
 unsigned kbdlayoutsetting = 2;
+unsigned showpiano = 1;        // piano keyboard above the status bar
 float basepitch = 0.0f;
 float equaldivisionsperoctave = 12.0f;
 int tuningcount = 0;
@@ -683,7 +685,9 @@ static void loadconfig(void)
   getparam(configfile, &mastervolume);
   getparam(configfile, &showwelcome);
   getparam(configfile, &kbdlayoutsetting);
+  getparam(configfile, &showpiano);
   fclose(configfile);
+  showpiano &= 1;
   if (!strcmp(specialnotenames, "-")) specialnotenames[0] = 0;
   if (!strcmp(scalatuningfilepath, "-")) scalatuningfilepath[0] = 0;
 }
@@ -742,7 +746,8 @@ static void saveconfig(void)
     ";PRG export includes the player frontend (0 = no, 1 = yes)\n%d\n\n"
     ";Output volume in percent (0-100)\n%d\n\n"
     ";Show the welcome window at startup (0 = no, 1 = yes)\n%d\n\n"
-    ";Keyboard layout for shortcuts (0 = EN QWERTY, 1 = DE QWERTZ, 2 = detect)\n%d\n\n",
+    ";Keyboard layout for shortcuts (0 = EN QWERTY, 1 = DE QWERTZ, 2 = detect)\n%d\n\n"
+    ";Show the piano keyboard (0 = no, 1 = yes)\n%d\n\n",
     b,
     mr,
     hardsid,
@@ -788,7 +793,8 @@ static void saveconfig(void)
     prgfrontend,
     mastervolume,
     showwelcome,
-    kbdlayout);
+    kbdlayout,
+    showpiano);
   fclose(configfile);
 }
 
@@ -938,6 +944,7 @@ void waitkeymouse(void)
     if ((rawkey) || (key)) break;
     if (win_quitted) break;
     if (mouseb) break;
+    if ((prevmouseb) && (!mouseb)) break;   // button released (piano keys)
     if (mousewheel) break;
     if (win_dropfile[0]) break;
   }
@@ -1065,6 +1072,31 @@ void newsong(void)
   snprintf(statusmessage, sizeof statusmessage, "New song with %d SID%s (%d channels)", numsids, numsids > 1 ? "s" : "", numchannels);
 }
 
+// Piano keyboard on / off: the pattern editor, the tables and the song info
+// give the piano their lowest rows
+void togglepiano(void)
+{
+  int t;
+  showpiano ^= 1;
+  for (t = 0; t < MAX_TABLES; t++)
+  {
+    if ((t == editorInfo.etnum) && (editorInfo.etpos - editorInfo.etview[t] >= VISIBLETABLEROWS))
+      editorInfo.etview[t] = editorInfo.etpos - VISIBLETABLEROWS + 1;
+  }
+  editorInfo.epview = editorInfo.eppos - VISIBLEPATTROWS / 2;
+  setstatusmessage(showpiano ? "Piano keyboard on (CTRL+B)" : "Piano keyboard off (CTRL+B)");
+  printmainscreen();
+}
+
+// Pattern tool buttons: run the editor command of the shortcut
+static void patternkey(int k)
+{
+  editorInfo.editmode = EDIT_PATTERN;
+  shiftpressed = 1;
+  key = 0;
+  rawkey = k;
+}
+
 void docommand(void)
 {
   // "GUI" operation :)
@@ -1072,6 +1104,12 @@ void docommand(void)
 
   // CTRL/CMD+R random instrument, CTRL/CMD+L instrument library. Handled
   // before the editors, where CTRL otherwise works like SHIFT.
+  if (((ctrlpressed) || (metapressed)) && (!altpressed) && (rawkey == KEY_B))
+  {
+    togglepiano();
+    key = 0;
+    rawkey = 0;
+  }
   if (((ctrlpressed) || (metapressed)) && (!altpressed) && ((rawkey == KEY_R) || (rawkey == KEY_L)))
   {
     if (rawkey == KEY_R) randominstrument();
@@ -1316,6 +1354,19 @@ static void buttoncommand(int id, int param)
     case BTN_SOLO: solochannel(param); break;
     case BTN_SIDADDR: showsidinfo(); break;
     case BTN_QUIT: quit(); break;
+    case BTN_PIANO: togglepiano(); break;
+    case BTN_TRANSUP: patternkey(KEY_Q); break;
+    case BTN_TRANSDN: patternkey(KEY_A); break;
+    case BTN_OCTUP: patternkey(KEY_W); break;
+    case BTN_OCTDN: patternkey(KEY_S); break;
+    case BTN_MARKUP: patternkey(KEY_UP); break;
+    case BTN_MARKDN: patternkey(KEY_DOWN); break;
+    case BTN_MARKALL: patternkey(KEY_L); break;
+    case BTN_PATTPREV: patternkey(KEY_LEFT); break;
+    case BTN_PATTNEXT: patternkey(KEY_RIGHT); break;
+    case BTN_CUT: patternkey(KEY_X); break;
+    case BTN_COPY: patternkey(KEY_C); break;
+    case BTN_PASTE: patternkey(KEY_V); break;
   }
 }
 
@@ -1378,6 +1429,27 @@ void mousecommands(void)
     sid_setvolume(mastervolume);
   }
 
+  // Piano keyboard: play the clicked key while the button is held (drag for
+  // a glissando), release the note when the button is let go
+  {
+    static int pianonote = -1, pianochn = 0;
+    int note = -1;
+    if ((showpiano) && (mouseb & MOUSEB_LEFT) && (mousey >= PIANO_Y) && (mousey < PIANO_Y + PIANO_H))
+      note = piano_keyat(mousepx, mousepy - PIANO_Y * 32, MAX_COLUMNS * 16, PIANO_H * 32);
+    if ((pianonote >= 0) && ((!(mouseb & MOUSEB_LEFT)) || (note < 0)))
+    {
+      releasenote(pianochn);
+      pianonote = -1;
+    }
+    if ((note >= 0) && (note <= LASTNOTE - FIRSTNOTE) && (note != pianonote) && ((click) || (pianonote >= 0)))
+    {
+      pianochn = editorInfo.epchn;
+      playtestnote(FIRSTNOTE + note, editorInfo.einum, pianochn);
+      pianonote = note;
+    }
+    if ((mousey >= PIANO_Y) && (mousey < PIANO_Y + PIANO_H) && (showpiano)) return;
+  }
+
   if (!mouseb) return;
 
   // Volume slider: click or drag
@@ -1408,7 +1480,9 @@ void mousecommands(void)
   id = ui_hitbutton(mousex, mousey, &param);
   if (id != BTN_NONE)
   {
-    int repeat = (id == BTN_PATTNUM) || (id == BTN_SUBTUNE) || (id == BTN_INSTRNUM) || (id == BTN_OCTAVE);
+    int repeat = (id == BTN_PATTNUM) || (id == BTN_SUBTUNE) || (id == BTN_INSTRNUM) || (id == BTN_OCTAVE) ||
+      (id == BTN_TRANSUP) || (id == BTN_TRANSDN) || (id == BTN_OCTUP) || (id == BTN_OCTDN) ||
+      (id == BTN_MARKUP) || (id == BTN_MARKDN) || (id == BTN_PATTPREV) || (id == BTN_PATTNEXT);
     if ((click) || ((repeat) && (mouseheld > HOLDDELAY)))
     {
       switch (id)
