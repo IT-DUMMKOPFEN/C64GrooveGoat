@@ -1,6 +1,6 @@
 #!/bin/bash
 # Builds the release packages of C64 GrooveGoat for Windows 11 (x64), Linux
-# (x86-64 AppImage and tar.gz) and macOS (Apple Silicon) into dist/.
+# (x86-64 AppImage and tar.gz) and macOS (Apple Silicon and Intel) into dist/.
 #
 #   tools/package.sh
 #
@@ -31,6 +31,7 @@ make TARGET=linux -j8 > /dev/null
 make TARGET=appimage -j8 > /dev/null
 make TARGET=win -j8 > /dev/null
 make TARGET=mac -j8 > /dev/null
+make TARGET=macintel -j8 > /dev/null
 
 rm -rf $DIST
 mkdir -p $DIST/common/examples
@@ -183,11 +184,13 @@ UNINSTALL
 chmod +x $L/install.sh $L/uninstall.sh
 (cd $DIST && tar --owner=0 --group=0 -czf $NAME-Linux-x86_64.tar.gz $NAME-Linux-x86_64)
 
-echo "== macOS"
-M=$DIST/$NAME-macOS-AppleSilicon
+# macOS app: $1 = package suffix, $2 = build folder, $3 = minimum macOS version
+buildmacapp()
+{
+M=$DIST/$NAME-macOS-$1
 APP="$M/C64 GrooveGoat.app"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Frameworks" "$APP/Contents/Resources"
-$MINGWBIN/llvm-strip -o "$APP/Contents/MacOS/GrooveGoat" build/mac/groovegoat
+$MINGWBIN/llvm-strip -o "$APP/Contents/MacOS/GrooveGoat" build/$2/groovegoat
 cp -a "$SDLFW" "$APP/Contents/Frameworks/"
 rm -rf "$APP/Contents/Frameworks/SDL2.framework/Versions/A/Headers" "$APP/Contents/Frameworks/SDL2.framework/Headers"
 cp res/groovegoat.icns "$APP/Contents/Resources/"
@@ -209,7 +212,7 @@ cat > "$APP/Contents/Info.plist" <<EOF
   <key>CFBundleShortVersionString</key><string>$VERSION</string>
   <key>CFBundleVersion</key><string>$VERSION</string>
   <key>CFBundleSignature</key><string>????</string>
-  <key>LSMinimumSystemVersion</key><string>11.0</string>
+  <key>LSMinimumSystemVersion</key><string>$3</string>
   <key>LSApplicationCategoryType</key><string>public.app-category.music</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSHumanReadableCopyright</key><string>C64 GrooveGoat $VERSION by IT-Dummkopfen - GNU GPL v2</string>
@@ -233,7 +236,14 @@ EOF
 "$RCODESIGN" sign "$APP" > $DIST/codesign.log 2>&1 || { cat $DIST/codesign.log; exit 1; }
 "$RCODESIGN" verify "$APP/Contents/MacOS/GrooveGoat" >> $DIST/codesign.log 2>&1 || true
 cp -r $DIST/common/examples $DIST/common/licenses $DIST/common/*.txt $M/
-(cd $DIST && zip -qry9 $NAME-macOS-AppleSilicon.zip $NAME-macOS-AppleSilicon)
+(cd $DIST && zip -qry9 $NAME-macOS-$1.zip $NAME-macOS-$1)
+
+}
+
+echo "== macOS (Apple Silicon)"
+buildmacapp AppleSilicon mac 11.0
+echo "== macOS (Intel)"
+buildmacapp Intel macintel 10.13
 
 echo "== Source"
 git archive --format=tar.gz --prefix=$NAME-source/ -o $DIST/$NAME-source.tar.gz HEAD

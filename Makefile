@@ -4,6 +4,7 @@
 #   make TARGET=appimage  Linux build for the AppImage (static SDL2, see tools/package.sh)
 #   make TARGET=win       Windows x64 cross build (llvm-mingw + SDL2 mingw devel)
 #   make TARGET=mac       macOS Apple Silicon cross build (clang + lld + SDK + SDL2.framework)
+#   make TARGET=macintel  macOS Intel (x86_64) cross build, macOS 10.13 or newer
 #
 # Paths to the toolchains can be overridden on the command line.
 
@@ -71,16 +72,22 @@ EXE = $(BUILDDIR)/GrooveGoat.exe
 WINRES = $(BUILDDIR)/groovegoat_res.o
 endif
 
-ifeq ($(TARGET),mac)
+ifneq ($(filter mac macintel,$(TARGET)),)
 CC = clang
 CXX = clang++
 MACSDK ?= $(TOOLS)/macsdk
 SDLFW ?= $(TOOLS)/sdlmac/SDL2
-MACTARGET = -target arm64-apple-macos11.0 -isysroot $(MACSDK)
+ifeq ($(TARGET),macintel)
+MACMIN = 10.13
+MACTARGET = -target x86_64-apple-macos$(MACMIN) -isysroot $(MACSDK)
+else
+MACMIN = 11.0
+MACTARGET = -target arm64-apple-macos$(MACMIN) -isysroot $(MACSDK)
+endif
 COMMONFLAGS += $(MACTARGET) -F$(SDLFW) -I$(SDLFW)/SDL2.framework/Headers -D__MACOSX__
 CXXFLAGS_EXTRA += -nostdinc++ -I$(SRCDIR)/macstub
 LDFLAGS = $(MACTARGET) -fuse-ld=lld -F$(SDLFW) -Wl,-rpath,@executable_path/../Frameworks \
-       -Wl,-platform_version,macos,11.0,14.0 -Wl,-dead_strip
+       -Wl,-platform_version,macos,$(MACMIN),14.0 -Wl,-dead_strip
 LIBS = -framework SDL2 -lSystem
 EXE = $(BUILDDIR)/groovegoat
 endif
@@ -123,7 +130,7 @@ $(BUILDDIR)/groovegoat_res.o: res/groovegoat.rc res/groovegoat.ico
 	@mkdir -p $(dir $@)
 	$(WINDRES) -I res -o $@ res/groovegoat.rc
 
-ifeq ($(TARGET),mac)
+ifneq ($(filter mac macintel,$(TARGET)),)
 $(EXE): $(OBJS) $(BUILDDIR)/macstub.o
 	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
 $(BUILDDIR)/macstub.o: $(SRCDIR)/macstub/cxxrt.c

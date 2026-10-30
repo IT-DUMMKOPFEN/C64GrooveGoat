@@ -56,7 +56,7 @@ by Lasse Öörni (Cadaver) and the
 
 ## Downloads
 
-Ready-to-run packages for Windows 11 (x64), macOS (Apple Silicon) and Linux (x86-64, AppImage or tar.gz) are attached
+Ready-to-run packages for Windows 11 (x64), macOS (Apple Silicon and Intel) and Linux (x86-64, AppImage or tar.gz) are attached
 to the [Releases](https://github.com/IT-DUMMKOPFEN/C64GrooveGoat/releases) of this repository
 and can be built with `tools/package.sh` (see below).
 
@@ -68,6 +68,7 @@ The `Makefile` builds all three platforms from Linux:
     make TARGET=appimage  # Linux for the AppImage, SDL 2 linked statically
     make TARGET=win       # Windows x64 with llvm-mingw and the SDL 2 mingw development files
     make TARGET=mac       # macOS arm64 with clang/lld, a macOS SDK and SDL2.framework
+    make TARGET=macintel  # macOS x86_64 (Intel Macs, macOS 10.13 or newer), same tools
     tools/package.sh      # release packages in dist/
 
 The toolchain locations can be set with `TOOLS=...` (see the top of the `Makefile`).

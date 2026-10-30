@@ -18,8 +18,8 @@ based on GoatTracker 2 by Lasse Oorni (Cadaver) and the "Silver Fork" of Joel Ri
   oscilloscope for every voice
 
 Author of C64 GrooveGoat: IT-Dummkopfen. Click the Info button in the toolbar for all credits.
-Platforms: Windows 11 (x64), macOS on Apple Silicon (M chips) and Linux (x86-64, as AppImage
-or as tar.gz archive).
+Platforms: Windows 11 (x64), macOS on Apple Silicon (M chips, macOS 11 or newer) and on Intel
+Macs (macOS 10.13 or newer), and Linux (x86-64, as AppImage or as tar.gz archive).
 
 This manual is built into the program: click Manual in the keyboard reference (F12, Help button)
 or press M there. Next to it, the History button (or H) opens a chapter about the history of C64
@@ -65,8 +65,9 @@ A song consists of:
 
 |  Windows 11   Unpack the ZIP file and start GrooveGoat.exe. The "instruments" and
 |               "examples" folders must stay next to the program.
-|  macOS        Unpack the ZIP file and move "C64 GrooveGoat.app" to Applications. On the
-|               first start use right click > Open (the app is not notarized by Apple).
+|  macOS        Unpack the ZIP file (AppleSilicon for Macs with M chips, Intel for Intel
+|               Macs) and move "C64 GrooveGoat.app" to Applications. On the first start
+|               use right click > Open (the app is not notarized by Apple).
 |  Linux        Make the AppImage executable (chmod +x C64_GrooveGoat-0.92b-x86_64.AppImage)
 |               and start it. The instrument library and the examples are inside the
 |               AppImage. If your system lacks FUSE, start it with --appimage-extract-and-run.

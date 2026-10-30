@@ -39,12 +39,14 @@ Windows 11 (x64)
   If Windows SmartScreen warns about an unknown publisher, click
   "More info" and "Run anyway".
 
-macOS (Apple Silicon / M chips, macOS 11 or newer)
+macOS - two packages:
+  ...-macOS-AppleSilicon.zip  Macs with M chips, macOS 11 or newer
+  ...-macOS-Intel.zip         Macs with Intel processor, macOS 10.13 or newer
   Unpack the ZIP file and move "C64 GrooveGoat.app" to the Applications
   folder. The app is not notarized by Apple, so the first start is blocked:
   - macOS 15 and newer: open the app once, then go to System Settings ->
     Privacy & Security, scroll down and click "Open Anyway".
-  - macOS 11-14: right-click (or CTRL-click) the app, choose "Open" and
+  - macOS 10.13-14: right-click (or CTRL-click) the app, choose "Open" and
     confirm with "Open".
   Alternatively run this command in the Terminal once:
     xattr -cr "/Applications/C64 GrooveGoat.app"
