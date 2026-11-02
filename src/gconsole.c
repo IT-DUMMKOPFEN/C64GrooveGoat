@@ -33,6 +33,7 @@ int mousex = 0;
 int mousey = 0;
 int mousepx = 0;
 int mousepy = 0;
+double mousefx = 0, mousefy = 0;
 int mousewheel = 0;
 int mouseheld = 0;
 int theme = THEME_NIGHT;
@@ -122,6 +123,20 @@ static const Uint32 daypal[32] = {
   0xd3ecdc, // 30 edit row
   0xcfc8f5, // 31 selection
 };
+
+static int fontindex = 0;
+
+void setfont(int f)
+{
+  if ((f < 0) || (f >= RES_NUMFONTS)) f = 0;
+  fontindex = f;
+  fulldirty = 1;
+}
+
+int getfont(void)
+{
+  return fontindex;
+}
 
 void settheme(int t)
 {
@@ -283,6 +298,7 @@ static unsigned char canvasbuf[MAX_CANVAS][CANVAS_MAXCH * 32 * CANVAS_MAXCW * 16
 static unsigned char canvasprev[MAX_CANVAS][CANVAS_MAXCH * 32 * CANVAS_MAXCW * 16];
 static int canvascw[MAX_CANVAS];
 static int canvasch[MAX_CANVAS];
+static int canvasdrawn[MAX_CANVAS];             // rows * 1000 + columns of the last drawing
 
 unsigned char *canvas_begin(int id, int cw, int ch)
 {
@@ -291,7 +307,8 @@ unsigned char *canvas_begin(int id, int cw, int ch)
   if (ch > CANVAS_MAXCH) ch = CANVAS_MAXCH;
   canvascw[id] = cw;
   canvasch[id] = ch;
-  memset(canvasbuf[id], 0, sizeof canvasbuf[id]);
+  // only the rows that are used: a canvas is much smaller than its largest size
+  memset(canvasbuf[id], 0, (size_t)ch * 32 * CANVAS_STRIDE);
   return canvasbuf[id];
 }
 
@@ -300,8 +317,14 @@ void canvas_draw(int id, int x, int y, int color)
   int cx, cy;
   int changed;
   if ((id < 0) || (id >= MAX_CANVAS) || (!scrbuffer)) return;
-  changed = memcmp(canvasbuf[id], canvasprev[id], sizeof canvasbuf[id]) != 0;
-  if (changed) memcpy(canvasprev[id], canvasbuf[id], sizeof canvasbuf[id]);
+  {
+    size_t used = (size_t)canvasch[id] * 32 * CANVAS_STRIDE;
+    // a canvas of another size is a changed canvas: the old picture is only compared for the rows it has now
+    int size = canvasch[id] * 1000 + canvascw[id];
+    changed = (canvasdrawn[id] != size) || (memcmp(canvasbuf[id], canvasprev[id], used) != 0);
+    if (changed) memcpy(canvasprev[id], canvasbuf[id], used);
+    canvasdrawn[id] = size;
+  }
   for (cy = 0; cy < canvasch[id]; cy++)
   {
     for (cx = 0; cx < canvascw[id]; cx++)
@@ -743,7 +766,7 @@ static void rendercell(int x, int y, unsigned cell)
   }
   if (glyph < 256)
   {
-    const unsigned char *a = (scale == 1 ? res_font1 : res_font2) + glyph * cw * ch;
+    const unsigned char *a = res_fontset[fontindex][scale == 1 ? 0 : 1] + glyph * cw * ch;
     for (py = 0; py < ch; py++)
     {
       for (px = 0; px < cw; px++)
@@ -786,7 +809,8 @@ int autoshotframes = 0;
 void fliptoscreen(void)
 {
   int x, y;
-  int firstrow = MAX_ROWS, lastrow = -1;
+  char rowdirty[MAX_ROWS];
+  int any = 0;
   static int presented = 0;
 
   if (!gfxinitted) return;
@@ -803,6 +827,7 @@ void fliptoscreen(void)
     presented = 0;
   }
 
+  memset(rowdirty, 0, sizeof rowdirty);
   for (y = 0; y < MAX_ROWS; y++)
   {
     unsigned *sptr = scrbuffer + y * MAX_COLUMNS;
@@ -813,21 +838,36 @@ void fliptoscreen(void)
       {
         cmpptr[x] = sptr[x];
         rendercell(x, y, sptr[x]);
-        if (y < firstrow) firstrow = y;
-        if (y > lastrow) lastrow = y;
+        rowdirty[y] = 1;
+        any = 1;
       }
     }
   }
   fulldirty = 0;
 
-  if (lastrow >= firstrow)
+  if (any)
   {
-    SDL_Rect r;
-    r.x = 0;
-    r.y = firstrow * CELLH * scale;
-    r.w = fbw;
-    r.h = (lastrow - firstrow + 1) * CELLH * scale;
-    SDL_UpdateTexture(texture, &r, fb + r.y * fbw, fbw * sizeof(Uint32));
+    // one upload for each run of changed rows (runs closer than 3 rows are joined), not for everything between the
+    // first and the last changed row: a clock at the top and a meter at the bottom would upload the whole screen
+    int y0 = 0;
+    while (y0 < MAX_ROWS)
+    {
+      int y1, gap;
+      SDL_Rect r;
+      if (!rowdirty[y0]) { y0++; continue; }
+      y1 = y0;
+      for (y = y0 + 1, gap = 0; y < MAX_ROWS && gap < 3; y++)
+      {
+        if (rowdirty[y]) { y1 = y; gap = 0; }
+        else gap++;
+      }
+      r.x = 0;
+      r.y = y0 * CELLH * scale;
+      r.w = fbw;
+      r.h = (y1 - y0 + 1) * CELLH * scale;
+      SDL_UpdateTexture(texture, &r, fb + r.y * fbw, fbw * sizeof(Uint32));
+      y0 = y1 + 1;
+    }
     presented = 0;
   }
 
@@ -901,6 +941,8 @@ void getkey(void)
   mousey = win_mousey / (CELLH * (scale ? scale : 1));
   mousepx = win_mousex * 16 / (CELLW * (scale ? scale : 1));
   mousepy = win_mousey * 32 / (CELLH * (scale ? scale : 1));
+  mousefx = (double)win_mousex / (CELLW * (scale ? scale : 1));
+  mousefy = (double)win_mousey / (CELLH * (scale ? scale : 1));
   if (mousex >= MAX_COLUMNS) mousex = MAX_COLUMNS - 1;
   if (mousey >= MAX_ROWS) mousey = MAX_ROWS - 1;
   mousewheel = win_mousewheel;

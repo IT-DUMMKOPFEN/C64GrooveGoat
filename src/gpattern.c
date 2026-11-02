@@ -106,6 +106,7 @@ void patterncommands(void)
       }
     }
 
+    if (midinewnote >= 0) { newnote = midinewnote; midinewnote = -1; }
     if (newnote > LASTNOTE) newnote = -1;
     if ((rawkey == 0x08) && (!editorInfo.epcolumn)) newnote = REST;
     if ((rawkey == KEY_CAPSLOCK) && (!editorInfo.epcolumn)) newnote = KEYOFF;
@@ -649,6 +650,10 @@ void patterncommands(void)
       stepsize++;
       if (stepsize > MAX_PATTROWS) stepsize = MAX_PATTROWS;
     }
+    break;
+
+    case KEY_G:
+    if (shiftpressed) togglecommandpanel();
     break;
 
     case KEY_N:

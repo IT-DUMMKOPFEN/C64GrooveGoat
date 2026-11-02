@@ -6,8 +6,11 @@
 #define GDISPLAY_C
 
 #include "goattrk2.h"
+#include "gordhint.h"
+#include "ginsuse.h"
 #include "gres.h"
 #include "gpiano.h"
+#include "gscope.h"
 
 char *notename[] =
  {"C-0", "C#0", "D-0", "D#0", "E-0", "F-0", "F#0", "G-0", "G#0", "A-0", "A#0", "B-0",
@@ -91,6 +94,14 @@ static const char *buttonhint(int id)
     case BTN_EXPORTAUDIO: return "Export audio: WAV (also single voices) or MP3 - Ctrl+F9";
     case BTN_EXPORTVIDEO: return "Export an MP4 video (720p) with an oscilloscope for every voice";
     case BTN_THEME: return "Switch between the night (C64 blue) and the day theme";
+    case BTN_KEYS: return "On-screen piano: click the keys to play and enter notes (also ALT+K)";
+    case BTN_KEYOCT: return "Move the piano one octave down / up";
+    case BTN_FONT:
+    {
+      static char fonttip[100];
+      snprintf(fonttip, sizeof fonttip, "Screen font: %s - click for the next font", res_fontnames[getfont()]);
+      return fonttip;
+    }
     case BTN_HELP: return "Help: keys and commands - F12";
     case BTN_INFO: return "Version, author, credits and licenses";
     case BTN_UNDO: return "Undo the last change - Ctrl+Z";
@@ -99,7 +110,7 @@ static const char *buttonhint(int id)
     case BTN_LIBRARY: return "Instrument library: search, favourites, preview and load";
     case BTN_RANDOMINS: return "Random instrument generator (bass, drums, leads, pads, strings ...)";
     case BTN_STEREO: return "Editor playback: Mono or Stereo with 100%, 90%, 80% or 70% width (right click: back)";
-    case BTN_ADSRGRAPH: return "ADSR envelope of the instrument (Attack/Decay and Sustain/Release)";
+    case BTN_ADSRGRAPH: return "ADSR envelope of the instrument: click for the sliders (also SHIFT+E on Attack/Decay or Sustain/Release)";
   }
   return NULL;
 }
@@ -300,6 +311,56 @@ static int chnlevel(int c)
   return env;
 }
 
+// The oscilloscope of a channel: the wave of the voice (after the envelope, before the filter), 2 cells high, above
+// the channel header. A flat line while the voice is silent or muted.
+#define SCOPE_SPAN 1024               // samples shown (about 23 ms)
+#define SCOPE_FULL 2100               // half the height of the wave of a voice at full level (about 4100 high)
+
+static void drawscope(int slot, int ch, int x, int bg)
+{
+  // The picture is made again about 25 times a second, and when the voice, its mute or the size changed; in
+  // between, the canvas keeps its picture, and canvas_draw sees that nothing changed and costs no screen update.
+  static unsigned lastcount[VISIBLECHANNELS];
+  static int lastch[VISIBLECHANNELS], lastmute[VISIBLECHANNELS], lasth[VISIBLECHANNELS];
+  int cw = CHN_W - 1, w = cw * 16, h = SCOPE_H * 32, c, y;
+  unsigned count = scope_count(ch);
+  if ((slot < 0) || (slot >= VISIBLECHANNELS)) return;
+  if ((lastch[slot] != ch + 1) || (lastmute[slot] != chn[ch].mute + 1) || (lasth[slot] != h) ||
+      (count - lastcount[slot] >= (unsigned)(snd_mixrate / 25)) || (count < lastcount[slot]))
+  {
+    int lo[CANVAS_MAXCW * 16], hi[CANVAS_MAXCW * 16];
+    unsigned char *cv = canvas_begin(5 + slot, cw, SCOPE_H);
+    if (!cv) return;
+    lastcount[slot] = count;
+    lastch[slot] = ch + 1;
+    lastmute[slot] = chn[ch].mute + 1;
+    lasth[slot] = h;
+    for (c = 0; c < w; c += 4) cv[((h - 1) / 2) * CANVAS_STRIDE + c] = 70;           // the middle line
+    if ((!chn[ch].mute) && (scope_render(ch, SCOPE_SPAN, w, h, SCOPE_FULL, lo, hi)))
+    {
+      for (c = 0; c < w; c++)
+      {
+        // at least 2 pixels high so that a flat wave is still a line
+        int top = lo[c], bot = hi[c] < lo[c] + 1 ? lo[c] + 1 : hi[c];
+        if (bot > h - 1) { bot = h - 1; if (top > bot - 1) top = bot - 1; }
+        for (y = top; y <= bot; y++) cv[y * CANVAS_STRIDE + c] = 255;
+      }
+    }
+  }
+  canvas_draw(5 + slot, x, PATT_SCOPE_Y, MKCOL(chn[ch].mute ? 3 : 11, bg));
+}
+
+// Starts or stops the capture of the voices when the oscilloscopes are switched on or off (or the SIDs are made again)
+static void updatescope(void)
+{
+  if ((showscope != 0) != (sid_scopeactive() != 0))
+  {
+    snd_lock();
+    sid_livescope(showscope);
+    snd_unlock();
+  }
+}
+
 static void drawpatterns(void)
 {
   int c, d, i;
@@ -309,6 +370,7 @@ static void drawpatterns(void)
 
   (void)cc;
   validatechnview();
+  updatescope();
 
   // Panel header
   printblankc(PATT_X, PATT_Y, MKCOL(C_HEADERTEXT, editorInfo.editmode == EDIT_PATTERN ? C_BUTTONHI : C_HEADER), PATT_W);
@@ -325,6 +387,8 @@ static void drawpatterns(void)
   }
   sprintf(buf, "%d SID%s  %d channels", numsids, numsids > 1 ? "s" : "", numchannels);
   printtext(PATT_X + PATT_W - strlen(buf) - 1, PATT_Y, MKCOL(C_HEADERTEXT, editorInfo.editmode == EDIT_PATTERN ? C_BUTTONHI : C_HEADER), buf);
+  ui_drawbutton(PATT_X + PATT_W - (int)strlen(buf) - 7, PATT_Y, " Aa ", BTN_FONT, 0, 0);
+  ui_drawbutton(PATT_X + PATT_W - (int)strlen(buf) - 14, PATT_Y, " Keys ", BTN_KEYS, 0, showkeyboard);
 
   // Tool row: transpose, mark, select pattern, cut / copy / paste
   {
@@ -349,6 +413,7 @@ static void drawpatterns(void)
   }
 
   // Background of the pattern area
+  if (showscope) fillarea(PATT_X, PATT_SCOPE_Y, PATT_W, SCOPE_H, MKCOL(8, C_PANEL), ' ');
   fillarea(PATT_X, PATT_CHNHDR_Y, PATT_W, VISIBLEPATTROWS + 1, MKCOL(8, C_PANEL), ' ');
 
   if ((followplay) && (isplaying()))
@@ -390,6 +455,8 @@ static void drawpatterns(void)
     int hdrbg = (ch == editorInfo.epchn) ? C_SELECT : C_PANEL;
     if (ch >= numchannels) break;
     pn = editorUndoInfo.editorInfo[ch].epnum;
+
+    if (showscope) drawscope(i, ch, x - 1, hdrbg);
 
     // Channel header
     printblankc(x - 1, PATT_CHNHDR_Y, MKCOL(15, hdrbg), CHN_W - 1);
@@ -667,7 +734,8 @@ static void drawinstrument(void)
     adsr_timestr(t, adsr_decayms(sr & 15));
     sprintf(buf, "S%X R%7s", sr >> 4, t);
     printtext(tx, ADSR_Y + 2, MKCOL(7, C_PANEL), buf);
-    ui_addbutton(RP_X, ADSR_Y, RP_W, BTN_ADSRGRAPH, 0);
+    ui_addbutton(RP_X, ADSR_Y, ADSR_W + 12, BTN_ADSRGRAPH, 0);
+    drawwaveicon(RP_X + ADSR_W + 12, ADSR_Y);
   }
 
   if ((editorInfo.editmode == EDIT_INSTRUMENT) && (!eamode))
@@ -678,6 +746,8 @@ static void drawinstrument(void)
       printcursor(RP_X + 17 + strlen(instr[editorInfo.einum].name), INS_Y, 1);
   }
 }
+
+static INSUSE tableuse;                // see drawtables
 
 static void drawtables(void)
 {
@@ -691,13 +761,23 @@ static void drawtables(void)
     printtext(TBL_X(c), TBL_Y, MKCOL(C_HEADERTEXT, active ? C_BUTTONHI : C_HEADER), tnames[c]);
   fillarea(RP_X, TBL_ROWS_Y, RP_W, VISIBLETABLEROWS, MKCOL(8, C_PANEL), ' ');
 
+  {                                    // which instruments start at which row (marks at the right of the rows)
+    static unsigned char insptrs[MAX_INSTR][INSUSE_TABLES];
+    int i;
+    for (i = 0; i < MAX_INSTR; i++)
+      for (c = 0; c < INSUSE_TABLES; c++) insptrs[i][c] = instr[i].ptr[c];
+    insuse_build(&tableuse, MAX_INSTR, insptrs, editorInfo.einum);
+  }
+
   for (c = 0; c < MAX_TABLES; c++)
   {
+    int playrow = sum_playrow(c);      // the row the playing voice is on
     for (d = 0; d < VISIBLETABLEROWS; d++)
     {
       int p = editorInfo.etview[c]+d;
       int color = 8;
       int bg = (p & 1) ? C_PANEL : C_BEATROW;
+      int playing = (playrow == p + 1);
 
       if (p >= MAX_TABLELEN) continue;
       switch (c)
@@ -717,10 +797,21 @@ static void drawtables(void)
       if (ltable[c][p] == 0xff) color = 13;
       if ((!ltable[c][p]) && (!rtable[c][p])) color = 3;
       if ((p == editorInfo.etpos) && (editorInfo.etnum == c)) color = CEDIT;
+      if (playing)
+      {
+        bg = C_BUTTONHI;
+        if (color != CEDIT) color = 15;
+        printtext(TBL_X(c) + 2, TBL_ROWS_Y + d, MKCOL(3, bg), " ");
+      }
       sprintf(buf, "%02X", p+1);
-      printtext(TBL_X(c), TBL_ROWS_Y + d, MKCOL(3, bg), buf);
+      printtext(TBL_X(c), TBL_ROWS_Y + d, MKCOL(playing ? 15 : 3, bg), buf);
       sprintf(buf, "%02X %02X", ltable[c][p], rtable[c][p]);
       printtext(TBL_X(c) + 3, TBL_ROWS_Y + d, MKCOL(color, bg), buf);
+      {
+        char who[4];                   // "05" = instrument 05 starts here, "x3" = three instruments (yellow: the one being edited)
+        int use = insuse_label(&tableuse, c, p, who);
+        if (use) printtext(TBL_X(c) + 9, TBL_ROWS_Y + d, MKCOL(use == 2 ? 14 : 15, C_BUTTON), who);
+      }
 
       if (editorInfo.etmarknum == c)
       {
@@ -800,6 +891,8 @@ static void drawstatusarea(void)
   ui_drawbutton(x, STATUS_Y, " " GS_REDO " Redo ", BTN_REDO, 0, 0);
   x += 9;
   ui_drawbutton(x, STATUS_Y, " " GS_NOTE " Piano ", BTN_PIANO, 0, showpiano);
+  x += 9;
+  ui_drawbutton(x, STATUS_Y, " Scope ", BTN_SCOPE, 0, showscope);
 
   // Play status and time
   if (editorInfo.multiplier)
@@ -972,6 +1065,7 @@ static int tooltip(int id, const char **name, const char **keys)
     case BTN_UNDO: *name = "Undo"; *keys = "CTRL+Z"; break;
     case BTN_REDO: *name = "Redo"; *keys = "CTRL+Y"; break;
     case BTN_PIANO: *name = "Piano keyboard on / off"; *keys = "CTRL+B"; break;
+    case BTN_SCOPE: *name = "Oscilloscope of every channel on / off"; *keys = "CTRL+J"; break;
     case BTN_PIANOKEY: *name = "Click a key to play the note (current instrument and voice)"; break;
     case BTN_CHNVIEW: *name = "Show the voices of these SIDs"; break;
     case BTN_ORDVIEW: *name = "Scroll the orderlist voices"; break;
@@ -1048,14 +1142,22 @@ void printstatus(void)
   drawtoolbar();
   drawsettingsbar();
   drawpatterns();
+  drawkeyboard();
   printglyph(PATT_W, PATT_Y, MKCOL(8, 0), ' ');
   draworderlist();
   printblankc(RP_X, ORD_ROWS_Y + VISIBLEORDERCHNS, MKCOL(8, 0), RP_W);
+  if (editorInfo.editmode == EDIT_ORDERLIST)      // what the entry under the cursor does
+  {
+    char hint[80];
+    if (order_hint(songorder[editorInfo.esnum][editorInfo.eschn], songlen[editorInfo.esnum][editorInfo.eschn], editorInfo.eseditpos, hint, sizeof hint))
+      printtext(RP_X + 1, ORD_ROWS_Y + VISIBLEORDERCHNS, MKCOL(14, 0), hint);
+  }
   drawinstrument();
   printblankc(RP_X, ADSR_Y + 3, MKCOL(8, 0), RP_W);
   drawtables();
-  printblankc(RP_X, TBL_ROWS_Y + VISIBLETABLEROWS, MKCOL(8, 0), RP_W);
+  drawtablesummaryline(TBL_ROWS_Y + VISIBLETABLEROWS);
   drawnames();
+  drawcommandpanel();
   if (showpiano) drawpiano();
   drawstatusarea();
 }

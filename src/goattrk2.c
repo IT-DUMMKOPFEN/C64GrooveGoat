@@ -26,6 +26,8 @@
 #endif
 
 #include "goattrk2.h"
+#include "gmidi.h"
+#include "gvoices.h"
 #include "gexport.h"
 #include "ginslib.h"
 #include "grandins.h"
@@ -42,6 +44,8 @@ int defaultpatternlength = 64;
 int cursorflash = 0;
 int cursorcolortable[] = { 1,2,7,2 };
 int exitprogram = 0;
+int midinewnote = -1;               // a note from the MIDI keyboard for the pattern editor to enter (see midipump)
+static VOICES heldkeys;             // the keys held on the MIDI keyboard (by MIDI note) and with the mouse on the piano (-1)
 int eamode = 0;
 
 unsigned keypreset = KEY_TRACKER;
@@ -77,6 +81,9 @@ unsigned mastervolume = 80;
 unsigned showwelcome = 1;
 unsigned kbdlayoutsetting = 2;
 unsigned showpiano = 1;        // piano keyboard above the status bar
+unsigned showscope = 1;        // an oscilloscope above every channel
+unsigned keyboardsetting = 0;        // the on-screen piano is shown (saved in the config)
+unsigned fontsetting = 0;            // the screen font, an index into res_fontnames
 float basepitch = 0.0f;
 float equaldivisionsperoctave = 12.0f;
 int tuningcount = 0;
@@ -94,6 +101,7 @@ char instrpath[MAX_PATHNAME];
 char packedpath[MAX_PATHNAME];
 char appdir[MAX_PATHNAME];
 char instrlibpath[MAX_PATHNAME];
+char instrlibcfg[MAX_PATHNAME];        // the instrument library folder the user chose (saved in the config), or empty
 char examplespath[MAX_PATHNAME];
 
 char *programname = PROGRAMNAME;
@@ -496,13 +504,20 @@ int main(int argc, char **argv)
     return ok ? EXIT_SUCCESS : EXIT_FAILURE;
   }
 
+  // The test runs (screenshots) never take the whole screen, whatever the saved window type is
+  if (getenv("GG_AUTOTEST")) win_fullscreen = 0;
+  if (getenv("GG_SCOPE")) showscope = atoi(getenv("GG_SCOPE")) ? 1 : 0;      // tests: oscilloscopes on / off whatever the config says
+
   // Set screenmode
   theme = themesetting;
+  if (fontsetting >= RES_NUMFONTS) fontsetting = 0;
   if (!initscreen())
   {
     fprintf(stderr, "Could not open the program window.\n");
     return EXIT_FAILURE;
   }
+  setfont(fontsetting);
+  showkeyboard = keyboardsetting != 0;
 
   // Keyboard layout: detect from the system keymap on the first start
   if (kbdlayoutsetting > 1)
@@ -541,6 +556,8 @@ int main(int argc, char **argv)
 
   // Start editor mainloop
   printmainscreen();
+  if (!getenv("GG_NOMIDI")) midi_init();
+  if (midi_names()[0]) { snprintf(statusmessage, sizeof statusmessage, "MIDI input: %.200s", midi_names()); printmainscreen(); }
   backup_init();
   if ((showwelcome) && (!getenv("GG_SCRIPT"))) showwelcomewindow();
   while (!exitprogram)
@@ -552,6 +569,7 @@ int main(int argc, char **argv)
     backup_tick();
   }
   backup_shutdown();
+  midi_shutdown();
 
   // Shutdown sound output now
   if (getenv("GG_AUDIODEBUG")) fprintf(stderr, "audio underruns: %u\n", snd_getunderruns());
@@ -695,8 +713,22 @@ static void loadconfig(void)
   getparam(configfile, &kbdlayoutsetting);
   getparam(configfile, &showpiano);
   getparam(configfile, &prgpiano);
+  getparam(configfile, &fontsetting);
+  getparam(configfile, &keyboardsetting);
+  getparam(configfile, &showscope);
+  for (;;)                                       // the library folder: the rest of the line, it may have spaces
+  {
+    if (!fgets(configbuf, MAX_PATHNAME, configfile)) break;
+    if ((configbuf[0]) && (configbuf[0] != ';') && (configbuf[0] != ' ') && (configbuf[0] != 13) && (configbuf[0] != 10))
+    {
+      configbuf[strcspn(configbuf, "\r\n")] = 0;
+      if (strcmp(configbuf, "-")) snprintf(instrlibcfg, MAX_PATHNAME, "%s", configbuf);
+      break;
+    }
+  }
   fclose(configfile);
   showpiano &= 1;
+  showscope &= 1;
   prgpiano &= 1;
   if (!strcmp(specialnotenames, "-")) specialnotenames[0] = 0;
   if (!strcmp(scalatuningfilepath, "-")) scalatuningfilepath[0] = 0;
@@ -758,7 +790,11 @@ static void saveconfig(void)
     ";Show the welcome window at startup (0 = no, 1 = yes)\n%d\n\n"
     ";Keyboard layout for shortcuts (0 = EN QWERTY, 1 = DE QWERTZ, 2 = detect)\n%d\n\n"
     ";Show the piano keyboard (0 = no, 1 = yes)\n%d\n\n"
-    ";Piano keyboard on the screen of runnable PRGs (0 = no, 1 = yes)\n%d\n\n",
+    ";Piano keyboard on the screen of runnable PRGs (0 = no, 1 = yes)\n%d\n\n"
+    ";Screen font (0 = Fira Code, 1 = MesloLGS NF)\n%d\n\n"
+    ";On-screen piano (0 = hidden, 1 = shown)\n%d\n\n"
+    ";Oscilloscope above every channel (0 = hidden, 1 = shown)\n%d\n\n"
+    ";Instrument library folder (- = next to the program)\n%s\n\n",
     b,
     mr,
     hardsid,
@@ -806,7 +842,11 @@ static void saveconfig(void)
     showwelcome,
     kbdlayout,
     showpiano,
-    prgpiano);
+    prgpiano,
+    fontsetting,
+    showkeyboard,
+    showscope,
+    instrlibcfg[0] ? instrlibcfg : "-");
   fclose(configfile);
 }
 
@@ -891,6 +931,23 @@ static void runautotest(void)
   if (sids) changenumsids(atoi(sids));
   if (th) settheme(atoi(th));
   if (getenv("GG_PLAY")) initsong(0, PLAY_BEGINNING);
+  if (getenv("GG_KEYBOARD")) showkeyboard = 1;
+  if (getenv("GG_CHORD"))             // MIDI keys held down, for example GG_CHORD=60,64,67 (MIDI note numbers)
+  {
+    const char *l = getenv("GG_CHORD");
+    while (*l)
+    {
+      int m = atoi(l), n = midi_tracker_note(m, FIRSTNOTE, LASTNOTE);
+      if (n >= 0) editor_keyon(m, n, 1);
+      while ((*l) && (*l != ',')) l++;
+      if (*l == ',') l++;
+    }
+  }
+  if (getenv("GG_ORDERPOS"))
+  {
+    editorInfo.editmode = EDIT_ORDERLIST;
+    editorInfo.eseditpos = atoi(getenv("GG_ORDERPOS"));
+  }
   if (getenv("GG_SCREEN"))
   {
     const char *scr = getenv("GG_SCREEN");
@@ -913,12 +970,28 @@ static void runautotest(void)
     if (!strcmp(scr, "loadins")) { editorInfo.editmode = EDIT_INSTRUMENT; load(); }
     if (!strcmp(scr, "clear")) clear();
     if (!strcmp(scr, "quit")) quit();
+    if (!strcmp(scr, "adsr")) { editorInfo.einum = 1; showadsreditor(); }
+    if (!strcmp(scr, "instkey"))        // SHIFT+E in the instrument editor on the field GG_EIPOS (0-5)
+    {
+      editorInfo.editmode = EDIT_INSTRUMENT;
+      editorInfo.einum = 1;
+      editorInfo.eipos = getenv("GG_EIPOS") ? atoi(getenv("GG_EIPOS")) : 2;
+      rawkey = KEY_E;
+      shiftpressed = 1;
+      instrumentcommands();
+    }
   }
   while (frames--)
   {
     printstatus();
     fliptoscreen();
     getkey();
+    if (getenv("GG_FRAMEDELAY")) SDL_Delay(atoi(getenv("GG_FRAMEDELAY")));      // let the sound run between frames
+  }
+  if (getenv("GG_CHORD"))
+  {
+    int c;
+    for (c = 0; c < numchannels; c++) fprintf(stderr, "channel %d: gate %02X, note %d, new note %02X\n", c + 1, chn[c].gate, chn[c].note, chn[c].newnote);
   }
   snprintf(name, MAX_PATHNAME, "%s", shot);
   savescreenshot(name);
@@ -947,6 +1020,78 @@ void waitkey(void)
   converthex();
 }
 
+// Handles the events from the MIDI keyboard. Returns 1 if the editor has something to do (a note to enter).
+// Notes are entered like the computer keyboard enters them (the note column of the pattern editor, or the
+// chosen instrument played as a test note anywhere else); note off releases the test note.
+// Every key that is held sounds on a channel of its own, the first one on the channel of the cursor, so a chord can be
+// heard. Only the first key of a chord is entered in the pattern. While a song plays all keys use the channel of the
+// cursor, so the song's other voices are left alone.
+void editor_keyon(int id, int n, int record)
+{
+  int first = voices_count(&heldkeys) == 0;
+  int ch = voices_on(&heldkeys, id, editorInfo.epchn, numchannels, songinit == PLAY_STOPPED ? numchannels : 1);
+  if ((record) && (first) && (editorInfo.editmode == EDIT_PATTERN) && (!editorInfo.epcolumn)) midinewnote = n;   // the pattern editor enters and plays it
+  else playtestnote(n, editorInfo.einum, ch);
+}
+
+void editor_keyoff(int id)
+{
+  int ch = voices_off(&heldkeys, id);
+  if ((ch >= 0) && (songinit == PLAY_STOPPED)) releasenote(ch);
+}
+
+void editor_noteon(int n, int record) { editor_keyon(-1, n, record); }
+void editor_noteoff(void) { editor_keyoff(-1); }
+
+// The tracker notes of the keys held on the MIDI keyboard (for the on-screen piano). Returns how many.
+int editor_heldnotes(int *out, int max)
+{
+  int i, count = 0;
+  for (i = 0; (i < voices_count(&heldkeys)) && (count < max); i++)
+  {
+    int k = voices_key(&heldkeys, i), n;
+    if (k < 0) continue;
+    n = midi_tracker_note(k, FIRSTNOTE, LASTNOTE);
+    if (n >= 0) out[count++] = n;
+  }
+  return count;
+}
+
+static int midipump(void)
+{
+  GGMIDIEVENT e;
+  int work = 0;
+  if (midi_changed())
+  {
+    if (midi_names()[0]) snprintf(statusmessage, sizeof statusmessage, "MIDI input: %.200s", midi_names());
+    else snprintf(statusmessage, sizeof statusmessage, "MIDI input: no device");
+    work = 1;
+  }
+  while (midi_poll(&e))
+  {
+    if (e.type == MIDI_NOTEON)
+    {
+      int n = midi_tracker_note(e.a, FIRSTNOTE, LASTNOTE);
+      if (n < 0) continue;
+      editor_keyon(e.a, n, 1);
+      if (midinewnote >= 0) work = 1;
+    }
+    else if (e.type == MIDI_NOTEOFF)
+    {
+      editor_keyoff(e.a);
+    }
+    else if (e.type == MIDI_PROGRAM)
+    {
+      int ins = e.a + 1;
+      if (ins >= MAX_INSTR) ins = MAX_INSTR - 1;
+      editorInfo.einum = ins;
+      snprintf(statusmessage, sizeof statusmessage, "MIDI program change: instrument %02X", ins);
+      work = 1;
+    }
+  }
+  return work;
+}
+
 void waitkeymouse(void)
 {
   for (;;)
@@ -959,6 +1104,8 @@ void waitkeymouse(void)
     if ((prevmouseb) && (!mouseb)) break;   // button released (piano keys)
     if (mousewheel) break;
     if (win_dropfile[0]) break;
+    if (midipump()) break;
+    if (keyboard_busy()) break;
   }
 
   converthex();
@@ -1051,6 +1198,14 @@ void changenumsids(int n)
     numsids > 2 ? " - songs are saved in the C64 GrooveGoat .ggt format" : "");
 }
 
+void cyclefont(void)
+{
+  fontsetting = (getfont() + 1) % RES_NUMFONTS;
+  setfont(fontsetting);
+  snprintf(statusmessage, sizeof statusmessage, "Screen font: %s", res_fontnames[fontsetting]);
+  printmainscreen();
+}
+
 void togglethemekey(void)
 {
   settheme(theme ^ 1);
@@ -1100,6 +1255,15 @@ void togglepiano(void)
   printmainscreen();
 }
 
+// Oscilloscopes on / off: they take two rows above the channel headers, from the pattern editor
+void togglescope(void)
+{
+  showscope ^= 1;
+  editorInfo.epview = editorInfo.eppos - VISIBLEPATTROWS / 2;
+  setstatusmessage(showscope ? "Oscilloscopes on (CTRL+J)" : "Oscilloscopes off (CTRL+J)");
+  printmainscreen();
+}
+
 // Pattern tool buttons: run the editor command of the shortcut
 static void patternkey(int k)
 {
@@ -1122,11 +1286,24 @@ void docommand(void)
     key = 0;
     rawkey = 0;
   }
+  if (((ctrlpressed) || (metapressed)) && (!altpressed) && (rawkey == KEY_J))
+  {
+    togglescope();
+    key = 0;
+    rawkey = 0;
+  }
   if (((ctrlpressed) || (metapressed)) && (!altpressed) && ((rawkey == KEY_R) || (rawkey == KEY_L)))
   {
     if (rawkey == KEY_R) randominstrument();
     else instrumentlibrary();
     editorInfo.editmode = EDIT_INSTRUMENT;
+    key = 0;
+    rawkey = 0;
+  }
+
+  if ((altpressed) && (!ctrlpressed) && (!metapressed) && (!shiftpressed) && (rawkey == KEY_K))
+  {
+    showkeyboard ^= 1;
     key = 0;
     rawkey = 0;
   }
@@ -1224,6 +1401,7 @@ static void buttoncommand(int id, int param)
     editorInfo.editmode = EDIT_INSTRUMENT;
     editorInfo.eipos = 0;
     editorInfo.eicolumn = 0;
+    showadsreditor();
     break;
     case BTN_INSLOAD:
     {
@@ -1246,6 +1424,12 @@ static void buttoncommand(int id, int param)
     case BTN_EXPORTAUDIO: exportaudio(0); break;
     case BTN_EXPORTVIDEO: exportaudio(1); break;
     case BTN_THEME: togglethemekey(); break;
+    case BTN_FONT: cyclefont(); break;
+    case BTN_KEYS: showkeyboard ^= 1; break;
+    case BTN_KEYOCT:
+      if ((param < 0) && (editorInfo.epoctave > 0)) editorInfo.epoctave--;
+      if ((param > 0) && (editorInfo.epoctave < 7)) editorInfo.epoctave++;
+      break;
     case BTN_HELP: onlinehelp(0, 0); break;
     case BTN_MANUAL: showmanual(); break;
     case BTN_HISTORY: showhistory(); break;
@@ -1367,6 +1551,7 @@ static void buttoncommand(int id, int param)
     case BTN_SIDADDR: showsidinfo(); break;
     case BTN_QUIT: quit(); break;
     case BTN_PIANO: togglepiano(); break;
+    case BTN_SCOPE: togglescope(); break;
     case BTN_TRANSUP: patternkey(KEY_Q); break;
     case BTN_TRANSDN: patternkey(KEY_A); break;
     case BTN_OCTUP: patternkey(KEY_W); break;
@@ -1388,6 +1573,9 @@ void mousecommands(void)
   int param = 0;
   int id;
   int click = (mouseb) && (!prevmouseb);
+
+  // The on-screen piano takes its clicks first
+  if (keyboardmouse()) return;
 
   // Mouse wheel scrolls the panel below the pointer
   if (mousewheel)

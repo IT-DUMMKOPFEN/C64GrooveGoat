@@ -33,6 +33,21 @@ by Lasse Öörni (Cadaver) and the
   the screen of runnable C64 programs (split into two rows of 4 octaves, works at every speed)
 - Buttons for the pattern tools (transpose half step / octave, mark, mark all, select pattern,
   cut, copy, paste) and tooltips with the name and shortcut of every button
+- Plain language summary of the pulsetable: a line under the tables and a window (`SHIFT+I` in the table
+  editor) with every row explained, a graph of the pulse width over time, the range, the shape of the
+  movement and the length of one repetition (the other tables are to follow)
+- A guide to the pattern commands: while the cursor is on a command, the commands are listed and the one
+  under the cursor is explained in plain words (`SHIFT+G` hides it)
+- The same for the wavetable, and a small waveform picture (single or combined shapes) next to the ADSR
+  graph that follows the cursor in the wavetable
+- A step editor (`SHIFT+E` in the wave, pulse, filter or speed table): the program as one box per tick, a draw pad
+  to draw the pulse width, filter cutoff or pitch with the mouse, and an arpeggio builder (0 4 7, 0 3 7 and more)
+- Two screen fonts (the `Aa` button): Fira Code and MesloLGS NF, and more can be added in `res/fonts`
+- MIDI keyboard input (macOS): notes are entered in the pattern editor and played as test notes, a program change
+  chooses the instrument
+- A clickable on-screen piano of 32 keys (`ALT+K`) that lights up for the keys you hold and the notes the voices play
+- A line under the orderlist that explains the entry under the cursor (pattern, repeat, transpose, restart), with a
+  guide in the help screen and the manual
 - Backup copies: `NAME.bak` on save, automatic backup every 2 minutes (newest 10 kept),
   crash recovery on the next start
 - File formats: GoatTracker 2 `.sng` (1 SID), GoatTracker Stereo `.sng` (2 SIDs),

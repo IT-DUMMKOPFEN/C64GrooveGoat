@@ -35,6 +35,7 @@
 #include "glayout.h"
 #include "gdialog.h"
 #include "gadsr.h"
+#include "gsumui.h"
 #include "gbackup.h"
 
 #define EDIT_PATTERN 0
@@ -47,17 +48,29 @@
 #define KEY_DMC 1
 #define KEY_JANKO 2
 
-#define VISIBLEPATTROWS (showpiano ? 37 : 41)
+extern unsigned showscope;
+#define VISIBLEPATTROWS ((showpiano ? 37 : 41) - (showscope ? 2 : 0))
 #define VISIBLEORDERLIST 13
 #define VISIBLETABLEROWS (showpiano ? 16 : 20)
 #define VISIBLEFILES 30
 
 #define PGUPDNREPEAT 8
 
+extern int showkeyboard;
+void editor_noteon(int trackernote, int record);   // a note from the MIDI keyboard or the on-screen piano
+void editor_noteoff(void);
+void editor_keyon(int id, int trackernote, int record);   // a key goes down / up; id tells the keys apart (MIDI note, -1 = mouse)
+void editor_keyoff(int id);
+int editor_heldnotes(int *out, int max);           // the tracker notes held on the MIDI keyboard, returns how many
+void drawkeyboard(void);
+int keyboardmouse(void);
+int keyboard_busy(void);                           // a piano key is held with the mouse
+
 #ifndef GOATTRK2_C
 extern int menu;
 //extern int editorInfo.editmode;
 extern int recordmode;
+extern int midinewnote;
 extern int followplay;
 extern int hexnybble;
 extern int stepsize;
@@ -108,8 +121,10 @@ extern char textbuffer[MAX_PATHNAME];
 extern unsigned stereomode;
 int stereowidth(void);
 void togglepiano(void);
+void togglescope(void);
 extern char appdir[MAX_PATHNAME];
 extern char instrlibpath[MAX_PATHNAME];
+extern char instrlibcfg[MAX_PATHNAME];
 extern char examplespath[MAX_PATHNAME];
 extern unsigned char hexkeytbl[16];
 extern unsigned prgfrontend;
@@ -149,6 +164,7 @@ void readscalatuningfile(void);
 void do_sound_init(void);
 void changenumsids(int n);
 void togglethemekey(void);
+void cyclefont(void);
 void newsong(void);
 void exportsid(void);
 void exportprg(void);

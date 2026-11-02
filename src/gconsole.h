@@ -43,6 +43,8 @@ void clearscreen(void);
 void fliptoscreen(void);
 void forceredraw(void);
 void settheme(int t);
+void setfont(int f);              // the screen font: an index into res_fontnames (gres.h)
+int getfont(void);
 void printtext(int x, int y, int color, const char *text);
 void printtextc(int y, int color, const char *text);
 void printtextcp(int cp, int y, int color, const char *text);
@@ -58,7 +60,7 @@ void fillarea(int x, int y, int w, int h, int color, int glyph);
 void drawpanel(int x, int y, int w, int h, const char *title, int active);
 void drawimage(int x, int y, const char *name, int cellsw, int cellsh);
 void drawrainbow(int x, int y, int length);
-#define MAX_CANVAS 2
+#define MAX_CANVAS 11                 // 0-4: windows and panels, 5-10: the channel oscilloscopes
 #define CANVAS_MAXCW 48
 #define CANVAS_MAXCH 8
 #define CANVAS_STRIDE (CANVAS_MAXCW * 16)
@@ -85,6 +87,7 @@ extern int mouseb, prevmouseb;
 extern int mouseheld;
 extern int mousex, mousey;
 extern int mousepx, mousepy;   // mouse position in 1/16 (x) and 1/32 (y) cell units
+extern double mousefx, mousefy;                 // the same, in cells with the fraction (for drawing)
 extern int mousewheel;
 extern int theme;
 extern unsigned bigwindow;

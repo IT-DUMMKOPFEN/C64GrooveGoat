@@ -57,6 +57,7 @@ static const char *genkeys[] = {
   "F10           Load song/instrument",
   "F11           Save song/instrument",
   "F12           This screen",
+  "ALT+K         On-screen piano",
   "SHIFT+F1-F3   Follow play begin/pos/patt.",
   "SHIFT+F4      Mute current channel",
   "SHIFT+F5-F6   Change speed multiplier",
@@ -119,6 +120,7 @@ static const char *patternkeys[] = {
   "SHIFT+E,R     Copy,paste effects",
   "SHIFT+H       Make hifi vib/portaspeed",
   "SHIFT+I       Invert selection/pattern",
+  "SHIFT+G       Show/hide the guide to the pattern commands",
   "SHIFT+J,K     Join/split pattern",
   "SHIFT+L       Mark/unmark whole pattern",
   "SHIFT+M,N     Choose highlighting step",
@@ -144,6 +146,26 @@ static const char *songkeys[] = {
   NULL
 };
 
+static const char *songguide[] = {
+  "Each voice has its own orderlist and plays it",
+  "from the top, one entry after another.",
+  "05     Play pattern 05 once.",
+  "R3     The pattern after it plays 3 times",
+  "       (R0 = 16). Insert with SHIFT+R.",
+  "+2 -3  The patterns after it sound 2 half",
+  "       steps higher / 3 lower. Keys + and -.",
+  "RST 02 End of list: go back to position 02",
+  "       and loop from there, for ever.",
+  "Voices do not wait for each other, so each",
+  "can use patterns of a different length. Keep",
+  "the total rows equal so they stay in step.",
+  "Delayed start: give voice 2 an empty pattern",
+  "of 4 bars first, then its real pattern, and",
+  "RST on the real pattern (RST 00 = replay the",
+  "intro on every loop).",
+  NULL
+};
+
 static const char *instkeys[] = {
   "0-9 & A-F     Enter parameters",
   "SPACE         Play test note",
@@ -155,6 +177,10 @@ static const char *instkeys[] = {
   "SHIFT+CRSR    Mark table",
   "SHIFT+Q,W     Speed half/octave up",
   "SHIFT+A,S     Speed half/octave down",
+  "SHIFT+I       Summary of the pulse/wave/filter table",
+  "SHIFT+H       Show/hide the list of table codes",
+  "SHIFT+E       Step/speed editor, ADSR sliders",
+  "              (instrument: pointer, AD, SR)",
   "SHIFT+L       Convert pulse/filter limit",
   "SHIFT+N       Edit name/negate value",
   "SHIFT+O       Optimize table",
@@ -193,6 +219,8 @@ static const char *newkeys[] = {
   "              2 min., restore after a crash",
   "Piano         Played notes of all voices,",
   "              click a key to play (CTRL+B)",
+  "Scopes        Wave of every voice above its",
+  "              channel (CTRL+J on/off)",
   "Pattern tools Transpose, mark, cut/copy/paste",
   "              buttons above the pattern editor",
   NULL
@@ -276,6 +304,9 @@ void onlinehelp(int standalone, int context)
     left++;
     printtext(1, left++, HELP_HEADER, "SONG (ORDERLIST) EDIT MODE");
     left = printrows(1, left, HELP_NORMAL, songkeys);
+    left++;
+    printtext(1, left++, HELP_HEADER, "ORDERLIST: WHAT THE ENTRIES DO");
+    left = printrows(1, left, HELP_NORMAL, songguide);
     left++;
 
     printtext(48, right++, HELP_HEADER, "PATTERN EDIT MODE");

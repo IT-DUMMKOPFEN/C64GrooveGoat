@@ -207,6 +207,22 @@ void tablecommands(void)
     if (shiftpressed) optimizetable(editorInfo.etnum);
     break;
 
+    case KEY_I:
+    if (shiftpressed) showtablesummary();
+    break;
+
+    case KEY_H:
+    if (shiftpressed) togglecommandpanel();
+    break;
+
+    case KEY_E:
+    if (shiftpressed)
+    {
+      if (editorInfo.etnum == STBL) showspeededitor();
+      else showstepeditor();
+    }
+    break;
+
     case KEY_U:
     if (shiftpressed)
     {
@@ -756,6 +772,18 @@ void inserttable(int num, int pos, int mode)
       }
     }
   }
+}
+
+// Adds "count" empty rows at row index "pos" (0-based) by shifting everything behind them down. Instrument pointers,
+// pattern and wavetable commands and jumps that point at or behind pos follow. Returns 0, and changes nothing, if the
+// rows that would be pushed off the end are not empty.
+int table_makeroom(int num, int pos, int count)
+{
+  int k;
+  if ((pos < 0) || (count < 0)) return 0;
+  if (gettablelen(num) + count > MAX_TABLELEN) return 0;
+  for (k = 0; k < count; k++) inserttable(num, pos, 0);
+  return 1;
 }
 
 int gettablelen(int num)

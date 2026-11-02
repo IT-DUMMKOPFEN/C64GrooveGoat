@@ -123,6 +123,20 @@ The Piano button in the status bar or CTRL+B (CMD+B on a Mac) switches the keybo
 it is on by default and the setting is saved. Without the piano the pattern editor, the tables
 and the song info get the space back (4 more rows).
 
+### Oscilloscopes
+
+Above every channel header of the pattern editor a small oscilloscope draws the wave that voice
+is making: the waveform after its envelope and before the filter, about 23 ms of it. A steady
+note stands still on the screen (the picture starts where the wave crosses its middle going up),
+the height follows the level (a decaying note shrinks), and a silent or muted voice is a flat
+line. You can see a saw, a pulse, noise or a combined waveform, and the effect of pulse width
+modulation, sync and ring modulation.
+
+The Scope button in the status bar or CTRL+J (CMD+J on a Mac) switches them on and off; they are on
+by default and the setting is saved. They take 2 rows from the pattern editor. Switched off, they
+cost nothing. Switched on, the SID emulation for the picture runs one extra time (a plain reSID
+without the filter), so a slow computer with 4 or 8 SIDs may prefer them off.
+
 ## Toolbar
 
 |  New          Start a new, empty song (asks for 1, 2, 4 or 8 SIDs)
@@ -361,6 +375,7 @@ mouse button on a transpose, mark or pattern button repeats it.
 |  SHIFT+J / K  Join pattern with the next one in the orderlist / split pattern at the cursor
 |  SHIFT+H      Calculate a "hifi" speedtable entry for portamento or vibrato
 |  SHIFT+I      Invert selection or the whole pattern
+|  SHIFT+G      Show / hide the pattern command guide (see "Pattern commands")
 |  SHIFT+CURSOR Mark pattern data (up/down), select pattern (left/right)
 |  SHIFT+L      Mark / unmark the whole pattern
 |  SHIFT+M / N  Choose the row highlighting step
@@ -409,12 +424,45 @@ Rules: if both transpose and repeat come before a pattern, the transpose must co
 last entry before RST must be a pattern number. Transpose is only reset when the song starts,
 not when it loops.
 
+### What the orderlist entries do
+
+Every voice has its own orderlist. A voice plays its list from the top: each pattern number
+plays that pattern from its first row to its last, then the voice moves on to the next entry.
+Voices do not wait for each other, so each voice can use patterns of a different length.
+
+|  05      Play pattern 05 once.
+|  R3      Repeat. The pattern that follows plays 3 times in a row (R0 plays it 16 times).
+|          Insert with SHIFT+R, then type the number of repeats.
+|  +2 / -3 Transpose. Every pattern after this entry sounds 2 half steps higher (or 3 lower).
+|          It stays in effect until another transpose entry, and is only reset when the song starts.
+|  RST 02  The end of the list. The voice jumps back to position 02 and continues from there,
+|          over and over. RST 00 loops the whole list. A higher number loops only the end.
+
+While the orderlist editor is active, the line under the list describes the entry under the cursor
+(for example "R3: the next pattern plays 3 times").
+
+There is no jump command inside a pattern. The orderlist is where a voice jumps and repeats.
+
+Example: a drum pattern of 64 rows on voice 1 should play from the start, but the bass on voice 2
+should come in after four bars.
+
+|  Voice 1:  00  RST 00      The beat (00) plays for ever.
+|  Voice 2:  0F  10  RST 01  0F is an empty pattern as long as four bars, 10 holds the bass.
+
+The bass starts on row 1 of its own pattern, so it needs no empty rows in front of it. After the
+last row of 10 the voice goes to position 01 (pattern 10), not back to the empty 0F, so the
+intro plays only the first time. Use RST 00 on voice 2 if the intro should be replayed each time
+the song loops. Keep the total number of rows on each voice the same (here 64 + 64 on voice 2,
+and 64 on voice 1 repeated) so the voices stay in step when they loop.
+
 ## Instrument editor (F7)
 
 |  0-9, A-F     Enter parameters
 |  - + / < >    Select instrument
 |  SPACE        Play a test note (SHIFT+SPACE silences it)
 |  RETURN       Go to the table row of the wave/pulse/filter/vibrato pointer
+|  SHIFT+E      On a wave/pulse/filter/vibrato pointer: open the step or speed editor on that program at once.
+|               On Attack/Decay or Sustain/Release: open the ADSR sliders
 |  SHIFT+RETURN Set the table pointer to an empty position or convert an old vibrato parameter
 |  SHIFT+N      Edit the instrument name
 |  SHIFT+S      Smart paste: move an instrument and renumber it in all patterns
@@ -485,6 +533,14 @@ Wave $00 the gate is also left untouched, but the table pointers and ADSR are in
 C64 GrooveGoat comes with a library of more than 5000 ready-made instruments ("SIDGen
 instruments for GoatTracker 2") in two sets, one for the old SID (6581) and one for the new SID
 (8580), sorted into categories such as bass, lead, drums, pads, strings and effects.
+
+The library is the folder "instruments" (with a 6581 and an 8580 folder in it). The program looks for
+it, in this order: the folder you chose with FOLDER... (below), next to the program, in the source
+folder the program was built from, in the app bundle, and in the settings folder
+(~/.groovegoat/instruments, on Windows next to the program). If it is not found the library window
+says so and shows where it looked. Click FOLDER... (top right in the library window), browse to
+any instrument of the library and open it: the folder that holds the 6581 and 8580 folders is
+used, and it is remembered in the settings file for the next time.
 
 Open the library with the Library button in the instrument header or with CTRL+L. The library
 window has three parts: the categories on the left, the instruments in the middle and the
@@ -619,6 +675,9 @@ are full, a message tells you to delete unused table data first (SHIFT+O in the 
 |  RETURN       Go back to the instrument parameter
 |  SHIFT+Q / A  Transpose a speedtable portamento speed half step up / down
 |  SHIFT+W / S  Transpose octave up / down, or multiply / divide pulse and filter speeds by 2
+|  SHIFT+I      Summary of the pulse, wave or filter table program (see below)
+|  SHIFT+H      Show / hide the side list of the codes of the table under the cursor
+|  SHIFT+E      Step editor for the wave, pulse or filter program under the cursor (see below)
 |  SHIFT+L      Convert a limit based modulation step to a time based step
 |  SHIFT+N      Negate a speed (pulse/filter) or relative note (wave)
 |  SHIFT+O      Optimize the table (remove unused rows)
@@ -674,6 +733,16 @@ MP3 tags and shown in exported videos.
 |  FXY  Set tempo. $03-$7F sets the tempo of all voices, $83-$FF only of the current voice.
 |       $00-$01 recall the funktempo values.
 
+### Pattern command guide
+
+While the cursor is on the command or data column of the pattern editor, a guide lists the commands 0-F
+(the one under the cursor is highlighted) and explains the command and its data byte in plain words,
+for example "vibrato: 5.0 Hz, depth about 20 cents at A-4", with the speedtable row it uses, the
+frequency of a portamento in semitones per second, the attack and decay times of 5XY, or the tempo in
+frames, milliseconds and BPM. Commands that start a table program (8XY, 9XY) also describe that program.
+The same sentence is shown on the line under the tables. The guide appears on the side of the screen
+that the cursor is not on. SHIFT+G hides and shows it.
+
 The master volume is $F by default and is only reset when a song is loaded or cleared, not when
 playback starts. If you change it, reset it at the beginning of your song.
 
@@ -719,6 +788,204 @@ Examples:
 
 The pattern commands 0XY, 8XY and EXY can not be executed from the wavetable.
 
+### Opening the editors from the instrument
+
+An instrument points at a program in each table (its Wavetable Pos, Pulsetable Pos, Filtertable Pos and Vibrato Param). Put the
+cursor on one of those values in the instrument editor and press SHIFT+E: the step editor (wave, pulse, filter) or the speed
+editor (vibrato) opens on exactly that program, and the table panel scrolls to it. There is no need to find the rows in the
+table, and no other program can be changed by mistake. If the instrument has no program in that table yet, SHIFT+RETURN makes
+one first.
+
+### Which instruments use a table row
+
+In the table panel a small box at the right of a row shows that instruments start there: the number of the instrument (for
+example 03), or x2, x3 ... when several instruments share the row (x+ for ten or more). The box is yellow for the instrument you are editing.
+Before changing a program, look for the box: a change to a row that other instruments use changes those instruments as well.
+Only the start rows (the table pointers of the instruments) are marked; a row that a pattern command (8XY, 9XY, AXY) or a
+jump in the wavetable starts is not.
+
+### ADSR sliders
+
+SHIFT+E on Attack/Decay or Sustain/Release in the instrument editor, or a click on the envelope graph next to it, opens four
+sliders: attack, decay, sustain and release. Click or drag in a slider to set the value (0-F), or use UP / DOWN to choose a
+slider, LEFT / RIGHT to change it (SHIFT = 4 at a time) and the keys 0-9 and A-F to type a value. The instrument follows at once,
+and the graph shows the envelope with the times in milliseconds. PLAY (SPACE) plays a test note with the instrument and RELEASE
+(SHIFT+SPACE) lets it go; with PLAY WHEN LET GO on, a note plays every time you let go of a slider with the mouse, so you can hear the
+change while you drag. ENTER keeps the values, ESC puts the old values back.
+
+### Step editor
+
+SHIFT+E in the wavetable or the pulsetable opens the step editor. Instead of table rows it shows the program
+as one box per tick (a tick is one frame): the wave editor gives every tick a waveform and a note, the pulse
+editor gives every tick a pulse width. The small pictures show the shape of each tick.
+
+|  LEFT / RIGHT   Choose a tick (or click it)
+|  + / -          Add a tick after the chosen one / remove the chosen tick (or click [ + ] [ - ])
+|  T S P N        Wave editor: toggle triangle, sawtooth, pulse, noise
+|  G Y R X        Wave editor: toggle gate, sync, ring modulation, test bit
+|  UP / DOWN      Wave editor: note in semitones (SHIFT = octave); pulse editor: the pulse width
+|  A              Wave editor: switch between a note relative to the played note and an absolute note
+|  L              The program jumps back to the chosen tick after the last one (L again: no loop)
+|  SPACE          Play a test note with the current instrument (SHIFT+SPACE: release)
+|  U              Live on / off
+|  ENTER / ESC    Keep the changes / undo all changes
+|  Mouse          Click and drag in the draw pad (see below)
+
+Every key has a button in the window as well (shape, bits, note and width steps, loop, play, live, keep and
+undo), so the keys do not have to be remembered. A button that is lit is switched on for the chosen tick.
+
+DRAWING WITH THE MOUSE. Under the ticks there is a draw pad with one bar per tick. Press the mouse button in
+the pad and drag: every tick you pass over gets the height of the mouse, and a fast stroke is filled in
+between ticks, so a curve drawn from left to right is a sweep. In the pulse editor the height is the pulse
+width, in the filter editor the cutoff, and in the wave editor the pitch: the note of each tick relative to the
+played note, from -24 to +24 semitones (the middle line is the played note itself). Values snap to whole
+steps (1.6% of the width, 4 cutoff steps, a semitone); hold SHIFT while drawing to switch snapping off for
+width and cutoff. A tick with an absolute note is shown as a dotted line in the middle and is not changed by
+drawing; switch it to RELATIVE (key A) first. The waveform of a tick (triangle, sawtooth, pulse, noise) is a
+choice of the SID chip, not a curve, so it is still chosen with the shape buttons. Drawing is live like every
+other change.
+
+ARPEGGIOS. The wave editor builds arpeggios: the program steps through the notes of a chord, one note
+after the other, and repeats. Click a chord button and the wave program is made at once: MAJ (0 4 7), MIN
+(0 3 7), SUS4 (0 5 7), DIM (0 3 6), AUG (0 4 8), MAJ7 (0 4 7 11), MIN7 (0 3 7 10), MAJ+8 (0 4 7 12), MIN+8
+(0 3 7 12), OCT (0 12), 5TH (0 7) and 5TH+8 (0 7 12). The numbers are semitones above the note that is
+played. TYPE... asks for your own list, for example "0 3 7" (up 3, then up 7) or "0 5 9 12"; separate the
+numbers with spaces or commas, a minus sign goes down. The Speed buttons set how many ticks each note lasts
+(1T = the fastest, a new note every frame; the time per note is shown on the first Arp row), and UP / UP-DOWN
+chooses between 0 4 7 0 4 7 ... and 0 4 7 4 0 4 7 4 ... The waveform of the chosen tick is used for every
+note, and the program loops from the first tick. An arpeggio can take 32 ticks at most (notes times ticks per
+note, and twice the notes minus two for UP-DOWN); the editor says so if it is too long. Afterwards the ticks
+can be changed like any others, for example drawing the notes with the mouse. Use the instrument's wave table
+pointer as usual: the arpeggio runs each time a note starts.
+
+For example 5 ticks with square, square, pulse, noise and a loop makes the rows
+"41 00 / 00 80 / ..." by itself: a run of identical ticks becomes a delay row, and in the pulse editor a
+steady sweep becomes one modulation row. With Live on (the default) the table follows every change, so a
+playing note changes at once; ESC puts the old rows back. The new program replaces the old one in its
+place: it first uses the rows of the old program and the empty rows after it. If it needs more, the editor says
+how many, and KEEP CHANGES makes room: it adds empty rows after the program and moves the programs behind it
+down. Every instrument, pattern command (8XY, 9XY, AXY) and jump that pointed at a moved row follows, so no
+other program is overwritten or changed. (While you edit, the live preview only follows as long as the rows fit
+in place.) This is only refused when the table is too full to move the rows; SHIFT+O in the table editor first
+removes the rows nothing uses. Programs with pattern commands, or longer than 32 ticks, are edited in the table.
+
+### Playing row highlight
+
+While a song or a test note plays, the row of each table that the voice is on is highlighted in the table
+panel: the wave and pulse rows being executed (a row stays lit while it waits or modulates), the filter row
+of the voice's SID, and the speedtable row used by the voice's portamento or vibrato (also the instrument's
+own vibrato). The voice is the one being edited if it plays the current instrument, otherwise another voice
+playing it. In the pulse and wave summary windows the playing row is marked with a blue *.
+
+### Speedtable editor
+
+SHIFT+E in the speedtable opens the speedtable editor for the row under the cursor. A speedtable row is
+used in three ways, and the editor shows it the way it is used (it picks the one the row is used as, and
+the buttons VIBRATO, PORTAMENTO and FUNKTEMPO, or the keys 1 2 3, switch the view):
+
+|  Vibrato      Speed (time until the direction changes) and depth; the picture shows the pitch over time
+|  Portamento   The speed as a 16-bit number, with the picture of the pitch over the first second
+|  Funktempo    Two tempos, and a picture of how the rows alternate
+
+NOTE INDEPENDENT (key I) switches the row to the form where the depth or speed follows the size of the note
+(a shift: 1/2^n of the step to the next note per tick). The presets are starting points. The text under the
+picture says in words what the row does (vibrato rate in Hz and depth in cents at A-4, portamento in semitones
+per second, tempos in frames and milliseconds) and where the row is used: which instruments, pattern commands
+and wavetable rows point at it. PGUP / PGDN or the buttons go to the previous / next row, LEFT / RIGHT choose
+the value, UP / DOWN change it (SHIFT = bigger steps). The row follows every change at once, so a playing note
+changes with it; ESC puts the old values back and ENTER keeps them.
+
+### Filtertable summary and editor
+
+The line under the tables and SHIFT+I in the filtertable describe the filter program in words: the passband
+(low-pass, band-pass, high-pass, or a combination such as notch), the resonance, the voices that are sent
+through the filter, how the cutoff moves, and how long one repetition takes. The window shows every row in plain
+language, a graph of the cutoff over time (with a marker on the playing position) and the shape of the filter
+(level over frequency) at four moments of the program. The cutoff frequencies are given for an 8580; a 6581 differs
+from chip to chip. A set row ($80-$F0) directly followed by a cutoff row ($00) happens in the same tick, as the
+manual says above. An empty row $00 $00 is not a stop: it sets the cutoff to 0.
+
+SHIFT+E in the filtertable opens the step editor with one bar per tick (the height is the cutoff), the passband
+buttons LOW BAND HIGH (several together give a notch or band-reject), resonance, the voices, steps of the cutoff,
+presets, and SWEEP UP / SWEEP DOWN to spread the cutoff over all ticks. The picture shows the response of the filter
+for the chosen tick. Everything else works like the wave and pulse step editor. A filter program that changes the
+passband or the voices part-way is edited in the table.
+
+### On-screen piano
+
+The Keys button in the header of the pattern panel (or ALT+K) shows a piano over the lower rows of the pattern
+panel: 32 keys, from the C of the current octave to the G two octaves higher (the octave you set with the Octave
+button or its keys; the - and + in the piano header change it as well). The X closes it. Whether it is shown is
+saved in the configuration file.
+
+|  Click a key      Plays the note with the chosen instrument, and in the note column of the pattern editor
+|                   enters it at the cursor, like a key of the computer keyboard (RECORD and the advance
+|                   setting apply). Releasing the mouse releases the note
+|  Drag over keys   Plays the keys you slide over (a glissando); only the first one is entered
+|
+|  Orange           A key that you or a MIDI keyboard hold
+|  Green            A key that a voice is playing, from the song or a test note
+|  < lower, higher >  A note is playing outside the 32 keys: change the octave to see it
+
+Green shows the note of the voice as the song plays it (the arpeggio steps of the wavetable are not shown, only
+the note that was started). The piano covers the last pattern rows of the panel; the cursor row stays in the
+middle of the panel, so it is not hidden.
+
+### MIDI input
+
+A MIDI keyboard or controller can play the editor (macOS build). The program connects to every MIDI source it
+finds when it starts, and notices devices that are plugged in or removed while it runs (the status line names
+them). There is nothing to set up.
+
+|  Key down       In the note column of the pattern editor: the note is entered at the cursor like a key of the
+|                 computer keyboard (with the chosen instrument, the cursor moves on, RECORD off enters nothing)
+|                 and played. Everywhere else (instrument, tables, other columns): played as a test note with
+|                 the chosen instrument
+|  Key up         Releases the test note (not while a song plays)
+|  Program change Chooses instrument 01-3F: program 0 is instrument 01
+
+Several keys held at once all sound, each on a channel of its own: the first key on the channel of the cursor, the next ones
+on the channels after it (a chord needs as many channels as keys; with one SID that is three, a fourth key takes over
+the channel of the oldest key). Only the first key of a chord is entered in the pattern. While a song plays, every key
+uses the channel of the cursor, so the voices of the song are left alone. The keys held show orange on the on-screen
+piano.
+
+MIDI note 12 (C0) is the lowest tracker note C-0, and middle C (note 60) is C-4. The octave setting of the
+computer keyboard does not apply. Notes outside the tracker range are ignored. Velocity, pitch bend and
+controllers are not used yet. Set GG_NOMIDI=1 in the environment to start without MIDI.
+
+### Screen fonts
+
+The Aa button in the header of the pattern panel (next to "N SIDs, N channels") switches the screen font: Fira Code
+(the default) and MesloLGS NF. The choice is saved in the configuration file. The fonts are drawn into the program
+when it is built (tools/mkres.py, the list FONTS and the files in res/fonts), so another font is added by putting its
+.ttf file in res/fonts, adding a line to FONTS and building again. Check the licence of a font before you share a
+build or the source with it: Fira Code is under the SIL Open Font License and MesloLGS NF under the Apache License 2.0
+(see res/fonts). Pixel fonts with 8 pixels per character can be drawn at exactly 8 and 16 pixels and stretched
+twice vertically (the last two numbers in the FONTS line), and FONTS has a list for fonts without accented letters.
+
+### Table codes list
+
+While a table is edited, a list of the codes of that table is shown to the left of the table panel: what
+every value of the left and the right side does, and for the wavetable the pattern commands F1-FD. The
+entry that matches the value under the cursor is highlighted. SHIFT+H hides and shows the list.
+
+### Wavetable summary
+
+Next to the ADSR graph a small picture shows the waveform: triangle, sawtooth, pulse or noise, with
+a label such as PUL or TRI+SAW (and RING, SYNC or TEST when those bits are set). When several shapes
+are combined, the thin lines are the shapes by themselves and the thick line is roughly what the SID
+makes of the combination. While the cursor is in the wavetable the picture follows the cursor row; on a
+row that does not set a waveform (a delay, a note-only row, a jump) the waveform in effect is shown dimmed.
+Otherwise it shows the first waveform that the current instrument's wavetable program sets.
+
+Under the tables one line describes the program at the cursor, for example "pulse, then tri; ends after 2t".
+SHIFT+I in the wavetable opens a window with every row in plain language ("wait 3 frames, then note +7",
+"pulse, note C#0", "loop back to 02"), a graph with the note over time and below it the waveform of each
+step, the waveforms used, the notes (an arpeggio is listed as "arpeggio 0 +4 +7 +12"), and how long one
+repetition takes. The replay follows the playroutine, including the delay rule: a delay of N holds the
+previous waveform for N+1 frames. Vibrato, portamento and the other commands are listed but not drawn.
+
 ## Pulsetable
 
 |  Left side   01-7F  Modulation step: left = time in ticks, right = signed speed
@@ -730,6 +997,37 @@ The pattern commands 0XY, 8XY and EXY can not be executed from the wavetable.
 |  03: 40 E0    64 ticks down with speed -$20
 |  04: 40 20    64 ticks up with speed $20
 |  05: FF 03    Loop back to row 03
+
+### Pulsetable summary
+
+Under the tables, one line says in plain words what the pulsetable program at the cursor does, for
+example "PULSE 01: 0.4% to 50.4% sweep, 2.6 s loop". While the cursor is in the pulsetable it is the
+program the cursor is in (it starts on the row after the last FF row above the cursor); otherwise it
+is the program the current instrument starts (its Pulsetable Pos).
+
+SHIFT+I in the table editor opens the summary window:
+
+|  Rows      Every row of the program in plain language, for example "narrow 64t, -$20/t = -50%"
+|            (t = tick = one frame). The row of the cursor is marked with >
+|  Graph     The pulse width over time, 0% at the bottom and 100% at the top. A program that
+|            repeats is shown for two repetitions, with dotted lines around the part that repeats
+|  Width     The narrowest and the widest the pulse gets, in percent of the period ($800 = 50%)
+|  Shape     For example "sweeps up and down", "sweeps up, jumps back (sawtooth)", "keeps widening
+|            and wraps round", "sets the width to 50% and holds it"
+|  Time      How many ticks (and seconds, and Hz) one repetition takes, or when the program ends
+|  Remark    For example an empty row that stops the table, a jump to a jump row (the playroutine
+|            takes it as "set width"), or a width of 0% or 100% where the voice is silent
+
+The Wave line shows the output of the voice at six moments of the program, left to right, with the pulse
+width of each moment: this is the shape the pulse modulation forms (when the instrument's waveform combines
+the pulse with other shapes, that combination is drawn). While the cursor is in the pulsetable, the small
+picture next to the ADSR graph shows the wave with the width that the row under the cursor leaves
+(for a modulation row "12%>40%" means from 12% to 40%).
+
+The summary replays the program tick by tick exactly like the playroutine does. When the program does
+not start by setting the width itself, the width the voice has when the instrument starts is not
+known: the replay starts from $800 (50%) and the window says so. The ticks that the playroutine skips
+with the PO setting are not taken into account.
 
 ## Filtertable
 
