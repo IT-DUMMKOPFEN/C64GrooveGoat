@@ -496,8 +496,12 @@ int main(int argc, char **argv)
       speech_defaults(&sp);
       strncpy(sp.text, speechtext, SPEECH_MAXTEXT - 1);
       if (getenv("GG_SPEECHMODE")) sp.mode = atoi(getenv("GG_SPEECHMODE"));
+      if (getenv("GG_SPEECHVOICE"))
+      {
+        sp.voice = atoi(getenv("GG_SPEECHVOICE"));
+        sp.basenote = speech_voicenote(sp.voice);
+      }
       if (getenv("GG_SPEECHNOTE")) sp.basenote = atoi(getenv("GG_SPEECHNOTE"));
-      if (getenv("GG_SPEECHVOICE")) sp.voice = atoi(getenv("GG_SPEECHVOICE"));
       if (getenv("GG_SPEECHSPEED")) sp.speed = atoi(getenv("GG_SPEECHSPEED"));
       if (getenv("GG_SPEECHMELODY")) sp.melody = atoi(getenv("GG_SPEECHMELODY"));
       // pattern to write into (default: the pattern at the start of the channel's orderlist)

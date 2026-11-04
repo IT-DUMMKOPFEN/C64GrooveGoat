@@ -12,7 +12,7 @@ typedef struct
   int basenote;               // note of the voice (0 = C-0 ... 95 = B-7), e.g. 33 = A-2
   int speed;                  // duration in percent (100 = normal, 150 = slower)
   int melody;                 // 0 monotone, 1 statement (falling), 2 question (rising), 3 command (strong accents)
-  int voice;                  // 0 robot (pulse), 1 bright (sawtooth), 2 whisper (noise)
+  int voice;                  // speaker: 0 man, 1 woman, 2 child, 3 giant, 4 robot, 5 bright, 6 whisper
   int tempo;                  // song speed: frames (ticks) per pattern row, F02 ... F10;
                               // 0 = take it from the song (speech_songtempo)
   int settempo;               // put an F0x tempo command on the first row
@@ -20,6 +20,11 @@ typedef struct
 } SPEECHPARAMS;
 
 void speech_defaults(SPEECHPARAMS *p);
+
+// Speakers (voice presets): count, name, default pitch (note)
+int speech_numvoices(void);
+const char *speech_voicename(int v);
+int speech_voicenote(int v);
 
 // Speed of the song around the cursor (frames per row): the first tempo
 // command in the current patterns, else the default tempo (6)

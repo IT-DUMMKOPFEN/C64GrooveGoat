@@ -17,7 +17,6 @@ static void *prevdata = NULL;
 static int prevlen[MAX_PATT];
 static int previewing = 0;
 
-static const char *voicenames[3] = {"Robot (pulse)", "Bright (sawtooth)", "Whisper (noise)"};
 static const char *melodynames[4] = {"Monotone", "Statement (falls at the end)", "Question (rises at the end)",
                                      "Command (strong accents)"};
 
@@ -134,7 +133,7 @@ void speechdialog(void)
       switch (c)
       {
         case 0: sprintf(buf, "Text              "); break;
-        case 1: sprintf(buf, "Voice             " GS_PREV " %s " GS_NEXT, voicenames[sp.voice]); break;
+        case 1: sprintf(buf, "Voice             " GS_PREV " %s " GS_NEXT "   (%d/%d, sets the pitch)", speech_voicename(sp.voice), sp.voice + 1, speech_numvoices()); break;
         case 2:
           spnotename(sp.basenote, nb);
           sprintf(buf, "Pitch             " GS_PREV " %s " GS_NEXT "   (base note, SHIFT = octave)", nb);
@@ -280,7 +279,10 @@ void speechdialog(void)
         int dir = rawkey == KEY_LEFT ? -1 : 1;
         switch (sel)
         {
-          case 1: sp.voice = (sp.voice + dir + 3) % 3; break;
+          case 1:
+          sp.voice = (sp.voice + dir + speech_numvoices()) % speech_numvoices();
+          sp.basenote = speech_voicenote(sp.voice);
+          break;
           case 2:
           sp.basenote += dir * (shiftpressed ? 12 : 1);
           if (sp.basenote < 12) sp.basenote = 12;

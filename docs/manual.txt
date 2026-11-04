@@ -623,7 +623,11 @@ frame (20 ms), and the pattern gets one note per sound.
 |                 CMU phonemes between slashes: /HH AH0 L OW1 | W ER1 L D/ (stress 0-2 on the
 |                 vowels, | = word gap). Words come from the CMU pronouncing dictionary
 |                 (125,000 words); unknown words are spelled with letter rules.
-|  Voice          Robot (pulse wave), Bright (sawtooth) or Whisper (filtered noise)
+|  Voice          The speaker: Man, Woman, Child, Giant (deep), Robot, Bright (sawtooth) or
+|                 Whisper (filtered noise). Woman and Child have higher formants (117% and
+|                 130%, a shorter vocal tract) and a higher pitch, the Giant lower ones; the
+|                 Robot speaks on one note with a metallic pulse+saw wave (8580). Choosing a
+|                 voice sets its typical pitch, which can be changed afterwards.
 |  Pitch          Base note of the voice (A-2 = 110 Hz, a low male voice); SHIFT = octave
 |  Speed          50% (fast) ... 250% (slow)
 |  Melody         Monotone, Statement (falls at the end), Question (rises at the end) or
@@ -657,8 +661,12 @@ How the sounds are made (SID model 8580, PAL):
 |                 width follows the second formant (F2): a narrow pulse gives the bright
 |                 "ee", a wide one the dark "oo". Cutoff and pulse width glide between the
 |                 sounds frame by frame.
-|  S, SH, F, TH   Noise ($81) at a high or low pitch, band-pass or high-pass filtered
-|  P, T, K        Silence (closure), one frame noise burst, short aspiration
+|  S, SH, F, TH   Noise ($81), band-pass or high-pass filtered. The noise always runs at a
+|                 high note: slow SID noise turns into a crackle of big steps that sounds
+|                 like knocking wood; the filter makes the band.
+|  P, T, K        Silence (closure), one frame burst without resonance (high-pass for T/D,
+|                 band-pass at the next vowel for K/G, low-pass for P/B), breathy
+|                 aspiration; before a pause only a soft release
 |  B, D, G        Low "voice bar" before the burst
 |  M, N, NG       Low-pass at 350 Hz (nasal murmur)
 |  Pauses         Gate stays on, no waveform (no click)

@@ -377,6 +377,36 @@ static int hz2cutoff(int hz)
   return 255;
 }
 
+// Voices: waveform, formant scale (shorter vocal tract = higher formants),
+// pitch, melody
+enum { VW_PULSE, VW_SAW, VW_NOISE, VW_METAL };
+typedef struct
+{
+  const char *name;
+  int wave;           // VW_*
+  int formant;        // percent
+  int note;           // default pitch (A-2 = 33)
+  int monotone;
+} VOICE;
+
+static const VOICE voices[] = {
+  {"Man", VW_PULSE, 100, 33, 0},
+  {"Woman", VW_PULSE, 117, 44, 0},
+  {"Child", VW_PULSE, 130, 50, 0},
+  {"Giant (deep)", VW_SAW, 88, 26, 0},
+  {"Robot", VW_METAL, 100, 31, 1},
+  {"Bright (sawtooth)", VW_SAW, 100, 33, 0},
+  {"Whisper", VW_NOISE, 105, 33, 0},
+};
+#define NUMVOICES ((int)(sizeof voices / sizeof voices[0]))
+
+int speech_numvoices(void) { return NUMVOICES; }
+const char *speech_voicename(int v) { return voices[v >= 0 && v < NUMVOICES ? v : 0].name; }
+int speech_voicenote(int v) { return voices[v >= 0 && v < NUMVOICES ? v : 0].note; }
+
+static const VOICE *curvoice;
+static int fscale(int hz) { return hz * curvoice->formant / 100; }
+
 static int notefreq(int note)
 {
   return (int)(440.0 * pow(2.0, (note - 57) / 12.0));
@@ -384,8 +414,10 @@ static int notefreq(int note)
 
 static int noisenote(int hz)
 {
-  // brighter noise for higher bands (absolute wavetable notes)
-  int n = 60 + hz / 150;
+  // the SID noise is only white when it runs fast: at low notes it becomes
+  // a crackle of big steps (a "wooden" knock). Always a high noise note; the
+  // filter makes the band.
+  int n = 86 + hz / 1500;
   if (n > 95) n = 95;
   return 0x80 + n;
 }
@@ -396,8 +428,9 @@ static void voiced(FRAME *f, int f1, int f2, int note, const SPEECHPARAMS *p, in
   int f0 = notefreq(note);
   double d;
   memset(f, 0, sizeof *f);
-  f->wave = p->voice == 1 ? 0x21 : (p->voice == 2 ? W_NOISE : 0x41);
-  f->note = p->voice == 2 ? noisenote(f2) : 0x00;
+  f->wave = curvoice->wave == VW_SAW ? 0x21 : (curvoice->wave == VW_NOISE ? W_NOISE : 0x41);
+  if (curvoice->wave == VW_METAL) f->wave = editorInfo.sidmodel ? 0x61 : 0x41;     // pulse+saw: metallic (8580)
+  f->note = curvoice->wave == VW_NOISE ? noisenote(f2) : 0x00;
   // pulse width: emphasize the harmonics around F1 (first spectral peak of a
   // narrow pulse at 1/(2*duty) times the fundamental)
   d = (double)f0 / (2.0 * (f1 > 150 ? f1 : 150));
@@ -434,7 +467,7 @@ static void voiced(FRAME *f, int f1, int f2, int note, const SPEECHPARAMS *p, in
     if (d < 0.03) d = 0.03;
     f->pulse = (int)(d * 4096);
     if (p->mode == 9) f->wave = 0x21;
-    if ((p->mode == 10 || p->mode == 0) && (f2 < 1100)) f->wave = 0x21;
+    if ((p->mode == 10 || p->mode == 0) && (f2 < fscale(1100)) && (curvoice->wave == VW_PULSE)) f->wave = 0x21;
     break;
     case 3:   // bandpass, alternating F1 / F2 on every frame
     f->ftype = 0x20;
@@ -456,9 +489,10 @@ static void voiced(FRAME *f, int f1, int f2, int note, const SPEECHPARAMS *p, in
     f->cutoff = hz2cutoff(f2);
     break;
   }
-  if (p->voice == 2)
+  if (curvoice->wave == VW_NOISE)
   {
     f->ftype = 0x20;
+    f->res = 12;
     f->cutoff = hz2cutoff(f2);
   }
 }
@@ -592,6 +626,11 @@ static void intonation(const SPEECHPARAMS *p)
   for (c = 0; c < numphones; c++)
   {
     int n = p->basenote;
+    if (curvoice->monotone)
+    {
+      phones[c].note = n;
+      continue;
+    }
     int isv = (phones[c].ph != PSILENCE) && (phon[phones[c].ph].type <= PD);
     if ((isv) && (phones[c].stress == 1)) n += (p->melody == 3) ? 3 : (p->melody ? 2 : 0);
     if (phones[c].word == lastword)
@@ -676,7 +715,7 @@ static void synthesize(const SPEECHPARAMS *p)
     int s = phones[c].start, n = phones[c].frames, note = phones[c].note;
     const PHON *ph = phones[c].ph == PSILENCE ? NULL : &phon[phones[c].ph];
     int nv = nextvowel(c);
-    int nextf2 = nv >= 0 ? phon[phones[nv].ph].f2 : 1500;
+    int nextf2 = fscale(nv >= 0 ? phon[phones[nv].ph].f2 : 1500);
     for (f = 0; f < n; f++)
     {
       FRAME *fr = &frames[s + f];
@@ -690,45 +729,56 @@ static void synthesize(const SPEECHPARAMS *p)
         break;
         case PN:
         // nasal murmur: low pass around 300 Hz, the transitions carry the place
-        voiced(fr, 280, 1000, note, p, g);
+        voiced(fr, fscale(280), fscale(1000), note, p, g);
         fr->ftype = 0x10;
-        fr->cutoff = hz2cutoff(f < n - 1 ? 350 : 600);
+        fr->cutoff = hz2cutoff(fscale(f < n - 1 ? 350 : 600));
         break;
         case PFU:
-        noiseframe(fr, ph->noise, ph->noise >= 5000 ? 0x40 : 0x20, ph->noise >= 5000 ? 4 : 10);
+        noiseframe(fr, fscale(ph->noise), ph->noise >= 5000 ? 0x40 : 0x20, ph->noise >= 5000 ? 4 : 8);
         if (!strcmp(ph->name, "F") || !strcmp(ph->name, "TH")) fr->res = 0;
         break;
         case PFV:
         // voiced fricative: voicing with noise frames in between
-        if ((f & 1) && (n > 2)) noiseframe(fr, ph->noise, 0x20, 8);
+        if ((f & 1) && (n > 2)) noiseframe(fr, fscale(ph->noise), 0x20, 6);
         else
         {
-          voiced(fr, ph->f1, ph->f2, note, p, g);
+          voiced(fr, fscale(ph->f1), fscale(ph->f2), note, p, g);
           fr->ftype = 0x10;
-          fr->cutoff = hz2cutoff(900);
+          fr->cutoff = hz2cutoff(fscale(900));
         }
         break;
         case PH:
-        // aspiration: noise shaped like the following vowel
-        noiseframe(fr, nextf2, 0x20, 12);
+        // aspiration: breathy noise shaped like the following vowel
+        noiseframe(fr, nextf2, 0x20, 4);
         break;
         case PSU: case PSV:
         {
-          // closure (silence / voice bar), burst, aspiration
-          int asp = (ph->type == PSU) ? (n >= 5 ? 2 : 1) : 0;
+          // closure (silence / voice bar), a short burst without resonance
+          // (a resonant burst rings like a wood block) and a breathy
+          // aspiration; a stop before a pause only gets a soft release
+          int final = nv < 0;
+          int asp = (ph->type == PSU) && (!final) ? (n >= 5 ? 2 : 1) : 0;
           int burst = n - 1 - asp;
+          int alveolar = !strcmp(ph->name, "T") || !strcmp(ph->name, "D");
+          int velar = !strcmp(ph->name, "K") || !strcmp(ph->name, "G");
           if (f < burst)
           {
             if (ph->type == PSV)
             {
-              voiced(fr, 250, 800, note, p, g);
+              voiced(fr, fscale(250), fscale(800), note, p, g);
               fr->ftype = 0x10;
-              fr->cutoff = hz2cutoff(250);
+              fr->cutoff = hz2cutoff(fscale(250));
             }
             else silentframe(fr, prev);
           }
-          else if (f == burst) noiseframe(fr, !strcmp(ph->name, "K") || !strcmp(ph->name, "G") ? (nextf2 + 300) : ph->noise, 0x20, 6);
-          else noiseframe(fr, nextf2, 0x20, 12);
+          else if (f == burst)
+          {
+            if (final) noiseframe(fr, fscale(6000), 0x40, 0);
+            else if (alveolar) noiseframe(fr, fscale(ph->noise), 0x40, 2);
+            else if (velar) noiseframe(fr, nextf2 + 300, 0x20, 4);
+            else noiseframe(fr, fscale(1500), 0x10, 1);
+          }
+          else noiseframe(fr, nextf2, 0x20, 3);
         }
         break;
         case PAF:
@@ -888,6 +938,8 @@ int speech_songtempo(int chn)
 static const SPEECHPARAMS *fixparams(const SPEECHPARAMS *p, SPEECHPARAMS *q, int chn)
 {
   *q = *p;
+  if ((q->voice < 0) || (q->voice >= NUMVOICES)) q->voice = 0;
+  curvoice = &voices[q->voice];
   if (!q->tempo) q->tempo = speech_songtempo(chn);
   if (q->tempo < 3) q->tempo = 3;
   return q;
@@ -950,7 +1002,7 @@ int speech_generate(const SPEECHPARAMS *p, int chn, int row, char *err, int errs
   static PROG wp[MAXPHONES], pp[MAXPHONES], fp[MAXPHONES];
   int slot[MAXPHONES], inum[MAXPHONES];
   int c, k, need = 0, tlen[3], rows, patt, voicebit, sid;
-  char phs[1024], nb[8];
+  char phs[1024], nb[16];
   SPEECHPARAMS fixed;
 
   p = fixparams(p, &fixed, chn);
@@ -966,6 +1018,10 @@ int speech_generate(const SPEECHPARAMS *p, int chn, int row, char *err, int errs
   }
   intonation(p);
   formanttracks();
+  {
+    int fr;
+    for (fr = 0; fr < numframes; fr++) { f1t[fr] = fscale(f1t[fr]); f2t[fr] = fscale(f2t[fr]); }
+  }
   synthesize(p);
 
   voicebit = 1 << (chn % 3);
@@ -1104,6 +1160,7 @@ int speech_generate(const SPEECHPARAMS *p, int chn, int row, char *err, int errs
   // listing
   lst("C64 GrooveGoat speech generator\n===============================\n\n");
   lst("Text:      %s\nPhonemes:  %s\n", p->text, phs);
+  lst("Speaker:   %s, base note %s (formants %d%%)\n", curvoice->name, notestr(p->basenote, nb), curvoice->formant);
   lst("Voice:     channel %d.%d (SID %d voice %d), filter on this voice only (bitmask $%X)\n", sid + 1, chn % 3 + 1, sid + 1, chn % 3 + 1, voicebit);
   lst("Timing:    song speed F%02X = %d frames per row (%d ms), tables run every frame (%d per second),\n"
       "           %d rows, %.2f s. Several short sounds can share one row / instrument.\n",
