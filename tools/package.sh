@@ -12,7 +12,7 @@
 set -e
 cd "$(dirname "$0")/.."
 
-VERSION=0.92b
+VERSION=0.93b
 NAME="C64-GrooveGoat-$VERSION"
 TOOLS=${TOOLS:-$(cd .. && pwd)/tools}
 INSTRUMENTS=${INSTRUMENTS:-$(cd .. && pwd)/ins_zip/Instrumente}
@@ -42,7 +42,11 @@ cp examples/$DEMO.sng $DIST/common/examples/
 ./build/linux/groovegoat --export=$DIST/common/examples/$DEMO.sid $DIST/common/examples/$DEMO.sng > /dev/null
 ./build/linux/groovegoat --format=prg --export=$DIST/common/examples/$DEMO.prg $DIST/common/examples/$DEMO.sng > /dev/null
 mkdir -p $DIST/common/examples/goattracker2
-for f in examples/*.sng examples/*.ins; do [ "$(basename $f)" = "$DEMO.sng" ] || cp $f $DIST/common/examples/goattracker2/; done 2>/dev/null || true
+# speech generator demo (8580, 1 SID)
+cp examples/together_we_hunt.sng $DIST/common/examples/
+./build/linux/groovegoat -E1 --export=$DIST/common/examples/together_we_hunt.sid $DIST/common/examples/together_we_hunt.sng > /dev/null
+./build/linux/groovegoat -E1 --format=prg --export=$DIST/common/examples/together_we_hunt.prg $DIST/common/examples/together_we_hunt.sng > /dev/null
+for f in examples/*.sng examples/*.ins; do case "$(basename $f)" in $DEMO.sng|together_we_hunt.sng) ;; *) cp $f $DIST/common/examples/goattracker2/;; esac; done 2>/dev/null || true
 cp examples/goatcompo.txt $DIST/common/examples/goattracker2/ 2>/dev/null || true
 
 # Instrument library (without macOS metadata)
@@ -65,6 +69,7 @@ cp src/codecs/lame/COPYING $DIST/common/licenses/LAME-COPYING.txt
 cp src/codecs/faac/COPYING $DIST/common/licenses/faac-COPYING.txt
 cp src/codecs/minih264/LICENSE $DIST/common/licenses/minih264-LICENSE.txt
 cp src/codecs/minimp4/LICENSE $DIST/common/licenses/minimp4-LICENSE.txt
+cp res/speech/cmudict-LICENSE.txt $DIST/common/licenses/cmudict-LICENSE.txt
 
 # readable for everybody (files from the repository may be private)
 chmod -R u+rwX,go+rX-w $DIST/common

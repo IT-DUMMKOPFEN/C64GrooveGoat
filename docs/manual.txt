@@ -1,4 +1,4 @@
-# C64 GrooveGoat 0.92b - Manual
+# C64 GrooveGoat 0.93b - Manual
 
 C64 GrooveGoat is a tracker-style music editor for the SID sound chip of the Commodore 64. It is
 based on GoatTracker 2 by Lasse Oorni (Cadaver) and the "Silver Fork" of Joel Ricci. It adds:
@@ -68,7 +68,7 @@ A song consists of:
 |  macOS        Unpack the ZIP file (AppleSilicon for Macs with M chips, Intel for Intel
 |               Macs) and move "C64 GrooveGoat.app" to Applications. On the first start
 |               use right click > Open (the app is not notarized by Apple).
-|  Linux        Make the AppImage executable (chmod +x C64_GrooveGoat-0.92b-x86_64.AppImage)
+|  Linux        Make the AppImage executable (chmod +x C64_GrooveGoat-0.93b-x86_64.AppImage)
 |               and start it. The instrument library and the examples are inside the
 |               AppImage. If your system lacks FUSE, start it with --appimage-extract-and-run.
 |  Linux tar.gz Unpack the archive and start ./groovegoat in the unpacked folder (the
@@ -611,6 +611,66 @@ The preview only works while the music is stopped. The result area shows the nam
 values with the envelope graph and the generated table rows (left:right values). If the tables
 are full, a message tells you to delete unused table data first (SHIFT+O in the table editor).
 
+## Speech generator
+
+The Speech button in the pattern tool row (or CTRL+K, CMD+K on a Mac) opens the speech
+generator. It turns an English word or sentence into speech on ONE SID voice - the channel of
+the pattern cursor - with formant synthesis, the way C64 games did it without samples: every
+sound (phoneme) gets its own instrument with wave, pulse and filter programs that change every
+frame (20 ms), and the pattern gets one note per sound.
+
+|  Text           English words, numbers and the pauses , . ? !  Exact sounds can be typed as
+|                 CMU phonemes between slashes: /HH AH0 L OW1 | W ER1 L D/ (stress 0-2 on the
+|                 vowels, | = word gap). Words come from the CMU pronouncing dictionary
+|                 (125,000 words); unknown words are spelled with letter rules.
+|  Voice          Robot (pulse wave), Bright (sawtooth) or Whisper (filtered noise)
+|  Pitch          Base note of the voice (A-2 = 110 Hz, a low male voice); SHIFT = octave
+|  Speed          50% (fast) ... 250% (slow)
+|  Melody         Monotone, Statement (falls at the end), Question (rises at the end) or
+|                 Command (strong accents on the stressed syllables)
+|  Row timing     Ticks per pattern row the speech is calculated for: 3 = 60 ms per row
+|                 (song speed 03). Optionally the tempo command F03 goes on the first row.
+
+The window shows the sounds (phonemes), the length in rows and seconds and the target: channel,
+pattern and row of the cursor.
+
+|  F1 / Preview         Plays the pattern from the cursor row with the speech (the song is not
+|                       changed)
+|  ENTER / Insert       Writes instruments, tables and pattern rows into the song (one undo
+|                       step). The pattern is made longer if needed.
+|  F2 / Save listing    Saves a text file with the instrument settings, the wave, pulse and
+|                       filter table rows and the pattern rows (ROW, NOTE, INS, CMD, SOUND)
+|  ESC                  Close
+
+How the sounds are made (SID model 8580, PAL):
+
+|  Vowels         Pulse wave (sawtooth for the dark back vowels) through the band-pass filter
+|                 with resonance $F. The cutoff follows the first formant (F1); the pulse
+|                 width follows the second formant (F2): a narrow pulse gives the bright
+|                 "ee", a wide one the dark "oo". Cutoff and pulse width glide between the
+|                 sounds frame by frame.
+|  S, SH, F, TH   Noise ($81) at a high or low pitch, band-pass or high-pass filtered
+|  P, T, K        Silence (closure), one frame noise burst, short aspiration
+|  B, D, G        Low "voice bar" before the burst
+|  M, N, NG       Low-pass at 350 Hz (nasal murmur)
+|  Pauses         Gate stays on, no waveform (no click)
+
+All speech instruments use Attack/Decay $00, Sustain/Release $F4 and no hard restart; the
+notes run legato (HR/Gate timer $C1), only the first sound clears the gate one frame early so
+that the envelope starts again.
+
+The SID has only one filter per chip. The speech sets its filter routing to its own voice only
+(for example $F4 = resonance $F, voice 3) on every frame, so the other two voices of the same
+SID play unfiltered while the voice speaks. Use the filter on those voices only where the
+speech is silent, or give the music to another SID.
+
+Do not expect a sampled voice: with one voice and one filter the result sounds like a robot
+from an 80s game. It is understood best with a little context - a title, a short command, a
+song name - and a clear, quiet arrangement around it. Tips: keep the music low or sparse while
+the voice speaks, try the pitch between G-2 and D-3, and write unusual words as phonemes.
+The example song examples/together_we_hunt.sng says "Together we hunt" three times (robot,
+command, bright) over a dark 125 BPM groove on the other two voices.
+
 ## Table editor (F7 twice)
 
 |  0-9, A-F     Enter parameters
@@ -1101,6 +1161,9 @@ Export and rendering without opening a window:
 |  --bitrate=N        MP3 bitrate in kbit/s (default 320)
 |  --stems            WAV: also render every voice into its own file
 |  --save=FILE        Load the song and save it again (converts formats) and exit
+|  --speech=TEXT      Speech generator: insert TEXT on channel 1 from row 0 (before saving,
+|                     exporting or rendering)
+|  --speechlist=FILE  Also save the listing of the generated speech
 
 ## Sound output
 
@@ -1112,7 +1175,7 @@ The default sample rate is 48000 Hz; -M44100 selects 44100 Hz.
 
 # Credits
 
-C64 GrooveGoat 0.92b by IT-Dummkopfen.
+C64 GrooveGoat 0.93b by IT-Dummkopfen.
 
 |  GoatTracker 2 editor & playroutine   Lasse Oorni (Cadaver), Covert Bitops
 |  GoatTracker 2 "Silver Fork"          Joel Ricci (github.com/joelricci/goattracker2)
@@ -1133,6 +1196,8 @@ C64 GrooveGoat 0.92b by IT-Dummkopfen.
 |  minimp4 MP4 muxer                    lieff, github.com/lieff (CC0, public domain)
 |  SIDGen instrument library            6581 & 8580 instrument sets
 |  SID file format (PSID v2/v3/v5)      High Voltage SID Collection
+|  CMU Pronouncing Dictionary           Carnegie Mellon University (BSD license, speech
+|                                       generator word list)
 
 License: C64 GrooveGoat is free software under the GNU General Public License version 2 or
 later, like GoatTracker 2. The C64 playroutines (player.s, altplayer.s, mplayer.s and the PRG

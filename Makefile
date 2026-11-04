@@ -10,14 +10,14 @@
 
 TARGET ?= linux
 TOOLS ?= $(abspath ../tools)
-VERSION = 0.92b
+VERSION = 0.93b
 
 BUILDDIR = build/$(TARGET)
 SRCDIR = src
 
 CSRC = goattrk2.c gsong.c gorder.c gpattern.c ginstr.c gtable.c gplay.c gdisplay.c \
        gfile.c greloc.c ghelp.c gsound.c gconsole.c gundo.c gplatform.c gaudio.c \
-       gfileio.c gdialog.c gres.c gsonglen.c gautotest.c gexport.c gvideo.c gadsr.c ginslib.c grandins.c gbackup.c gpiano.c
+       gfileio.c gdialog.c gres.c gsonglen.c gautotest.c gexport.c gvideo.c gadsr.c ginslib.c grandins.c gbackup.c gpiano.c gspeech.c gspeechdlg.c
 CXXSRC = gsid.cpp
 RESIDSRC = resid/envelope.cpp resid/extfilt.cpp resid/filter.cpp resid/pot.cpp resid/sid.cpp \
        resid/wave.cpp resid/wave6581__ST.cpp resid/wave6581_P_T.cpp resid/wave6581_PS_.cpp \
@@ -102,7 +102,7 @@ OBJS = $(addprefix $(BUILDDIR)/,$(CSRC:.c=.o) $(CXXSRC:.cpp=.o) $(RESIDSRC:.cpp=
 
 all: $(EXE)
 
-$(SRCDIR)/gres.c: tools/mkres.py tools/mklogo.py $(SRCDIR)/player.s $(SRCDIR)/altplayer.s $(SRCDIR)/mplayer.s $(SRCDIR)/frontend.s docs/manual.txt docs/history.txt docs/credits.txt
+$(SRCDIR)/gres.c: tools/mkres.py tools/mklogo.py $(SRCDIR)/player.s $(SRCDIR)/altplayer.s $(SRCDIR)/mplayer.s $(SRCDIR)/frontend.s docs/manual.txt docs/history.txt docs/credits.txt res/speech/speechdict.bin
 	python3 tools/mkres.py
 
 $(BUILDDIR)/codecs/lame/%.o: $(SRCDIR)/codecs/lame/%.c $(SRCDIR)/codecs/lame/config.h

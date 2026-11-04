@@ -31,6 +31,7 @@
 #include "grandins.h"
 #include "gres.h"
 #include "gpiano.h"
+#include "gspeech.h"
 
 int menu = 0;
 int recordmode = 1;
@@ -175,6 +176,8 @@ static unsigned exportbase = 0;
 static int exportsids = 0;
 static char rendername[MAX_PATHNAME];
 static char savename[MAX_PATHNAME];
+static char speechtext[SPEECH_MAXTEXT];
+static char speechlist[MAX_PATHNAME];
 static int renderseconds = 0;
 static int renderstems = 0;
 static int renderfade = -1;
@@ -248,6 +251,16 @@ int main(int argc, char **argv)
         {
           strncpy(rendername, argv[c] + 9, MAX_PATHNAME - 1);
           strcpy(exportname, "-");
+          break;
+        }
+        if (!strncmp(argv[c], "--speech=", 9))
+        {
+          strncpy(speechtext, argv[c] + 9, SPEECH_MAXTEXT - 1);
+          break;
+        }
+        if (!strncmp(argv[c], "--speechlist=", 13))
+        {
+          strncpy(speechlist, argv[c] + 13, MAX_PATHNAME - 1);
           break;
         }
         if (!strncmp(argv[c], "--save=", 7))
@@ -458,6 +471,36 @@ int main(int argc, char **argv)
       {
         sidaddr[k++] = strtoul(sa, (char **)&sa, 16);
         if (*sa == ',') sa++;
+      }
+    }
+    // --speech=TEXT: speech generator on channel 1 (or GG_SPEECHCHN), row 0
+    if (speechtext[0])
+    {
+      SPEECHPARAMS sp;
+      char err[200];
+      int chn = getenv("GG_SPEECHCHN") ? atoi(getenv("GG_SPEECHCHN")) : 0;
+      speech_defaults(&sp);
+      strncpy(sp.text, speechtext, SPEECH_MAXTEXT - 1);
+      if (getenv("GG_SPEECHMODE")) sp.mode = atoi(getenv("GG_SPEECHMODE"));
+      if (getenv("GG_SPEECHNOTE")) sp.basenote = atoi(getenv("GG_SPEECHNOTE"));
+      if (getenv("GG_SPEECHVOICE")) sp.voice = atoi(getenv("GG_SPEECHVOICE"));
+      if (getenv("GG_SPEECHSPEED")) sp.speed = atoi(getenv("GG_SPEECHSPEED"));
+      if (getenv("GG_SPEECHMELODY")) sp.melody = atoi(getenv("GG_SPEECHMELODY"));
+      // pattern to write into (default: the pattern at the start of the channel's orderlist)
+      if (getenv("GG_SPEECHPATT")) editorUndoInfo.editorInfo[chn].epnum = atoi(getenv("GG_SPEECHPATT"));
+      if (!speech_generate(&sp, chn, getenv("GG_SPEECHROW") ? atoi(getenv("GG_SPEECHROW")) : 0, err, sizeof err))
+      {
+        fprintf(stderr, "error: %s\n", err);
+        return EXIT_FAILURE;
+      }
+      if (speechlist[0])
+      {
+        FILE *lf = fopen(speechlist, "w");
+        if (lf)
+        {
+          fputs(speech_listing(), lf);
+          fclose(lf);
+        }
       }
     }
     if (getenv("GG_TRACE"))
@@ -1122,6 +1165,14 @@ void docommand(void)
     key = 0;
     rawkey = 0;
   }
+  if (((ctrlpressed) || (metapressed)) && (!altpressed) && (rawkey == KEY_K))
+  {
+    key = 0;
+    rawkey = 0;
+    speechdialog();
+    key = 0;
+    rawkey = 0;
+  }
   if (((ctrlpressed) || (metapressed)) && (!altpressed) && ((rawkey == KEY_R) || (rawkey == KEY_L)))
   {
     if (rawkey == KEY_R) randominstrument();
@@ -1379,6 +1430,7 @@ static void buttoncommand(int id, int param)
     case BTN_CUT: patternkey(KEY_X); break;
     case BTN_COPY: patternkey(KEY_C); break;
     case BTN_PASTE: patternkey(KEY_V); break;
+    case BTN_SPEECH: speechdialog(); break;
   }
 }
 

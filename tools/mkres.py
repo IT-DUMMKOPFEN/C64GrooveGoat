@@ -354,6 +354,7 @@ def main():
         ('manual.txt', 'docs/manual.txt'),
         ('history.txt', 'docs/history.txt'),
         ('credits.txt', 'docs/credits.txt'),
+        ('speechdict.bin', 'res/speech/speechdict.bin'),
     ]
     flist = []
     for i, (name, path) in enumerate(files):

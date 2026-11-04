@@ -1,4 +1,4 @@
-C64 GrooveGoat 0.92b
+C64 GrooveGoat 0.93b
 Copyright (C) 2026 IT-Dummkopfen
 
 C64 GrooveGoat is a multi-SID music editor for the Commodore 64 SID chip. It
@@ -83,3 +83,8 @@ SIDGen instrument library ("SIDGen instruments for GoatTracker 2")
 
 SID file format (PSID v2, v3 and the v5 multi-SID extension)
   High Voltage SID Collection - https://www.hvsc.c64.org
+
+CMU Pronouncing Dictionary (word list of the speech generator)
+  Carnegie Mellon University - https://github.com/cmusphinx/cmudict
+  BSD 2-clause license, see cmudict-LICENSE.txt (embedded in the program as
+  res/speech/speechdict.bin)
