@@ -2336,7 +2336,11 @@ static int exportdialog(EXPORTSETTINGS *es)
         else if (r == 3)
         {
           unsigned v = sidaddress;
-          if (dlg_edithex("SID address", "Address:", &v, 4)) sidaddress = v;
+          if (dlg_edithex("SID address", "Address:", &v, 4))
+          {
+            if ((v == 0xd400) || (validsidaddr(v))) sidaddress = v;
+            else dlg_message("SID address", (const char *[]){"A SID can only be at $D400-$D7E0 or $DE00-$DFE0", "(in steps of $20). The address stays $D400.", NULL}, 2), sidaddress = 0xd400;
+          }
         }
         else if (r == 4)
         {
@@ -2630,7 +2634,7 @@ int commandlineexport(const char *outname, int format, int base)
   es.base = base;
   es.zp = zeropageadr;
   if (numsids == 1)
-    es.addr[0] = (format == EXP_SID) ? 0xd400 : sidaddress;
+    es.addr[0] = (format == EXP_SID) ? 0xd400 : (((sidaddress == 0xd400) || validsidaddr(sidaddress)) ? sidaddress : 0xd400);
   else if (format == EXP_SID)
   {
     int st = 0;

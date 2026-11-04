@@ -402,6 +402,9 @@ int main(int argc, char **argv)
   zeropageadr &= 0xff;
   playeradr &= 0xff00;
   sidaddress &= 0xffff;
+  // a SID is only at $D400-$D7E0 or in the I/O areas $DE00-$DFE0 (steps of $20)
+  if ((sidaddress & 0x1f) || (!(((sidaddress >= 0xd400) && (sidaddress <= 0xd7e0)) || ((sidaddress >= 0xde00) && (sidaddress <= 0xdfe0)))))
+    sidaddress = 0xd400;
   if (!stepsize) stepsize = 4;
   if (editorInfo.multiplier > 16) editorInfo.multiplier = 16;
   if (keypreset > 2) keypreset = 0;
