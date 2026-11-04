@@ -33,6 +33,7 @@
 #include "gpiano.h"
 #include "gspeech.h"
 #include "gbeat.h"
+#include "gjoin.h"
 
 int menu = 0;
 int recordmode = 1;
@@ -179,6 +180,7 @@ static char rendername[MAX_PATHNAME];
 static char savename[MAX_PATHNAME];
 static char speechtext[SPEECH_MAXTEXT];
 static char beatspec[64];
+static char joinspec[4096];
 static char speechlist[MAX_PATHNAME];
 static int renderseconds = 0;
 static int renderstems = 0;
@@ -258,6 +260,11 @@ int main(int argc, char **argv)
         if (!strncmp(argv[c], "--speech=", 9))
         {
           strncpy(speechtext, argv[c] + 9, SPEECH_MAXTEXT - 1);
+          break;
+        }
+        if (!strncmp(argv[c], "--join=", 7))
+        {
+          strncpy(joinspec, argv[c] + 7, sizeof joinspec - 1);
           break;
         }
         if (!strncmp(argv[c], "--beat=", 7))
@@ -528,6 +535,17 @@ int main(int argc, char **argv)
         fprintf(stderr, "error: %s\n", err);
         return EXIT_FAILURE;
       }
+    }
+    // --join=FILE,FILE...: Join Songs (GG_JOINMODE=1 medley, GG_JOINRAISE=0
+    // no SID raise, GG_JOINBACKUP=1 write the backup)
+    if (joinspec[0])
+    {
+      char msg[400];
+      int ok = joinsongs_cli(joinspec, getenv("GG_JOINMODE") ? atoi(getenv("GG_JOINMODE")) : 0,
+                             getenv("GG_JOINRAISE") ? atoi(getenv("GG_JOINRAISE")) : 1,
+                             getenv("GG_JOINBACKUP") ? atoi(getenv("GG_JOINBACKUP")) : 0, msg, sizeof msg);
+      fprintf(stderr, "%s\n", msg);
+      if (!ok) return EXIT_FAILURE;
     }
     if (getenv("GG_BEATTEST"))
       return beat_selftest() ? EXIT_SUCCESS : EXIT_FAILURE;
@@ -1468,6 +1486,7 @@ static void buttoncommand(int id, int param)
     case BTN_PASTE: patternkey(KEY_V); break;
     case BTN_SPEECH: speechdialog(); break;
     case BTN_BEAT: beatdialog(); break;
+    case BTN_JOIN: joinsongsdialog(); break;
   }
 }
 
@@ -2082,12 +2101,8 @@ void load(void)
     }
     else
     {
-      if (fileselector(songfilename, songpath, songfilter, "MERGE SONG", 0))
-      {
-        mergesong();
-        undoInitAllAreas();
-        songmodified = 1;
-      }
+      // SHIFT+F10: Join Songs (replaces the old "merge-load song")
+      joinsongsdialog();
     }
   }
   else

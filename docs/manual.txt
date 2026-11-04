@@ -1,4 +1,4 @@
-# C64 GrooveGoat 0.93b - Manual
+# C64 GrooveGoat 0.94b - Manual
 
 C64 GrooveGoat is a tracker-style music editor for the SID sound chip of the Commodore 64. It is
 based on GoatTracker 2 by Lasse Oorni (Cadaver) and the "Silver Fork" of Joel Ricci. It adds:
@@ -68,7 +68,7 @@ A song consists of:
 |  macOS        Unpack the ZIP file (AppleSilicon for Macs with M chips, Intel for Intel
 |               Macs) and move "C64 GrooveGoat.app" to Applications. On the first start
 |               use right click > Open (the app is not notarized by Apple).
-|  Linux        Make the AppImage executable (chmod +x C64_GrooveGoat-0.93b-x86_64.AppImage)
+|  Linux        Make the AppImage executable (chmod +x C64_GrooveGoat-0.94b-x86_64.AppImage)
 |               and start it. The instrument library and the examples are inside the
 |               AppImage. If your system lacks FUSE, start it with --appimage-extract-and-run.
 |  Linux tar.gz Unpack the archive and start ./groovegoat in the unpacked folder (the
@@ -296,7 +296,7 @@ hardware.
 |  F9           Export SID/PRG/BIN (pack, relocate & save); SHIFT+F9 toggles interpolation
 |  CTRL+F9      Export audio (WAV / MP3); CTRL+SHIFT+F9 exports an MP4 video
 |  F10          Load song (pattern/orderlist/names) or instrument (instrument/table editor)
-|  SHIFT+F10    Merge-load a song (adds its subtunes, patterns, instruments and tables)
+|  SHIFT+F10    Join Songs: load other songs as subtunes or as a medley (see "Join Songs")
 |  F11          Save song or instrument
 |  F12          Keyboard reference (with the button to this manual)
 |  TAB          Next editor (SHIFT+TAB previous)
@@ -745,6 +745,59 @@ changes in all those places (make a copy of the pattern first if you want only o
 |  SHIFT+R      Convert a wavetable note between absolute and relative
 |  SHIFT+U      Unlock / lock table scrolling
 |  SHIFT+INS    Insert a row without moving pointers to the first row
+
+## Join Songs
+
+The Join button in the orderlist header (or SHIFT+F10) loads other songs into the current
+one - GoatTracker 2 .sng (1 SID), GoatTracker Stereo .sng (2 SIDs) and GrooveGoat .ggt (4 and 8
+SIDs), as many as you like, in the order of the list.
+
+|  Add song... / INS     Choose a song in the file selector (again for every song)
+|  Remove / DEL          Remove the selected song from the list
+|  Up / Down             Change the order (also SHIFT+UP / SHIFT+DOWN)
+|  Join as               New subtunes: every subtune of every song becomes a new subtune
+|                        (after the existing ones; the report shows which song became
+|                        which subtune).
+|                        Medley: the first subtune of every song is appended to the end of
+|                        the current subtune, so one long piece plays them one after another.
+|  Raise the SIDs        A song with more SIDs raises the number of SIDs of the current song
+|                        (for example 1 SID -> 2 SIDs; 4 and 8 SIDs are saved as .ggt).
+|                        Channels a song does not have stay silent in its subtunes.
+|  Join / ENTER          Saves the backup, then joins
+
+Before anything changes, the window checks the whole join and shows the result: which song
+becomes which subtune, how many instruments and patterns are shared or new, and how full the
+instruments (62), patterns (208) and the four tables (255 rows each) will be. If something
+does not fit, it says so and Join stays off - remove a song or tidy up first (SHIFT+ESC
+clears / optimizes the music data, SHIFT+O optimizes a table).
+
+Sharing:
+- Instruments: an instrument of a joined song with exactly the same sound as an instrument of
+  the current song - ADSR, HR/gate timer, 1st frame wave, vibrato and the contents of its wave,
+  pulse, filter and speed programs - is not copied; its notes use the existing instrument.
+  The names do not matter. All other instruments get free slots.
+- Table programs: identical wave, pulse, filter and speed table programs are used once.
+- Patterns: identical patterns (after the instruments were renumbered) are used once.
+Pattern commands and wavetable commands that point into the tables (1XY-4XY, 8XY, 9XY, AXY,
+EXY) are moved along with the table rows.
+
+Tempo: a song whose default tempo differs (instrument $3F) gets a tempo command on the first
+row of its subtune. In a medley every appended song gets its tempo there, unless it starts
+with a tempo command itself.
+
+Backup: before joining, the current song (also with unsaved changes) is saved next to it as
+NAME_before-join_YYYY-MM-DD_HHMM.sng (or .ggt). A join cannot be undone with CTRL+Z - load the
+backup to go back.
+
+Notes:
+- The joined subtunes play exactly like the original songs (checked register by register for
+  the GoatTracker examples). One small difference is possible at the very start of a subtune:
+  the playroutine begins every channel with instrument 01, so the hard restart before the first
+  note of a channel uses the current song's instrument 01.
+- Song-wide settings (hard restart ADSR, speed multiplier, PAL/NTSC, SID model) stay those of
+  the current song; the check shows a note when a joined song differs.
+- Medley: all channels of the current subtune and of the joined song must have the same length
+  in rows (otherwise the parts would not start together).
 
 ## Song name editor (F8)
 
@@ -1224,6 +1277,7 @@ Export and rendering without opening a window:
 |  --speech=TEXT      Speech generator: insert TEXT on channel 1 from row 0 (before saving,
 |                     exporting or rendering)
 |  --speechlist=FILE  Also save the listing of the generated speech
+|  --join=FILE,FILE   Join Songs: the files as new subtunes (GG_JOINMODE=1: medley)
 |  --beat=G,S,B[,F]   Beat editor: genre G, subgenre S, beat B (numbers from 1, as in the
 |                     window), F = 1 with the fill; into the first pattern of channel 1
 
@@ -1237,7 +1291,7 @@ The default sample rate is 48000 Hz; -M44100 selects 44100 Hz.
 
 # Credits
 
-C64 GrooveGoat 0.93b by IT-Dummkopfen.
+C64 GrooveGoat 0.94b by IT-Dummkopfen.
 
 |  GoatTracker 2 editor & playroutine   Lasse Oorni (Cadaver), Covert Bitops
 |  GoatTracker 2 "Silver Fork"          Joel Ricci (github.com/joelricci/goattracker2)

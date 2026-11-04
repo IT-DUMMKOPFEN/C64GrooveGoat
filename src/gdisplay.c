@@ -528,6 +528,7 @@ static void draworderlist(void)
   ui_addbutton(RP_X + 20, ORD_Y, 4, BTN_SUBTUNE, 0);
   sprintf(buf, "POS %02X", editorInfo.eseditpos);
   printtext(RP_X + 27, ORD_Y, hc, buf);
+  ui_drawbutton(RP_X + 34, ORD_Y, " Join ", BTN_JOIN, 0, 0);
   if (numchannels > VISIBLEORDERCHNS)
   {
     ui_drawbutton(RP_X + RP_W - 5, ORD_Y, " " GS_UP " ", BTN_ORDVIEW, -1, 0);
@@ -977,6 +978,7 @@ static int tooltip(int id, const char **name, const char **keys)
     case BTN_CHNVIEW: *name = "Show the voices of these SIDs"; break;
     case BTN_ORDVIEW: *name = "Scroll the orderlist voices"; break;
     case BTN_SUBTUNE: *name = "Subtune"; *keys = "< > in the orderlist"; break;
+    case BTN_JOIN: *name = "Join Songs: load other songs as subtunes or as a medley"; *keys = "SHIFT+F10"; break;
     case BTN_INSTRNUM: *name = "Instrument"; *keys = "- +"; break;
     case BTN_MUTE: *name = "Mute voice"; *keys = "SHIFT+F4"; break;
     case BTN_SOLO: *name = "Solo voice"; break;

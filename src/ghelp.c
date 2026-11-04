@@ -63,7 +63,7 @@ static const char *genkeys[] = {
   "SHIFT+F7      Change hardrestart ADSR",
   "SHIFT+F8      Switch 6581/8580 SID",
   "SHIFT+F9      Toggle reSID interpolation",
-  "SHIFT+F10     Merge-load song",
+  "SHIFT+F10     Join Songs (subtunes, medley)",
   "SHIFT+, .     Move song startpos & restart",
   "TAB           Cycle between editing modes",
   "INS           Insert row (on endmark:",

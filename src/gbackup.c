@@ -100,6 +100,34 @@ int backup_copybeforesave(const char *filename)
   return ok;
 }
 
+typedef struct
+{
+  char songfullpath[MAX_PATHNAME];
+  char lastautosave[MAX_PATHNAME];
+  Uint32 lastsave;
+} BACKUPSTATE;
+
+void *backup_keepstate(void)
+{
+  BACKUPSTATE *s = (BACKUPSTATE *)malloc(sizeof(BACKUPSTATE));
+  if (!s) return NULL;
+  memcpy(s->songfullpath, songfullpath, MAX_PATHNAME);
+  memcpy(s->lastautosave, lastautosave, MAX_PATHNAME);
+  s->lastsave = lastsave;
+  return s;
+}
+
+void backup_restorestate(void *state)
+{
+  BACKUPSTATE *s = (BACKUPSTATE *)state;
+  if (!s) return;
+  memcpy(songfullpath, s->songfullpath, MAX_PATHNAME);
+  memcpy(lastautosave, s->lastautosave, MAX_PATHNAME);
+  lastsave = s->lastsave;
+  free(s);
+  writesession();
+}
+
 // Called after the song was saved, loaded or cleared: nothing to recover
 void backup_saved(void)
 {
