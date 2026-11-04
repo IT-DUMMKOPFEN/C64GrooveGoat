@@ -73,6 +73,7 @@ static const char *genkeys[] = {
   "CTRL/CMD+R    Random instrument generator",
   "CTRL/CMD+L    Instrument library",
   "CTRL/CMD+B    Piano keyboard on/off",
+  "CTRL/CMD+D    Beat editor (cursor channel)",
   "CTRL/CMD+K    Speech generator (cursor channel)",
   "SHIFT+ESC     Clear/optimize musicdata",
   "ESC           Exit program",
@@ -196,6 +197,8 @@ static const char *newkeys[] = {
   "              click a key to play (CTRL+B)",
   "Pattern tools Transpose, mark, cut/copy/paste",
   "              buttons above the pattern editor",
+  "Beat editor   CTRL+D: drum beats by genre,",
+  "              SPACE preview, ENTER insert",
   "Speech        CTRL+K: English text as speech",
   "              on the cursor channel (F1 test)",
   NULL

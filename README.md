@@ -31,6 +31,10 @@ by Lasse Öörni (Cadaver) and the
 - Piano keyboard over 8 octaves with the played notes of all voices in the voice colours
   (click a key to play a note, `CTRL+B` switches it on / off), also in the MP4 video and on
   the screen of runnable C64 programs (split into two rows of 4 octaves, works at every speed)
+- Beat editor (`CTRL+D`): 153 drum beats in 12 genres (Chiptune, Techno, EBM, Electro,
+  Hip-Hop, Funk, Drum & Bass, Rock, Metal, House, Reggae, Latin) with variants, drum kits,
+  swing, fills and random variations, written over the whole pattern of the cursor channel;
+  missing drum instruments are generated; looped preview without changing the song
 - Speech generator (`CTRL+K`): English text or CMU phonemes become formant speech on one SID
   voice (the channel of the cursor) - instruments, wave / pulse / filter tables and pattern
   rows at speed 03, with voice, pitch, speed and melody options, preview and a text listing.

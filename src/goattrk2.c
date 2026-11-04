@@ -32,6 +32,7 @@
 #include "gres.h"
 #include "gpiano.h"
 #include "gspeech.h"
+#include "gbeat.h"
 
 int menu = 0;
 int recordmode = 1;
@@ -177,6 +178,7 @@ static int exportsids = 0;
 static char rendername[MAX_PATHNAME];
 static char savename[MAX_PATHNAME];
 static char speechtext[SPEECH_MAXTEXT];
+static char beatspec[64];
 static char speechlist[MAX_PATHNAME];
 static int renderseconds = 0;
 static int renderstems = 0;
@@ -256,6 +258,11 @@ int main(int argc, char **argv)
         if (!strncmp(argv[c], "--speech=", 9))
         {
           strncpy(speechtext, argv[c] + 9, SPEECH_MAXTEXT - 1);
+          break;
+        }
+        if (!strncmp(argv[c], "--beat=", 7))
+        {
+          strncpy(beatspec, argv[c] + 7, sizeof beatspec - 1);
           break;
         }
         if (!strncmp(argv[c], "--speechlist=", 13))
@@ -503,6 +510,23 @@ int main(int argc, char **argv)
         }
       }
     }
+    // --beat=GENRE,SUBGENRE,BEAT[,FILL] (numbers from 1): beat editor on
+    // channel 1 (or GG_BEATCHN), the pattern at the start of its orderlist
+    if (beatspec[0])
+    {
+      int g = 1, s = 1, v = 1, f = 0;
+      char err[200];
+      int chn = getenv("GG_BEATCHN") ? atoi(getenv("GG_BEATCHN")) : 0;
+      sscanf(beatspec, "%d,%d,%d,%d", &g, &s, &v, &f);
+      if (getenv("GG_BEATPATT")) editorUndoInfo.editorInfo[chn].epnum = atoi(getenv("GG_BEATPATT"));
+      if (!beat_generate_cli(chn, g - 1, s - 1, v - 1, f, err, sizeof err))
+      {
+        fprintf(stderr, "error: %s\n", err);
+        return EXIT_FAILURE;
+      }
+    }
+    if (getenv("GG_BEATTEST"))
+      return beat_selftest() ? EXIT_SUCCESS : EXIT_FAILURE;
     if (getenv("GG_TRACE"))
     {
       // Test helper: print the editor playroutine's SID registers per frame
@@ -1165,6 +1189,14 @@ void docommand(void)
     key = 0;
     rawkey = 0;
   }
+  if (((ctrlpressed) || (metapressed)) && (!altpressed) && (rawkey == KEY_D))
+  {
+    key = 0;
+    rawkey = 0;
+    beatdialog();
+    key = 0;
+    rawkey = 0;
+  }
   if (((ctrlpressed) || (metapressed)) && (!altpressed) && (rawkey == KEY_K))
   {
     key = 0;
@@ -1431,6 +1463,7 @@ static void buttoncommand(int id, int param)
     case BTN_COPY: patternkey(KEY_C); break;
     case BTN_PASTE: patternkey(KEY_V); break;
     case BTN_SPEECH: speechdialog(); break;
+    case BTN_BEAT: beatdialog(); break;
   }
 }
 

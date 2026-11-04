@@ -331,7 +331,7 @@ static void drawpatterns(void)
     int lc = MKCOL(7, C_PANEL);
     int x = PATT_X + 2;
     printblankc(PATT_X, PATT_TOOLS_Y, lc, PATT_W);
-    printtext(x, PATT_TOOLS_Y, lc, "Transp."); x += 8;
+    printtext(x, PATT_TOOLS_Y, lc, "Trans"); x += 6;
     ui_drawbutton(x, PATT_TOOLS_Y, " -1 ", BTN_TRANSDN, 0, 0); x += 5;
     ui_drawbutton(x, PATT_TOOLS_Y, " +1 ", BTN_TRANSUP, 0, 0); x += 5;
     ui_drawbutton(x, PATT_TOOLS_Y, " -12 ", BTN_OCTDN, 0, 0); x += 6;
@@ -340,13 +340,13 @@ static void drawpatterns(void)
     ui_drawbutton(x, PATT_TOOLS_Y, " " GS_UP " ", BTN_MARKUP, 0, 0); x += 4;
     ui_drawbutton(x, PATT_TOOLS_Y, " " GS_DOWN " ", BTN_MARKDN, 0, 0); x += 4;
     ui_drawbutton(x, PATT_TOOLS_Y, " All ", BTN_MARKALL, 0, editorInfo.epmarkchn != -1); x += 6;
-    printtext(x, PATT_TOOLS_Y, lc, "Patt"); x += 5;
     ui_drawbutton(x, PATT_TOOLS_Y, " " GS_PREV " ", BTN_PATTPREV, 0, 0); x += 4;
     ui_drawbutton(x, PATT_TOOLS_Y, " " GS_NEXT " ", BTN_PATTNEXT, 0, 0); x += 4;
     ui_drawbutton(x, PATT_TOOLS_Y, " Cut ", BTN_CUT, 0, 0); x += 6;
     ui_drawbutton(x, PATT_TOOLS_Y, " Copy ", BTN_COPY, 0, 0); x += 7;
     ui_drawbutton(x, PATT_TOOLS_Y, " Paste ", BTN_PASTE, 0, 0); x += 8;
-    ui_drawbutton(x, PATT_TOOLS_Y, " Speech ", BTN_SPEECH, 0, 0);
+    ui_drawbutton(x, PATT_TOOLS_Y, " Speech ", BTN_SPEECH, 0, 0); x += 9;
+    ui_drawbutton(x, PATT_TOOLS_Y, " Beat ", BTN_BEAT, 0, 0);
   }
 
   // Background of the pattern area
@@ -998,6 +998,7 @@ static int tooltip(int id, const char **name, const char **keys)
     case BTN_CUT: *name = "Cut pattern"; *keys = "SHIFT+X"; break;
     case BTN_COPY: *name = "Copy pattern"; *keys = "SHIFT+C"; break;
     case BTN_PASTE: *name = "Paste pattern"; *keys = "SHIFT+V"; break;
+    case BTN_BEAT: *name = "Beat editor: drum pattern for the channel of the cursor"; *keys = "CTRL+D"; break;
     case BTN_SPEECH: *name = "Speech generator: English text on the channel of the cursor"; *keys = "CTRL+K"; break;
     default: return 0;
   }

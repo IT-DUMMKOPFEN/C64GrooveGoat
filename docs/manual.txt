@@ -671,6 +671,58 @@ the voice speaks, try the pitch between G-2 and D-3, and write unusual words as 
 The example song examples/together_we_hunt.sng says "Together we hunt" three times (robot,
 command, bright) over a dark 125 BPM groove on the other two voices.
 
+## Beat editor
+
+The Beat button in the pattern tool row (or CTRL+D, CMD+D on a Mac) opens the beat editor. It
+writes a drum beat into the current pattern of the channel where the pattern cursor is - over
+the whole length of that pattern. Melodies are not touched: it only writes drum notes.
+
+|  Genre / Subgenre / Beat   12 genres, 37 subgenres and 153 beats: Chiptune / Synthwave,
+|                            Techno, EBM / Cyberpunk, Electro, Hip-Hop, Funk / Disco,
+|                            Drum & Bass, Rock, Metal, House, Reggae / Dub and Latin, each with
+|                            variants such as Standard, Half-Time, Syncopated, Offbeat,
+|                            Breakbeat, Doublebass, Blast beat or Ghost notes (PGUP / PGDN
+|                            change the beat too)
+|  Drum sounds               Kit for new instruments: Auto (the kit of the subgenre), Chip,
+|                            808, 909 or Rock
+|  Rows / 16th               Pattern rows per 16th note. Auto takes it from the tempo of the
+|                            song (tempo 6 = 1 row, tempo 3 = 2 rows, so a 16th is about
+|                            120 ms = 125 BPM)
+|  Swing                     The beat's own feel, straight, or 58 / 62 / 66 / 75 %: the second
+|                            16th of each pair comes later (needs 2 or more rows per 16th)
+|  Fill                      Off, or a fill (toms, snare roll, break) in the last bar
+|  Variation                 Original, or a random variation of the beat (R = a new one):
+|                            hats left out or doubled, extra ghost snares and kicks
+|  Preview                   Beat only (the other voices are muted) or with the other voices
+
+The grid shows the beat as on a drum machine: one line per drum, one column per 16th note
+(x hit, X accent, g ghost / soft note, r roll = two 32nd notes). The line "Voice" shows what
+the channel really plays: a SID voice plays one sound at a time, so when several drums meet
+on one row the strongest wins - crash > snare > clap > kick > toms > rimshot > open hi-hat >
+closed hi-hat. The beat is looped over the pattern; a pattern that is not a whole number of
+bars simply ends inside the loop.
+
+Instruments: on the right every drum (Kick, Snare, Clap, HiHat, OHat, TomHi, TomMd, TomLo,
+Rim, Crash) has an instrument. When the window opens, instruments of the song are found by
+their names (Kick, BD, Snare, Clap, Hat, Open hat, Tom hi/mid/lo, Rim, Crash, ...); the others
+are "New": they are generated in free instrument slots when the beat is inserted (only the
+drums the beat uses), for example "Kick 808", "Snare 808 acc" (accent: longer decay) and
+"Snare 808 soft" (ghost note: slow attack, the gate goes off after one frame, so the note
+stays quiet). LEFT / RIGHT on a drum chooses another instrument of the song or New. The
+generated drums use absolute wavetable notes, no filter, and the pattern notes follow the
+General MIDI drum map (C-3 kick, D-3 snare, F#3 hi-hat ...).
+
+|  SPACE / F1       Preview on / off: the pattern plays in a loop with the beat. Changes in
+|                   the window are heard at once. The song itself is not changed: the
+|                   editor works on a copy and restores everything when the preview stops.
+|  ENTER / Insert   Writes the beat into the whole pattern (one undo step). Notes,
+|                   instruments and commands of the channel's pattern are replaced, tempo
+|                   commands (E and F) stay.
+|  ESC              Close without changes
+
+If the pattern is used several times in the orderlist, the window tells you: the beat then
+changes in all those places (make a copy of the pattern first if you want only one).
+
 ## Table editor (F7 twice)
 
 |  0-9, A-F     Enter parameters
@@ -1164,6 +1216,8 @@ Export and rendering without opening a window:
 |  --speech=TEXT      Speech generator: insert TEXT on channel 1 from row 0 (before saving,
 |                     exporting or rendering)
 |  --speechlist=FILE  Also save the listing of the generated speech
+|  --beat=G,S,B[,F]   Beat editor: genre G, subgenre S, beat B (numbers from 1, as in the
+|                     window), F = 1 with the fill; into the first pattern of channel 1
 
 ## Sound output
 
