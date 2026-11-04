@@ -423,6 +423,14 @@ static int adddrum(const DRUMINS *d)
   return i;
 }
 
+// generated drum in a free slot (for the Improve function); 0 = no room
+int beat_newdrum(int role, int level, int kit, int tempo)
+{
+  DRUMINS d;
+  makedrum(&d, role, level, kit, tempo);
+  return adddrum(&d);
+}
+
 // existing instrument of a role with the wanted level (same name family)
 static int findlevel(int role, int level)
 {

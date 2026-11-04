@@ -1,4 +1,4 @@
-# C64 GrooveGoat 0.94b - Manual
+# C64 GrooveGoat 0.95b - Manual
 
 C64 GrooveGoat is a tracker-style music editor for the SID sound chip of the Commodore 64. It is
 based on GoatTracker 2 by Lasse Oorni (Cadaver) and the "Silver Fork" of Joel Ricci. It adds:
@@ -68,7 +68,7 @@ A song consists of:
 |  macOS        Unpack the ZIP file (AppleSilicon for Macs with M chips, Intel for Intel
 |               Macs) and move "C64 GrooveGoat.app" to Applications. On the first start
 |               use right click > Open (the app is not notarized by Apple).
-|  Linux        Make the AppImage executable (chmod +x C64_GrooveGoat-0.94b-x86_64.AppImage)
+|  Linux        Make the AppImage executable (chmod +x C64_GrooveGoat-0.95b-x86_64.AppImage)
 |               and start it. The instrument library and the examples are inside the
 |               AppImage. If your system lacks FUSE, start it with --appimage-extract-and-run.
 |  Linux tar.gz Unpack the archive and start ./groovegoat in the unpacked folder (the
@@ -754,6 +754,50 @@ changes in all those places (make a copy of the pattern first if you want only o
 |  SHIFT+U      Unlock / lock table scrolling
 |  SHIFT+INS    Insert a row without moving pointers to the first row
 
+## Improve
+
+The Improve button in the pattern tool row (or CTRL+I, CMD+I on a Mac) improves the current
+subtune automatically - only this subtune: its changed instruments are copies (named with a
+"+", e.g. "Bass+"), and patterns it shares with other subtunes are copied first, so the other
+subtunes stay exactly as they were.
+
+First the window shows every instrument of the subtune with the role it found - Kick, Snare,
+Hi-hat, Tom, Bass, Lead, Pad, Arpeggio, Drum+tone or Other. The roles come from the wave
+table (noise and absolute notes = drums), the notes it plays (low = bass) and the name.
+LEFT / RIGHT changes a role; "Other (keep)" leaves an instrument alone. Instruments that play
+a drum and a tone in one (BD+Bass, Snare+Bass ...) are found and kept.
+
+|  Strength          Subtle, Medium or Strong
+|  Drums             New kick, snare, hi-hat and tom sounds from the beat editor kits
+|                    (Drum sounds: Chip, 808, 909 or Rock): click and pitch drop in the
+|                    kick, noise and body in the snare, short bright hi-hats
+|  Bass: fuller      Pulse wave instead of triangle, more sustain, slow pulse width sweep
+|  Bass: pushier     A click of noise and an octave "pop" on the first frames, hard restart,
+|                    quick decay
+|  Slides            Toneportamento (3XY, note-independent speed) in the melody between
+|                    close notes (1-2 / 4 / 5 semitones) on longer notes, every 3rd / 2nd /
+|                    every one depending on the strength
+|  Vibrato           Delayed, note-independent vibrato for lead instruments without one
+|  Pulse width       A slow pulse width sweep for static pulse sounds
+|  Balance           Pads and arpeggios get less sustain, so lead and bass come forward
+|  Fix               Gate timers longer than the tempo allows (notes would be swallowed)
+|  Echo              The melody is repeated 2-4 rows later with a softer copy of the lead
+|                    instrument on the emptiest channel - only if it is (almost) empty
+|  Filter sweep      A short low-pass sweep on every bass note, only on SIDs whose filter
+|                    the subtune does not use
+|  SID chip          Adapts the filter cutoffs of a song written for the 6581 to the 8580
+|                    or the other way round (approximate curves)
+|  Clean up          Removes instruments, patterns and table rows no subtune uses any more
+|                    (the whole song)
+
+Below, the window lists what changes. F1 plays the subtune, SPACE switches between the
+original and the improved version while it plays (A/B), so you hear the difference at once.
+ENTER (Apply) first saves a backup next to the song (NAME_before-improve_DATE_TIME.sng), then
+takes the improved version as one undo step. ESC leaves the song unchanged.
+
+The result is a suggestion by rules of thumb, not a mixing engineer: listen with A/B, turn
+off what you do not like, correct the roles - and use the backup or CTRL+Z when needed.
+
 ## Join Songs
 
 The Join button in the orderlist header (or SHIFT+F10) loads other songs into the current
@@ -1285,6 +1329,7 @@ Export and rendering without opening a window:
 |  --speech=TEXT      Speech generator: insert TEXT on channel 1 from row 0 (before saving,
 |                     exporting or rendering)
 |  --speechlist=FILE  Also save the listing of the generated speech
+|  --improve         Improve the first subtune (all modules, medium strength)
 |  --join=FILE,FILE   Join Songs: the files as new subtunes (GG_JOINMODE=1: medley)
 |  --beat=G,S,B[,F]   Beat editor: genre G, subgenre S, beat B (numbers from 1, as in the
 |                     window), F = 1 with the fill; into the first pattern of channel 1
@@ -1299,7 +1344,7 @@ The default sample rate is 48000 Hz; -M44100 selects 44100 Hz.
 
 # Credits
 
-C64 GrooveGoat 0.94b by IT-Dummkopfen.
+C64 GrooveGoat 0.95b by IT-Dummkopfen.
 
 |  GoatTracker 2 editor & playroutine   Lasse Oorni (Cadaver), Covert Bitops
 |  GoatTracker 2 "Silver Fork"          Joel Ricci (github.com/joelricci/goattracker2)

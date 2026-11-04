@@ -34,6 +34,7 @@
 #include "gspeech.h"
 #include "gbeat.h"
 #include "gjoin.h"
+#include "gimprove.h"
 
 int menu = 0;
 int recordmode = 1;
@@ -181,6 +182,7 @@ static char savename[MAX_PATHNAME];
 static char speechtext[SPEECH_MAXTEXT];
 static char beatspec[64];
 static char joinspec[4096];
+static int improveopt = 0;
 static char speechlist[MAX_PATHNAME];
 static int renderseconds = 0;
 static int renderstems = 0;
@@ -260,6 +262,11 @@ int main(int argc, char **argv)
         if (!strncmp(argv[c], "--speech=", 9))
         {
           strncpy(speechtext, argv[c] + 9, SPEECH_MAXTEXT - 1);
+          break;
+        }
+        if (!strcmp(argv[c], "--improve"))
+        {
+          improveopt = 1;
           break;
         }
         if (!strncmp(argv[c], "--join=", 7))
@@ -550,6 +557,20 @@ int main(int argc, char **argv)
                              getenv("GG_JOINBACKUP") ? atoi(getenv("GG_JOINBACKUP")) : 0, msg, sizeof msg);
       fprintf(stderr, "%s\n", msg);
       if (!ok) return EXIT_FAILURE;
+    }
+    // --improve: Improve the first subtune (GG_IMPROVEMODS bitmask, GG_IMPROVESTRENGTH 1-3,
+    // GG_IMPROVEKIT 0 Chip 1 808 2 909 3 Rock, GG_IMPROVECHIP 0/1/2)
+    if (improveopt)
+    {
+      char msg[200];
+      if (!improve_cli(getenv("GG_IMPROVEMODS") ? strtol(getenv("GG_IMPROVEMODS"), NULL, 0) : 0x7ff,
+                       getenv("GG_IMPROVESTRENGTH") ? atoi(getenv("GG_IMPROVESTRENGTH")) : 2,
+                       getenv("GG_IMPROVEKIT") ? atoi(getenv("GG_IMPROVEKIT")) : 2,
+                       getenv("GG_IMPROVECHIP") ? atoi(getenv("GG_IMPROVECHIP")) : 0, msg, sizeof msg))
+      {
+        fprintf(stderr, "error: %s\n", msg);
+        return EXIT_FAILURE;
+      }
     }
     if (getenv("GG_BEATTEST"))
       return beat_selftest() ? EXIT_SUCCESS : EXIT_FAILURE;
@@ -1215,6 +1236,14 @@ void docommand(void)
     key = 0;
     rawkey = 0;
   }
+  if (((ctrlpressed) || (metapressed)) && (!altpressed) && (rawkey == KEY_I))
+  {
+    key = 0;
+    rawkey = 0;
+    improvedialog();
+    key = 0;
+    rawkey = 0;
+  }
   if (((ctrlpressed) || (metapressed)) && (!altpressed) && (rawkey == KEY_D))
   {
     key = 0;
@@ -1491,6 +1520,7 @@ static void buttoncommand(int id, int param)
     case BTN_SPEECH: speechdialog(); break;
     case BTN_BEAT: beatdialog(); break;
     case BTN_JOIN: joinsongsdialog(); break;
+    case BTN_IMPROVE: improvedialog(); break;
   }
 }
 

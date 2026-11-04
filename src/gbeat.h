@@ -65,6 +65,8 @@ void beatdialog(void);
 // Command line / test helper: genre, subgenre, variant (indexes) into the
 // pattern of channel chn. Returns rows written, 0 on error.
 int beat_selftest(void);
+// generated drum (role BR_*, level BL_*, kit KIT_*) in a free instrument slot, 0 = no room
+int beat_newdrum(int role, int level, int kit, int tempo);
 int beat_generate_cli(int chn, int genre, int sub, int var, int fill, char *err, int errsize);
 
 #endif

@@ -74,6 +74,7 @@ static const char *genkeys[] = {
   "CTRL/CMD+L    Instrument library",
   "CTRL/CMD+B    Piano keyboard on/off",
   "CTRL/CMD+D    Beat editor (cursor channel)",
+  "CTRL/CMD+I    Improve the current subtune",
   "CTRL/CMD+K    Speech generator (cursor channel)",
   "SHIFT+ESC     Clear/optimize musicdata",
   "ESC           Exit program",

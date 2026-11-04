@@ -1,7 +1,7 @@
 # C64 GrooveGoat
 
 A multi-SID music editor for the Commodore 64 SID chip, by **IT-Dummkopfen**.
-Version 0.94b. Based on [GoatTracker 2](https://sourceforge.net/projects/goattracker2/)
+Version 0.95b. Based on [GoatTracker 2](https://sourceforge.net/projects/goattracker2/)
 by Lasse Öörni (Cadaver) and the
 [GoatTracker 2 "Silver Fork"](https://github.com/joelricci/goattracker2) by Joel Ricci.
 
@@ -31,6 +31,10 @@ by Lasse Öörni (Cadaver) and the
 - Piano keyboard over 8 octaves with the played notes of all voices in the voice colours
   (click a key to play a note, `CTRL+B` switches it on / off), also in the MP4 video and on
   the screen of runnable C64 programs (split into two rows of 4 octaves, works at every speed)
+- Improve (`CTRL+I`): automatic improvements of the current subtune - punchier drums, fuller
+  and pushier bass, slides and vibrato in the melody, pulse width modulation, balance, gate
+  timer fixes, echo on a free channel, bass filter sweeps, 6581/8580 filter adaptation and
+  clean-up; instrument roles detected and changeable, A/B preview, backup before applying
 - Join Songs (`SHIFT+F10`): load any number of `.sng` / `.ggt` songs into the current one as
   new subtunes or as a medley; identical instruments, table programs and patterns are shared,
   a backup of the current song is saved first, a check shows the result before joining

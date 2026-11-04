@@ -2,7 +2,7 @@
 #define GOATTRK2_H
 
 #define PROGRAMNAME "C64 GrooveGoat"
-#define PROGRAMVERSION "0.94b"
+#define PROGRAMVERSION "0.95b"
 #define PROGRAMAUTHOR "IT-Dummkopfen"
 #define PATCHNAME "based on GoatTracker v2.76 (Silver Fork)"
 
