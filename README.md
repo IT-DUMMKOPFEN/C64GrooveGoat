@@ -38,10 +38,10 @@ by Lasse Öörni (Cadaver) and the
 - Join Songs (`SHIFT+F10`): load any number of `.sng` / `.ggt` songs into the current one as
   new subtunes or as a medley; identical instruments, table programs and patterns are shared,
   a backup of the current song is saved first, a check shows the result before joining
-- Beat editor (`CTRL+D`): 153 drum beats in 12 genres (Chiptune, Techno, EBM, Electro,
+- Beat editor (`CTRL+D`): 959 drum beats in 12 genres (Chiptune, Techno, EBM, Electro,
   Hip-Hop, Funk, Drum & Bass, Rock, Metal, House, Reggae, Latin) with variants, drum kits,
   swing, fills and random variations, written over the whole pattern of the cursor channel;
-  missing drum instruments are generated; looped preview without changing the song
+  drum sounds from the instrument library or generated kits; looped preview without changing the song
 - Speech generator (`CTRL+K`): English text or CMU phonemes become formant speech on one SID
   voice (the channel of the cursor) - instruments, wave / pulse / filter tables and pattern
   rows for the speed of your song (F03, F05, F06 ... or detected automatically), with voice,

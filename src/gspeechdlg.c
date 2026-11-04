@@ -17,8 +17,6 @@ static void *prevdata = NULL;
 static int prevlen[MAX_PATT];
 static int previewing = 0;
 
-static const char *melodynames[4] = {"Monotone", "Statement (falls at the end)", "Question (rises at the end)",
-                                     "Command (strong accents)"};
 
 static void spnotename(int n, char *buf)
 {
@@ -139,7 +137,7 @@ void speechdialog(void)
           sprintf(buf, "Pitch             " GS_PREV " %s " GS_NEXT "   (base note, SHIFT = octave)", nb);
           break;
         case 3: sprintf(buf, "Speed             " GS_PREV " %d%% " GS_NEXT "   (%s)", sp.speed, sp.speed > 100 ? "slower" : (sp.speed < 100 ? "faster" : "normal")); break;
-        case 4: sprintf(buf, "Melody            " GS_PREV " %s " GS_NEXT, melodynames[sp.melody]); break;
+        case 4: sprintf(buf, "Melody            " GS_PREV " %s " GS_NEXT, speech_melodyname(sp.melody)); break;
         case 5:
           if (songspeed) sprintf(buf, "Song speed        " GS_PREV " F%02X " GS_NEXT "  %d ms per row%s", sp.tempo, sp.tempo * 1000 / fps,
                                  (sp.tempo != detected) && (!sp.settempo) ? "  (the song plays at F" : "");
@@ -293,7 +291,7 @@ void speechdialog(void)
           if (sp.speed < 50) sp.speed = 50;
           if (sp.speed > 250) sp.speed = 250;
           break;
-          case 4: sp.melody = (sp.melody + dir + 4) % 4; break;
+          case 4: sp.melody = (sp.melody + dir + speech_nummelodies()) % speech_nummelodies(); break;
           case 5:
           // Auto, F02 ... F10
           songspeed += dir;

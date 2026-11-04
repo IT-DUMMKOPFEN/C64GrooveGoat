@@ -90,7 +90,7 @@ typedef struct
 } BEATSET;
 
 static BEATSET bs = {0, 0, 0, -1, 0, -1, 0, 0, 1};
-static int assign[BR_NUM];        // instrument per role, 0 = generate a new one
+static int assign[BR_NUM] = {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1};   // library instrument per role, -1 = generated kit sound
 static int genslot[BR_NUM][BL_NUM];
 
 static const int swingvalues[] = {-1, 50, 58, 62, 66, 75};
@@ -110,15 +110,229 @@ static int numsubs(int g)
   return n;
 }
 
-static int numvars(int g, int s)
+static int basevars(int g, int s)
 {
   int n = 0;
   while ((n < BEAT_MAXVAR) && (beatcatalog[g].sub[s].var[n].name)) n++;
   return n;
 }
 
+// Every subgenre gets its catalog beats plus generated variations of its
+// first beats (more hats, open hats, ghost notes, half-time, double-time ...)
+typedef struct
+{
+  char name[64];
+  char grid[600];
+  int swing;
+} XVAR;
+
+#define MAXGEN 24
+#define MAXSUBS (BEAT_MAXSUB)
+#define MAXXV 48
+static XVAR *xv[MAXGEN][MAXSUBS];
+static int nxv[MAXGEN][MAXSUBS];
+
+typedef struct { char c[BR_NUM][33]; int steps; } GRID;
+
+static int grid_read(const char *g, GRID *gr)
+{
+  BEATHIT h[MAXHITS];
+  int n = beat_parse(g, h, MAXHITS, &gr->steps), k, r;
+  if (n < 0) return 0;
+  for (r = 0; r < BR_NUM; r++)
+  {
+    memset(gr->c[r], '.', 32);
+    gr->c[r][32] = 0;
+  }
+  for (k = 0; k < n; k++)
+  {
+    char *cell = &gr->c[h[k].role][h[k].pos32 / 2];
+    if (h[k].pos32 & 1) *cell = 'r';
+    else if (*cell != 'r') *cell = h[k].level == BL_ACCENT ? 'X' : (h[k].level == BL_SOFT ? 'g' : 'x');
+  }
+  return 1;
+}
+
+static void grid_write(const GRID *gr, char *out, int size)
+{
+  int r;
+  out[0] = 0;
+  for (r = 0; r < BR_NUM; r++)
+  {
+    int s, any = 0;
+    for (s = 0; s < gr->steps; s++)
+      if (gr->c[r][s] != '.') any = 1;
+    if (!any) continue;
+    snprintf(out + strlen(out), size - strlen(out), "%s%c:%.*s", out[0] ? " " : "", rolechars[r], gr->steps, gr->c[r]);
+  }
+}
+
+static int has(const GRID *g, int role)
+{
+  int s;
+  for (s = 0; s < g->steps; s++)
+    if (g->c[role][s] != '.') return 1;
+  return 0;
+}
+
+static void setat(GRID *g, int role, int step16, char v)
+{
+  int s;
+  for (s = step16; s < g->steps; s += 16) g->c[role][s] = v;
+}
+
+static int backbeat(const GRID *g)
+{
+  return has(g, BR_SNARE) ? BR_SNARE : (has(g, BR_CLAP) ? BR_CLAP : (has(g, BR_RIM) ? BR_RIM : BR_SNARE));
+}
+
+#define NUMXFORMS 13
+static const char *xformnames[NUMXFORMS] = {"16th hats", "open hats", "ghost notes", "kick push", "half-time", "double-time",
+                                            "sparse", "crash", "hat rolls", "rimshot", "clap", "tom tag", "2 bars + fill"};
+
+// a variation of a grid; 0 = does not apply to this beat
+static int xform(int x, GRID *g, const char *fill)
+{
+  int s, bb = backbeat(g);
+  switch (x)
+  {
+    case 0:
+    if (!has(g, BR_CHAT)) return 0;
+    for (s = 0; s < g->steps; s++)
+      if (g->c[BR_CHAT][s] == '.') g->c[BR_CHAT][s] = 'x';
+    return 1;
+    case 1:
+    for (s = 2; s < 16; s += 4) { setat(g, BR_OHAT, s, 'x'); setat(g, BR_CHAT, s, '.'); }
+    return 1;
+    case 2:
+    if (!has(g, bb)) return 0;
+    for (s = 0; s < g->steps; s++)
+      if (((s % 16) == 7) || ((s % 16) == 9) || ((s % 16) == 15))
+        if (g->c[bb][s] == '.') g->c[bb][s] = 'g';
+    return 1;
+    case 3:
+    setat(g, BR_KICK, 6, 'x');
+    setat(g, BR_KICK, 14, 'x');
+    return 1;
+    case 4:
+    for (s = 0; s < g->steps; s++)
+    {
+      int p = s % 16;
+      if ((g->c[BR_KICK][s] != '.') && (p != 0) && (p != 10) && (p != 11)) g->c[BR_KICK][s] = '.';
+      if ((g->c[bb][s] == 'x') || (g->c[bb][s] == 'X')) g->c[bb][s] = '.';
+    }
+    setat(g, BR_KICK, 0, 'x');
+    setat(g, bb, 8, 'X');
+    return 1;
+    case 5:
+    for (s = 0; s < g->steps; s++)
+    {
+      int p = s % 16;
+      g->c[BR_KICK][s] = (p % 4 == 0) ? 'x' : '.';
+      g->c[bb][s] = (p % 4 == 2) ? 'X' : '.';
+    }
+    return 1;
+    case 6:
+    for (s = 0; s < g->steps; s++)
+    {
+      int p = s % 16, r;
+      for (r = 0; r < BR_NUM; r++)
+      {
+        if ((r == BR_KICK) || (r == bb)) { if (g->c[r][s] == 'g') g->c[r][s] = '.'; continue; }
+        if (r == BR_CHAT) { g->c[r][s] = (p % 4 == 0) && has(g, BR_CHAT) ? 'x' : '.'; continue; }
+        g->c[r][s] = '.';
+      }
+    }
+    return 1;
+    case 7:
+    g->c[BR_CRASH][0] = 'x';
+    return 1;
+    case 8:
+    if (!has(g, BR_CHAT)) return 0;
+    setat(g, BR_CHAT, 7, 'r');
+    setat(g, BR_CHAT, 15, 'r');
+    return 1;
+    case 9:
+    case 10:
+    if (!has(g, BR_SNARE)) return 0;
+    for (s = 0; s < g->steps; s++)
+    {
+      char v = g->c[BR_SNARE][s];
+      if (v == '.') continue;
+      g->c[BR_SNARE][s] = '.';
+      if (v != 'g') g->c[x == 9 ? BR_RIM : BR_CLAP][s] = v;
+    }
+    return 1;
+    case 11:
+    s = g->steps - 4;
+    g->c[bb][s] = '.';
+    g->c[BR_TOMH][s] = 'x';
+    g->c[BR_TOMM][s + 1] = 'x';
+    g->c[BR_TOML][s + 2] = 'x';
+    g->c[BR_TOML][s + 3] = 'x';
+    return 1;
+    case 12:
+    {
+      GRID f;
+      int r;
+      if ((g->steps != 16) || (!fill) || (!grid_read(fill, &f))) return 0;
+      for (r = 0; r < BR_NUM; r++)
+      {
+        memcpy(&g->c[r][16], g->c[r], 16);
+        memcpy(&g->c[r][24], &f.c[r][8], 8);
+      }
+      g->steps = 32;
+    }
+    return 1;
+  }
+  return 0;
+}
+
+static void buildvars(int g, int s)
+{
+  XVAR *v;
+  int n = 0, b, x, nb = basevars(g, s);
+  if (xv[g][s]) return;
+  v = (XVAR *)calloc(MAXXV, sizeof(XVAR));
+  if (!v) return;
+  for (b = 0; b < nb; b++)
+  {
+    snprintf(v[n].name, sizeof v[n].name, "%s", beatcatalog[g].sub[s].var[b].name);
+    snprintf(v[n].grid, sizeof v[n].grid, "%s", beatcatalog[g].sub[s].var[b].grid);
+    v[n].swing = beatcatalog[g].sub[s].var[b].swing;
+    n++;
+  }
+  for (b = 0; b < nb && b < 2; b++)
+    for (x = 0; x < NUMXFORMS && n < MAXXV; x++)
+    {
+      GRID gr;
+      int k, dup = 0;
+      if (!grid_read(beatcatalog[g].sub[s].var[b].grid, &gr)) continue;
+      if (!xform(x, &gr, beatcatalog[g].sub[s].fill)) continue;
+      grid_write(&gr, v[n].grid, sizeof v[n].grid);
+      for (k = 0; k < n; k++)
+        if (!strcmp(v[k].grid, v[n].grid)) dup = 1;
+      if (dup) continue;
+      snprintf(v[n].name, sizeof v[n].name, "%s + %s", beatcatalog[g].sub[s].var[b].name, xformnames[x]);
+      v[n].swing = beatcatalog[g].sub[s].var[b].swing;
+      n++;
+    }
+  xv[g][s] = v;
+  nxv[g][s] = n;
+}
+
+static int numvars(int g, int s)
+{
+  buildvars(g, s);
+  return nxv[g][s];
+}
+
 static const BEATSUBGENRE *cursub(void) { return &beatcatalog[bs.genre].sub[bs.sub]; }
-static const BEATVARIANT *curvar(void) { return &cursub()->var[bs.var]; }
+static const XVAR *curvar(void)
+{
+  buildvars(bs.genre, bs.sub);
+  return &xv[bs.genre][bs.sub][bs.var < nxv[bs.genre][bs.sub] ? bs.var : 0];
+}
 static int curkit(void) { return bs.kit >= 0 ? bs.kit : cursub()->kit; }
 static int curswing(void) { return bs.swing >= 0 ? bs.swing : curvar()->swing; }
 
@@ -214,6 +428,152 @@ static int detectrole(int i, int *level)
   }
   if (contains(n, "kick") || contains(n, "bass drum") || contains(n, "bassdrum") || !strncmp(n, "bd", 2)) return BR_KICK;
   return -1;
+}
+
+// ---------------------------------------------------------------------------
+// Drum instruments of the library (instruments/<6581|8580>/Drums/<Kick ...>)
+// ---------------------------------------------------------------------------
+
+typedef struct { char *path; char *name; } LIBDRUM;
+static LIBDRUM *libdrums[BR_NUM];
+static int numlib[BR_NUM];
+static int libmodel = -1;
+
+static void addlib(int role, const char *path, const char *name)
+{
+  LIBDRUM *n = (LIBDRUM *)realloc(libdrums[role], (numlib[role] + 1) * sizeof(LIBDRUM));
+  char *dot;
+  if (!n) return;
+  libdrums[role] = n;
+  n[numlib[role]].path = strdup(path);
+  n[numlib[role]].name = strdup(name);
+  dot = strrchr(n[numlib[role]].name, '.');
+  if (dot) *dot = 0;
+  numlib[role]++;
+}
+
+static int cmplib(const void *a, const void *b)
+{
+  return strcmp(((const LIBDRUM *)a)->name, ((const LIBDRUM *)b)->name);
+}
+
+static void scanfolder(const char *dir, int role, int role2, int role3)
+{
+  DIR *d = opendir(dir);
+  struct dirent *de;
+  if (!d) return;
+  while ((de = readdir(d)))
+  {
+    char full[MAX_PATHNAME * 2];
+    int l = strlen(de->d_name);
+    if ((l < 5) || (strcasecmp(de->d_name + l - 4, ".ins"))) continue;
+    snprintf(full, sizeof full, "%s/%s", dir, de->d_name);
+    addlib(role, full, de->d_name);
+    if (role2 >= 0) addlib(role2, full, de->d_name);
+    if (role3 >= 0) addlib(role3, full, de->d_name);
+  }
+  closedir(d);
+}
+
+static void scanlibdrums(void)
+{
+  static const struct { const char *folder; int r1, r2, r3; } map[] = {
+    {"Kick", BR_KICK, -1, -1}, {"Snare", BR_SNARE, -1, -1}, {"Clap", BR_CLAP, -1, -1}, {"HiHat", BR_CHAT, -1, -1},
+    {"OpenHat", BR_OHAT, -1, -1}, {"Tom", BR_TOMH, BR_TOMM, BR_TOML}, {"Percussion", BR_RIM, -1, -1}, {"Cymbal", BR_CRASH, -1, -1}};
+  int r, k, model = editorInfo.sidmodel ? 1 : 0;
+  if (libmodel == model) return;
+  for (r = 0; r < BR_NUM; r++)
+  {
+    for (k = 0; k < numlib[r]; k++) { free(libdrums[r][k].path); free(libdrums[r][k].name); }
+    free(libdrums[r]);
+    libdrums[r] = NULL;
+    numlib[r] = 0;
+    assign[r] = -1;
+  }
+  for (k = 0; k < (int)(sizeof map / sizeof map[0]); k++)
+  {
+    char dir[MAX_PATHNAME * 2];
+    snprintf(dir, sizeof dir, "%s/%s/Drums/%s", instrlibpath, model ? "8580" : "6581", map[k].folder);
+    scanfolder(dir, map[k].r1, map[k].r2, map[k].r3);
+    snprintf(dir, sizeof dir, "%s/%s/Electro/Drums/%s", instrlibpath, model ? "8580" : "6581", map[k].folder);
+    scanfolder(dir, map[k].r1, map[k].r2, map[k].r3);
+  }
+  for (r = 0; r < BR_NUM; r++)
+    if (numlib[r] > 1) qsort(libdrums[r], numlib[r], sizeof(LIBDRUM), cmplib);
+  libmodel = model;
+}
+
+static int progsame(int t, int a, int b)
+{
+  int k;
+  if ((!a) || (!b)) return a == b;
+  for (k = 0; k < 64; k++)
+  {
+    int pa = a - 1 + k, pb = b - 1 + k;
+    if ((pa >= MAX_TABLELEN) || (pb >= MAX_TABLELEN)) return 0;
+    if (ltable[t][pa] != ltable[t][pb]) return 0;
+    if (ltable[t][pa] == 0xff)
+    {
+      // stop, or a jump to the same place in the program
+      if (!rtable[t][pa] && !rtable[t][pb]) return 1;
+      return (rtable[t][pa] && rtable[t][pb]) && (rtable[t][pa] - a == rtable[t][pb] - b);
+    }
+    if (rtable[t][pa] != rtable[t][pb]) return 0;
+  }
+  return 0;
+}
+
+// another instrument with exactly the same sound (instrument i was just
+// added): then i is removed again and the other one is used
+static int samesound(int i, int oldlen[MAX_TABLES])
+{
+  int k, t;
+  for (k = 1; k < MAX_INSTR - 1; k++)
+  {
+    const INSTR *a = &instr[i], *b = &instr[k];
+    if ((k == i) || (instrempty(k))) continue;
+    if ((a->ad != b->ad) || (a->sr != b->sr) || (a->gatetimer != b->gatetimer) || (a->firstwave != b->firstwave) || (a->vibdelay != b->vibdelay)) continue;
+    for (t = 0; t < MAX_TABLES; t++)
+      if (t == STBL ? (a->ptr[t] != b->ptr[t]) && (!a->ptr[t] || !b->ptr[t] || ltable[t][a->ptr[t] - 1] != ltable[t][b->ptr[t] - 1] || rtable[t][a->ptr[t] - 1] != rtable[t][b->ptr[t] - 1]) : !progsame(t, a->ptr[t], b->ptr[t])) break;
+    if (t < MAX_TABLES) continue;
+    // remove the new one and its table rows
+    memset(&instr[i], 0, sizeof(INSTR));
+    for (t = 0; t < MAX_TABLES; t++)
+    {
+      int r;
+      for (r = oldlen[t]; r < MAX_TABLELEN; r++) ltable[t][r] = rtable[t][r] = 0;
+    }
+    return k;
+  }
+  return i;
+}
+
+static int loadlibdrum(int role, int idx, char *err, int errsize)
+{
+  int slot, old[MAX_TABLES], t, keep = editorInfo.einum;
+  char save[MAX_FILENAME];
+  for (slot = 1; slot < MAX_INSTR - 1; slot++)
+    if (instrempty(slot)) break;
+  if (slot >= MAX_INSTR - 1)
+  {
+    snprintf(err, errsize, "No free instrument slot for %s", libdrums[role][idx].name);
+    return 0;
+  }
+  for (t = 0; t < MAX_TABLES; t++) old[t] = gettablelen(t);
+  strcpy(save, instrfilename);
+  snprintf(instrfilename, MAX_FILENAME, "%s", libdrums[role][idx].path);
+  editorInfo.einum = slot;
+  loadinstrument();
+  editorInfo.einum = keep;
+  strcpy(instrfilename, save);
+  if (instrloadfailed)
+  {
+    memset(&instr[slot], 0, sizeof(INSTR));
+    snprintf(err, errsize, "Could not load %s (tables full?)", libdrums[role][idx].name);
+    return 0;
+  }
+  if (!instr[slot].name[0]) snprintf(instr[slot].name, MAX_INSTRNAMELEN, "%.15s", libdrums[role][idx].name);
+  return samesound(slot, old);
 }
 
 static void autoassign(void)
@@ -583,17 +943,23 @@ static int writebeat(int chn, char *err, int errsize)
     {
       genslot[r][l] = 0;
       if (!need[r][l]) continue;
-      if (assign[r])
+      if ((assign[r] >= 0) && (assign[r] < numlib[r]))
       {
-        // an assigned instrument; soft / accent variants of it if they exist
-        int v = (l == BL_NORMAL) ? 0 : findlevel(r, l);
-        genslot[r][l] = v ? v : assign[r];
+        // a library instrument (one for all levels)
+        int k;
+        for (k = 0; k < BL_NUM; k++)
+          if (genslot[r][k]) break;
+        genslot[r][l] = k < BL_NUM ? genslot[r][k] : loadlibdrum(r, assign[r], err, errsize);
+        if (!genslot[r][l]) return 0;
       }
       else
       {
         DRUMINS d;
+        int old[MAX_TABLES], t;
+        for (t = 0; t < MAX_TABLES; t++) old[t] = gettablelen(t);
         makedrum(&d, r, l, kit, tempo);
         genslot[r][l] = adddrum(&d);
+        if (genslot[r][l]) genslot[r][l] = samesound(genslot[r][l], old);
         if (!genslot[r][l])
         {
           snprintf(err, errsize, "No room for the instrument \"%s\" (instruments or tables full)", d.name);
@@ -713,7 +1079,13 @@ int beat_generate_cli(int chn, int genre, int sub, int var, int fill, char *err,
   bs.fill = fill;
   if (getenv("GG_BEATROWS")) bs.rows16 = atoi(getenv("GG_BEATROWS"));
   if (getenv("GG_BEATVARIATION")) bs.variation = atoi(getenv("GG_BEATVARIATION"));
-  autoassign();
+  scanlibdrums();
+  // GG_BEATLIB=n: the n-th library instrument (from 1) for every drum
+  if (getenv("GG_BEATLIB"))
+  {
+    int r;
+    for (r = 0; r < BR_NUM; r++) assign[r] = numlib[r] ? (atoi(getenv("GG_BEATLIB")) - 1) % numlib[r] : -1;
+  }
   return writebeat(chn, err, errsize);
 }
 
@@ -733,9 +1105,9 @@ int beat_selftest(void)
       for (v = 0; v < numvars(g, s); v++)
       {
         count++;
-        if (beat_parse(beatcatalog[g].sub[s].var[v].grid, h, MAXHITS, &steps) <= 0)
+        if (beat_parse(xv[g][s][v].grid, h, MAXHITS, &steps) <= 0)
         {
-          printf("FAIL %s / %s / %s\n", beatcatalog[g].name, beatcatalog[g].sub[s].name, beatcatalog[g].sub[s].var[v].name);
+          printf("FAIL %s / %s / %s: %s\n", beatcatalog[g].name, beatcatalog[g].sub[s].name, xv[g][s][v].name, xv[g][s][v].grid);
           fail++;
         }
       }
@@ -846,7 +1218,7 @@ void beatdialog(void)
 
   editorInfo.editmode = EDIT_PATTERN;
   if (isplaying()) stopsong();
-  autoassign();
+  scanlibdrums();
   key = 0;
   rawkey = 0;
 
@@ -908,13 +1280,10 @@ void beatdialog(void)
     {
       int s = S_OPTIONS + c, isel = (s == sel), bg = isel ? C_SELECT : C_PANEL, ry = y0 + 2 + c;
       char nm[MAX_INSTRNAMELEN + 1];
-      if (assign[c])
-      {
-        memcpy(nm, instr[assign[c]].name, MAX_INSTRNAMELEN);
-        nm[MAX_INSTRNAMELEN] = 0;
-        sprintf(buf, "%-6s " GS_PREV " %02X %-15s " GS_NEXT, beatrolenames[c], assign[c], nm);
-      }
-      else sprintf(buf, "%-6s " GS_PREV " New: %s %s " GS_NEXT, beatrolenames[c], beatrolenames[c], kitnames[curkit()]);
+      (void)nm;
+      if ((assign[c] >= 0) && (assign[c] < numlib[c]))
+        sprintf(buf, "%-6s " GS_PREV " Lib %.18s " GS_NEXT " %d/%d", beatrolenames[c], libdrums[c][assign[c]].name, assign[c] + 1, numlib[c]);
+      else sprintf(buf, "%-6s " GS_PREV " Kit: %s %s " GS_NEXT " (%d in lib)", beatrolenames[c], beatrolenames[c], kitnames[curkit()], numlib[c]);
       printblankc(x0 + 62, ry, MKCOL(8, bg), w - 64);
       printtext(x0 + 63, ry, MKCOL(isel ? 15 : (used[c] ? 8 : 3), bg), buf);
       if ((mousey == ry) && (mousex >= x0 + 62) && (mousex < x0 + w - 2)) hitrow = s;
@@ -1066,7 +1435,11 @@ void beatdialog(void)
           case 8: bs.beatonly ^= 1; break;
           default:
           if ((sel >= S_OPTIONS) && (sel < S_ROLES))
-            assign[sel - S_OPTIONS] = nextslot(assign[sel - S_OPTIONS], dir);
+          {
+            int r = sel - S_OPTIONS, n = numlib[r] + 1, step = shiftpressed ? 10 : 1;
+            // -1 = kit sound, 0 ... n-2 = library instruments
+            assign[r] = ((assign[r] + 1 + dir * step) % n + n) % n - 1;
+          }
           break;
         }
       }
@@ -1102,7 +1475,6 @@ void beatdialog(void)
           break;
         }
         songmodified = 1;
-        autoassign();
         snprintf(buf, sizeof buf, "Beat \"%s / %s\" written to channel %d.%d, pattern %02X (CTRL+D)", cursub()->name, curvar()->name,
                  ch / 3 + 1, ch % 3 + 1, patt);
         setstatusmessage(buf);

@@ -150,6 +150,27 @@ static int dictlookup(const char *word, unsigned char *codes, int max)
 
 // Very small letter-to-sound fallback for words that are not in the
 // dictionary (names, made-up words). Digraphs first, then single letters.
+// unknown word made of dictionary words ("groovegoat" = groove + goat,
+// "sixtyfour" = sixty + four): the longest first part that leaves a word
+static int compoundlookup(const char *w, unsigned char *codes, int max)
+{
+  int len = strlen(w), cut;
+  char a[64];
+  if ((len < 5) || (len > 60)) return -1;
+  for (cut = len - 2; cut >= 2; cut--)
+  {
+    int n1, n2;
+    memcpy(a, w, cut);
+    a[cut] = 0;
+    n1 = dictlookup(a, codes, max);
+    if (n1 <= 0) continue;
+    n2 = dictlookup(w + cut, codes + n1, max - n1);
+    if (n2 <= 0) n2 = (strlen(w + cut) >= 4) ? compoundlookup(w + cut, codes + n1, max - n1) : -1;
+    if (n2 > 0) return n1 + n2;
+  }
+  return -1;
+}
+
 static int letterrules(const char *w, unsigned char *codes, int max)
 {
   static const struct { const char *g; const char *p; } rules[] = {
@@ -277,6 +298,7 @@ static int parsetext(const char *text, char *err, int errsize)
       while ((isalpha((unsigned char)*s) || (*s == '\'')) && (l < 63)) w[l++] = tolower((unsigned char)*s++);
       w[l] = 0;
       n = dictlookup(w, codes, 64);
+      if (n <= 0) n = compoundlookup(w, codes, 64);
       if (n <= 0) n = letterrules(w, codes, 64);
       for (c = 0; c < n; c++)
         addphone(codes[c] / 3, codes[c] % 3, word);
@@ -379,7 +401,7 @@ static int hz2cutoff(int hz)
 
 // Voices: waveform, formant scale (shorter vocal tract = higher formants),
 // pitch, melody
-enum { VW_PULSE, VW_SAW, VW_NOISE, VW_METAL };
+enum { VW_PULSE, VW_SAW, VW_NOISE, VW_METAL, VW_SQUARE };
 typedef struct
 {
   const char *name;
@@ -397,6 +419,15 @@ static const VOICE voices[] = {
   {"Robot", VW_METAL, 100, 31, 1},
   {"Bright (sawtooth)", VW_SAW, 100, 33, 0},
   {"Whisper", VW_NOISE, 105, 33, 0},
+  {"Old man", VW_PULSE, 96, 31, 0},
+  {"Boy", VW_PULSE, 110, 38, 0},
+  {"Narrator (deep)", VW_PULSE, 93, 29, 0},
+  {"Witch", VW_SAW, 122, 42, 0},
+  {"Alien", VW_SAW, 140, 48, 0},
+  {"Chipmunk", VW_PULSE, 150, 60, 0},
+  {"Monster", VW_SAW, 76, 22, 0},
+  {"Vocoder (square)", VW_SQUARE, 100, 33, 0},
+  {"Ghost (whisper)", VW_NOISE, 125, 45, 0},
 };
 #define NUMVOICES ((int)(sizeof voices / sizeof voices[0]))
 
@@ -431,12 +462,13 @@ static void voiced(FRAME *f, int f1, int f2, int note, const SPEECHPARAMS *p, in
   f->wave = curvoice->wave == VW_SAW ? 0x21 : (curvoice->wave == VW_NOISE ? W_NOISE : 0x41);
   if (curvoice->wave == VW_METAL) f->wave = editorInfo.sidmodel ? 0x61 : 0x41;     // pulse+saw: metallic (8580)
   f->note = curvoice->wave == VW_NOISE ? noisenote(f2) : 0x00;
+  if (curvoice->wave == VW_SQUARE) f->wave = 0x41;
   // pulse width: emphasize the harmonics around F1 (first spectral peak of a
   // narrow pulse at 1/(2*duty) times the fundamental)
   d = (double)f0 / (2.0 * (f1 > 150 ? f1 : 150));
   if (d < 0.05) d = 0.05;
   if (d > 0.45) d = 0.45;
-  f->pulse = (int)(d * 4096);
+  f->pulse = ((int)(d * 4096)) & ~0x0f;
   f->res = 15;
   switch (p->mode)
   {
@@ -454,7 +486,7 @@ static void voiced(FRAME *f, int f1, int f2, int note, const SPEECHPARAMS *p, in
     f->cutoff = hz2cutoff(f1);
     d = (double)f0 / (2.0 * f2);
     if (d < 0.03) d = 0.03;
-    f->pulse = (int)(d * 4096);
+    f->pulse = ((int)(d * 4096)) & ~0x0f;
     break;
     case 8:   // bandpass + highpass at F1, pulse width from F2
     case 9:   // bandpass at F1, sawtooth
@@ -465,9 +497,11 @@ static void voiced(FRAME *f, int f1, int f2, int note, const SPEECHPARAMS *p, in
     f->cutoff = hz2cutoff(f1);
     d = (double)f0 / (2.0 * f2);
     if (d < 0.03) d = 0.03;
-    f->pulse = (int)(d * 4096);
+    f->pulse = ((int)(d * 4096)) & ~0x0f;
     if (p->mode == 9) f->wave = 0x21;
     if ((p->mode == 10 || p->mode == 0) && (f2 < fscale(1100)) && (curvoice->wave == VW_PULSE)) f->wave = 0x21;
+    // vocoder: a fixed square wave, only the filter forms the vowels
+    if (curvoice->wave == VW_SQUARE) f->pulse = 0x800;
     break;
     case 3:   // bandpass, alternating F1 / F2 on every frame
     f->ftype = 0x20;
@@ -620,24 +654,48 @@ static void segname(const SEG *sg, char *buf, int size)
 }
 
 // Intonation: one note per phone
+static const char *melodies[] = {
+  "Monotone", "Statement (falls at the end)", "Question (rises at the end)", "Command (strong accents)",
+  "Excited (high, wide)", "Sad / tired (low, sinking)", "Announcer (high, steps down)", "Sing-song (up and down)",
+  "Chant (minor triad)", "Rising (every word higher)", "Villain (low, dark end)", "Random (wobbly)", "Robot steps (scale)"
+};
+#define NUMMELODIES ((int)(sizeof melodies / sizeof melodies[0]))
+int speech_nummelodies(void) { return NUMMELODIES; }
+const char *speech_melodyname(int m) { return melodies[m >= 0 && m < NUMMELODIES ? m : 0]; }
+
 static void intonation(const SPEECHPARAMS *p)
 {
-  int c, lastword = phones[numphones - 1].word;
+  int c, lastword = phones[numphones - 1].word, syl = 0, firstword = phones[0].word;
+  unsigned rnd = 12345;
+  const char *t;
+  for (t = p->text; *t; t++) rnd = rnd * 31 + (unsigned char)*t;
   for (c = 0; c < numphones; c++)
   {
-    int n = p->basenote;
+    int n = p->basenote, w = phones[c].word - firstword;
+    int isv = (phones[c].ph != PSILENCE) && (phon[phones[c].ph].type <= PD);
+    int st = isv && (phones[c].stress == 1), last = phones[c].word == lastword;
     if (curvoice->monotone)
     {
       phones[c].note = n;
       continue;
     }
-    int isv = (phones[c].ph != PSILENCE) && (phon[phones[c].ph].type <= PD);
-    if ((isv) && (phones[c].stress == 1)) n += (p->melody == 3) ? 3 : (p->melody ? 2 : 0);
-    if (phones[c].word == lastword)
+    switch (p->melody)
     {
-      if (p->melody == 1) n -= (isv && phones[c].stress == 1) ? 1 : 3;
-      if (p->melody == 2) n += (isv && phones[c].stress == 1) ? 4 : 1;
+      case 1: if (st) n += 2; if (last) n -= st ? 1 : 3; break;
+      case 2: if (st) n += 2; if (last) n += st ? 4 : 1; break;
+      case 3: if (st) n += 3; break;
+      case 4: n += 2; if (st) n += 5; if (last) n += 3; break;
+      case 5: n -= 2 + (w > 3 ? 3 : w); if (st) n += 1; break;
+      case 6: n += 5 - (w * 2 > 9 ? 9 : w * 2); if (st) n += 2; break;
+      case 7: if (isv) n += (syl & 1) ? 0 : 3; break;
+      case 8: if (isv) { static const int tri[4] = {0, 3, 7, 3}; n += tri[syl & 3]; } break;
+      case 9: n += (w * 2 > 12 ? 12 : w * 2); if (st) n += 1; break;
+      case 10: n -= 3; if (st) n += 2; if (last) n -= st ? 3 : 5; break;
+      case 11: if (isv) { rnd = rnd * 1103515245u + 12345u; n += (int)((rnd >> 16) % 7) - 3; } break;
+      case 12: if (isv) { static const int sc[8] = {0, 2, 4, 5, 7, 5, 4, 2}; n += sc[syl & 7]; } break;
+      default: break;
     }
+    if (isv) syl++;
     if (n < 12) n = 12;
     if (n > 84) n = 84;
     phones[c].note = n;
@@ -972,6 +1030,7 @@ void speech_defaults(SPEECHPARAMS *p)
   p->tempo = 0;
   p->settempo = 0;
   p->mode = 0;
+  p->share = 1;
 }
 
 static int instrempty(int i)
@@ -989,6 +1048,36 @@ static const char *notestr(int n, char *buf)
   return buf;
 }
 
+// an identical program (no jumps: they all end with FF 00) in the table
+static int findprog(int t, const PROG *pr, int len)
+{
+  int i;
+  for (i = 0; i + pr->n <= len; i++)
+    if ((!memcmp(&ltable[t][i], pr->l, pr->n)) && (!memcmp(&rtable[t][i], pr->r, pr->n))) return i + 1;
+  return 0;
+}
+
+static int sameprogat(int t, int ptr, const PROG *pr)
+{
+  if ((!ptr) || (ptr - 1 + pr->n > MAX_TABLELEN)) return 0;
+  return (!memcmp(&ltable[t][ptr - 1], pr->l, pr->n)) && (!memcmp(&rtable[t][ptr - 1], pr->r, pr->n));
+}
+
+// a speech instrument with exactly this sound in the song (an earlier
+// sentence, or the same sound in another word)
+static int findinstrument(int gt, int fw, const PROG *w, const PROG *pu, const PROG *f)
+{
+  int i;
+  for (i = 1; i < MAX_INSTR - 1; i++)
+  {
+    const INSTR *in = &instr[i];
+    if ((in->ad != 0x00) || (in->sr != 0xf4) || (in->gatetimer != gt) || (in->firstwave != fw) || (in->ptr[STBL]) || (in->vibdelay)) continue;
+    if (strncmp(in->name, "Say ", 4)) continue;
+    if (sameprogat(WTBL, in->ptr[WTBL], w) && sameprogat(PTBL, in->ptr[PTBL], pu) && sameprogat(FTBL, in->ptr[FTBL], f)) return i;
+  }
+  return 0;
+}
+
 static int samephones(int a, int b, int n)
 {
   int c;
@@ -1000,7 +1089,7 @@ static int samephones(int a, int b, int n)
 int speech_generate(const SPEECHPARAMS *p, int chn, int row, char *err, int errsize)
 {
   static PROG wp[MAXPHONES], pp[MAXPHONES], fp[MAXPHONES];
-  int slot[MAXPHONES], inum[MAXPHONES];
+  int slot[MAXPHONES], inum[MAXPHONES], plen[MAXPHONES], fwv[MAXPHONES], gtv[MAXPHONES], exist[MAXPHONES];
   int c, k, need = 0, tlen[3], rows, patt, voicebit, sid;
   char phs[1024], nb[16];
   SPEECHPARAMS fixed;
@@ -1030,9 +1119,23 @@ int speech_generate(const SPEECHPARAMS *p, int chn, int row, char *err, int errs
   for (c = 0; c < numsegs; c++)
   {
     int a = segs[c].start, b = segs[c].end;
+    plen[c] = b - a;
     makewave(&wp[c], a, b);
     makepulse(&pp[c], a, b);
     makefilter(&fp[c], a, b, voicebit);
+    // the first frame of a note sounds with the old filter, pulse width and
+    // frequency (the tables start one frame later): it keeps the waveform of
+    // the frame before, and is silent between noise and tone (a noise note
+    // played as a tone - or a pulse through the filter of an S - beeps)
+    {
+      int fw = c ? frames[a - 1].wave : W_SILENT;
+      int before = (a >= 2) ? frames[a - 2].wave : W_SILENT;
+      if ((fw != W_SILENT) && (before != W_SILENT) && (((fw & 0x80) != 0) != ((before & 0x80) != 0))) fw = W_SILENT;
+      fwv[c] = (fw == W_SILENT) ? 0x01 : fw;
+    }
+    // no hard restart, no gate off (legato); the first sound clears the gate
+    // one frame before its row, so the envelope starts again
+    gtv[c] = c ? (0xc0 | 1) : (0x80 | 1);
   }
   // identical sounds share one instrument
   for (c = 0; c < numsegs; c++)
@@ -1041,8 +1144,7 @@ int speech_generate(const SPEECHPARAMS *p, int chn, int row, char *err, int errs
     for (k = 0; k < c; k++)
     {
       // the first sound has its own instrument (gate retrigger, see below)
-      if ((k) && (slot[k] == k) && (segs[k].last - segs[k].first == segs[c].last - segs[c].first) &&
-          (samephones(segs[k].first, segs[c].first, segs[c].last - segs[c].first + 1)) &&
+      if ((slot[k] == k) && (gtv[k] == gtv[c]) && (fwv[k] == fwv[c]) &&
           (wp[k].n == wp[c].n) && (!memcmp(wp[k].l, wp[c].l, wp[c].n)) && (!memcmp(wp[k].r, wp[c].r, wp[c].n)) &&
           (pp[k].n == pp[c].n) && (!memcmp(pp[k].l, pp[c].l, pp[c].n)) && (!memcmp(pp[k].r, pp[c].r, pp[c].n)) &&
           (fp[k].n == fp[c].n) && (!memcmp(fp[k].l, fp[c].l, fp[c].n)) && (!memcmp(fp[k].r, fp[c].r, fp[c].n)))
@@ -1051,7 +1153,33 @@ int speech_generate(const SPEECHPARAMS *p, int chn, int row, char *err, int errs
         break;
       }
     }
-    if (slot[c] == c) need++;
+    // the same sound (same phonemes) in another place of the sentence: one
+    // instrument; it gets the longest of the programs (a note only plays its
+    // program until the next note)
+    if ((slot[c] == c) && (p->share) && (c))
+    {
+      for (k = 1; k < c; k++)
+      {
+        if ((slot[k] != k) || (gtv[k] != gtv[c]) || (fwv[k] != fwv[c])) continue;
+        if (segs[k].last - segs[k].first != segs[c].last - segs[c].first) continue;
+        if (!samephones(segs[k].first, segs[c].first, segs[c].last - segs[c].first + 1)) continue;
+        if (segs[c].end - segs[c].start > plen[k])
+        {
+          wp[k] = wp[c];
+          pp[k] = pp[c];
+          fp[k] = fp[c];
+          plen[k] = segs[c].end - segs[c].start;
+        }
+        slot[c] = k;
+        break;
+      }
+    }
+    exist[c] = 0;
+    if (slot[c] == c)
+    {
+      exist[c] = findinstrument(gtv[c], fwv[c], &wp[c], &pp[c], &fp[c]);
+      if (!exist[c]) need++;
+    }
   }
   // space: instruments, tables, pattern rows
   {
@@ -1068,7 +1196,11 @@ int speech_generate(const SPEECHPARAMS *p, int chn, int row, char *err, int errs
     int sum = 0;
     tlen[k] = gettablelen(k);
     for (c = 0; c < numsegs; c++)
-      if (slot[c] == c) sum += (k == 0 ? wp[c].n : (k == 1 ? pp[c].n : fp[c].n));
+      if ((slot[c] == c) && (!exist[c]))
+      {
+        const PROG *pr = k == 0 ? &wp[c] : (k == 1 ? &pp[c] : &fp[c]);
+        if (!findprog(k, pr, tlen[k])) sum += pr->n;
+      }
     if (tlen[k] + sum > MAX_TABLELEN)
     {
       static const char *tn[3] = {"wave", "pulse", "filter"};
@@ -1092,6 +1224,7 @@ int speech_generate(const SPEECHPARAMS *p, int chn, int row, char *err, int errs
     char name[MAX_INSTRNAMELEN + 8], sn[MAX_INSTRNAMELEN];
     int t;
     if (slot[c] != c) { inum[c] = inum[slot[c]]; continue; }
+    if (exist[c]) { inum[c] = exist[c]; continue; }
     while (!instrempty(k)) k++;
     inum[c] = k;
     in = &instr[k];
@@ -1101,18 +1234,23 @@ int speech_generate(const SPEECHPARAMS *p, int chn, int row, char *err, int errs
     // no hard restart, no gate off (legato), new note 1 frame before. The
     // first sound clears the gate one frame before its row, so the envelope
     // starts again even if the voice still holds a decayed note
-    in->gatetimer = c ? (0xc0 | 1) : (0x80 | 1);
-    in->firstwave = frames[segs[c].start].wave == W_SILENT ? 0x01 : frames[segs[c].start].wave;
+    in->gatetimer = gtv[c];
+    in->firstwave = fwv[c];
     segname(&segs[c], sn, MAX_INSTRNAMELEN - 4);
     snprintf(name, sizeof name, "Say %s", sn);
     strncpy(in->name, name, MAX_INSTRNAMELEN - 1);
     for (t = 0; t < 3; t++)
     {
       PROG *pr = t == 0 ? &wp[c] : (t == 1 ? &pp[c] : &fp[c]);
-      in->ptr[t] = tlen[t] + 1;
-      memcpy(&ltable[t][tlen[t]], pr->l, pr->n);
-      memcpy(&rtable[t][tlen[t]], pr->r, pr->n);
-      tlen[t] += pr->n;
+      // an identical program already in the table is shared
+      in->ptr[t] = findprog(t, pr, tlen[t]);
+      if (!in->ptr[t])
+      {
+        in->ptr[t] = tlen[t] + 1;
+        memcpy(&ltable[t][tlen[t]], pr->l, pr->n);
+        memcpy(&rtable[t][tlen[t]], pr->r, pr->n);
+        tlen[t] += pr->n;
+      }
     }
     k++;
   }
