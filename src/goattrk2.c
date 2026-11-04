@@ -495,6 +495,10 @@ int main(int argc, char **argv)
       if (getenv("GG_SPEECHMELODY")) sp.melody = atoi(getenv("GG_SPEECHMELODY"));
       // pattern to write into (default: the pattern at the start of the channel's orderlist)
       if (getenv("GG_SPEECHPATT")) editorUndoInfo.editorInfo[chn].epnum = atoi(getenv("GG_SPEECHPATT"));
+      // song speed (frames per row), default: from the song; GG_SPEECHSETTEMPO=1
+      // also writes the tempo command
+      sp.tempo = getenv("GG_SPEECHTEMPO") ? atoi(getenv("GG_SPEECHTEMPO")) : speech_songtempo(chn);
+      if (getenv("GG_SPEECHSETTEMPO")) sp.settempo = atoi(getenv("GG_SPEECHSETTEMPO"));
       if (!speech_generate(&sp, chn, getenv("GG_SPEECHROW") ? atoi(getenv("GG_SPEECHROW")) : 0, err, sizeof err))
       {
         fprintf(stderr, "error: %s\n", err);

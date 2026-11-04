@@ -10,6 +10,7 @@
 static SPEECHPARAMS sp;
 static int spinit = 0;
 static char listname[MAX_FILENAME] = "speech.txt";
+static int songspeed = 0;     // frames per row the speech is made for, 0 = from the song
 
 // song data before a preview (instruments, tables, patterns, lengths)
 static void *prevdata = NULL;
@@ -106,7 +107,10 @@ void speechdialog(void)
 
   for (;;)
   {
-    // 0 text, 1 voice, 2 pitch, 3 speed, 4 melody, 5 row timing, 6 tempo command,
+    int detected = speech_songtempo(chn);
+    int fps = editorInfo.multiplier ? 50 * editorInfo.multiplier : 25;
+    sp.tempo = songspeed ? songspeed : detected;
+    // 0 text, 1 voice, 2 pitch, 3 speed, 4 melody, 5 song speed, 6 tempo command,
     // 7 preview, 8 insert, 9 listing, 10 cancel
     char buf[256], phs[1024], err[160], nb[16];
     int c, hitrow = -1, hitbtn = -1;
@@ -137,7 +141,12 @@ void speechdialog(void)
           break;
         case 3: sprintf(buf, "Speed             " GS_PREV " %d%% " GS_NEXT "   (%s)", sp.speed, sp.speed > 100 ? "slower" : (sp.speed < 100 ? "faster" : "normal")); break;
         case 4: sprintf(buf, "Melody            " GS_PREV " %s " GS_NEXT, melodynames[sp.melody]); break;
-        case 5: sprintf(buf, "Row timing        " GS_PREV " %d ticks per row (%d ms) " GS_NEXT, sp.tempo, sp.tempo * 20); break;
+        case 5:
+          if (songspeed) sprintf(buf, "Song speed        " GS_PREV " F%02X " GS_NEXT "  %d ms per row%s", sp.tempo, sp.tempo * 1000 / fps,
+                                 (sp.tempo != detected) && (!sp.settempo) ? "  (the song plays at F" : "");
+          else sprintf(buf, "Song speed        " GS_PREV " Auto: F%02X " GS_NEXT "  %d ms per row (tempo of the song)", sp.tempo, sp.tempo * 1000 / fps);
+          if ((songspeed) && (sp.tempo != detected) && (!sp.settempo)) sprintf(buf + strlen(buf), "%02X!)", detected);
+          break;
         case 6: sprintf(buf, "[%c] Put the tempo command F%02X on the first row", sp.settempo ? 'x' : ' ', sp.tempo); break;
       }
       printblankc(x0 + 2, ry, MKCOL(8, bg), w - 4);
@@ -284,9 +293,11 @@ void speechdialog(void)
           break;
           case 4: sp.melody = (sp.melody + dir + 4) % 4; break;
           case 5:
-          sp.tempo += dir;
-          if (sp.tempo < 2) sp.tempo = 2;
-          if (sp.tempo > 8) sp.tempo = 8;
+          // Auto, F02 ... F10
+          songspeed += dir;
+          if ((songspeed == 1) || (songspeed == 2)) songspeed = dir > 0 ? 3 : 0;
+          if (songspeed < 0) songspeed = 16;
+          if (songspeed > 16) songspeed = 0;
           break;
           case 6: sp.settempo ^= 1; break;
           default:

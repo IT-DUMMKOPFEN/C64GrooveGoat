@@ -628,8 +628,16 @@ frame (20 ms), and the pattern gets one note per sound.
 |  Speed          50% (fast) ... 250% (slow)
 |  Melody         Monotone, Statement (falls at the end), Question (rises at the end) or
 |                 Command (strong accents on the stressed syllables)
-|  Row timing     Ticks per pattern row the speech is calculated for: 3 = 60 ms per row
-|                 (song speed 03). Optionally the tempo command F03 goes on the first row.
+|  Song speed     The speed of your song (frames per pattern row): Auto takes it from the
+|                 song (the first tempo command Fxx in the current patterns, else the
+|                 default 6), or choose F03 ... F10 yourself (F03 = 60 ms, F05 = 100 ms,
+|                 F06 = 120 ms per row). Optionally the tempo command goes on the first row.
+
+The sounds keep their natural length at every song speed: the speech is cut at the rows in
+which sounds begin, and at slower speeds one instrument can hold several short sounds (for
+example "G EH" in one row at F06). So the same sentence takes about the same time at F03 and
+at F06 - only the number of rows and instruments changes (TOGETHER WE HUNT: 22 rows at F03,
+12 rows at F06). F02 is too fast for the speech, the minimum is F03.
 
 The window shows the sounds (phonemes), the length in rows and seconds and the target: channel,
 pattern and row of the cursor.

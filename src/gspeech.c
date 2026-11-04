@@ -512,26 +512,77 @@ static void durations(const SPEECHPARAMS *p)
           ms = ms * 120 / 100;
       }
     }
-    phones[c].frames = ms * p->speed / 100;
+    phones[c].frames = ms * p->speed / 100;     // milliseconds until timeline()
   }
 }
 
-// Quantize the phone boundaries to pattern rows (tempo frames per row)
-static void quantize(const SPEECHPARAMS *p)
+// Player frames per second: 50 (PAL) times the speed multiplier, 25 at 0
+static int framespersec(void)
 {
-  int c, t = 0, acc = 0;
+  return editorInfo.multiplier ? 50 * editorInfo.multiplier : 25;
+}
+
+// Timing: the sounds keep their natural length (in player frames); the
+// pattern only decides where a new instrument can start. The speech is cut
+// into segments at the rows in which sounds begin, so it sounds the same at
+// every song speed (F02 ... F10); at slow speeds one instrument may hold
+// several short sounds.
+typedef struct
+{
+  int start, end;     // frames
+  int first, last;    // phones
+  int row;            // pattern row (relative)
+} SEG;
+
+static SEG segs[MAXPHONES];
+static int numsegs;
+
+static void timeline(const SPEECHPARAMS *p)
+{
+  int c, t = 0, fps = framespersec(), tempo = p->tempo;
   for (c = 0; c < numphones; c++)
   {
-    int endms, rows;
-    acc += phones[c].frames;
-    endms = acc;
-    rows = (endms + p->tempo * 10) / (p->tempo * 20);
-    if (rows * p->tempo <= t) rows = t / p->tempo + 1;
+    int f = (phones[c].frames * fps + 500) / 1000;     // phones[c].frames holds ms here
+    if (f < 1) f = 1;
     phones[c].start = t;
-    phones[c].frames = rows * p->tempo - t;
-    t = rows * p->tempo;
+    phones[c].frames = f;
+    t += f;
   }
-  numframes = t;
+  // the speech ends on a row boundary
+  if (t % tempo) phones[numphones - 1].frames += tempo - t % tempo;
+  numframes = phones[numphones - 1].start + phones[numphones - 1].frames;
+
+  numsegs = 0;
+  for (c = 0; c < numphones; c++)
+  {
+    int r = (phones[c].start + tempo / 2) / tempo;
+    if (c == 0) r = 0;
+    if ((numsegs) && (r <= segs[numsegs - 1].row))
+    {
+      segs[numsegs - 1].last = c;
+      continue;
+    }
+    if (r * tempo >= numframes) { segs[numsegs - 1].last = c; continue; }
+    segs[numsegs].row = r;
+    segs[numsegs].start = r * tempo;
+    segs[numsegs].first = segs[numsegs].last = c;
+    numsegs++;
+  }
+  for (c = 0; c < numsegs; c++)
+    segs[c].end = c + 1 < numsegs ? segs[c + 1].start : numframes;
+}
+
+static void segname(const SEG *sg, char *buf, int size)
+{
+  int c;
+  buf[0] = 0;
+  for (c = sg->first; c <= sg->last; c++)
+  {
+    const char *n = phones[c].ph == PSILENCE ? "-" : phon[phones[c].ph].name;
+    if ((int)(strlen(buf) + strlen(n) + 2) > size) break;
+    if (buf[0]) strcat(buf, " ");
+    strcat(buf, n);
+  }
 }
 
 // Intonation: one note per phone
@@ -817,13 +868,40 @@ static void lst(const char *fmt, ...)
   va_end(ap);
 }
 
+int speech_songtempo(int chn)
+{
+  int c, r, pt;
+  for (c = -1; c < numchannels; c++)
+  {
+    pt = editorUndoInfo.editorInfo[c < 0 ? chn : c].epnum;
+    for (r = 0; r < pattlen[pt]; r++)
+    {
+      unsigned char *q = &pattern[pt][r * 4];
+      if ((q[2] == CMD_SETTEMPO) && ((q[3] & 0x7f) >= 2)) return q[3] & 0x7f;
+    }
+  }
+  if ((instr[MAX_INSTR - 1].ad >= 2) && (!instr[MAX_INSTR - 1].ptr[WTBL])) return instr[MAX_INSTR - 1].ad;
+  return editorInfo.multiplier ? 6 * editorInfo.multiplier : 6;
+}
+
+// speed 0 = from the song; at least F03 (at F02 the player needs longer)
+static const SPEECHPARAMS *fixparams(const SPEECHPARAMS *p, SPEECHPARAMS *q, int chn)
+{
+  *q = *p;
+  if (!q->tempo) q->tempo = speech_songtempo(chn);
+  if (q->tempo < 3) q->tempo = 3;
+  return q;
+}
+
 int speech_analyze(const SPEECHPARAMS *p, int *rows, int *ms, char *err, int errsize)
 {
+  SPEECHPARAMS fixed;
+  p = fixparams(p, &fixed, editorInfo.epchn);
   if (!parsetext(p->text, err, errsize)) return 0;
   durations(p);
-  quantize(p);
+  timeline(p);
   if (rows) *rows = numframes / p->tempo + 1;
-  if (ms) *ms = numframes * 20;
+  if (ms) *ms = numframes * 1000 / framespersec();
   return numphones;
 }
 
@@ -839,8 +917,8 @@ void speech_defaults(SPEECHPARAMS *p)
   p->speed = 100;
   p->melody = 1;
   p->voice = 0;
-  p->tempo = 3;
-  p->settempo = 1;
+  p->tempo = 0;
+  p->settempo = 0;
   p->mode = 0;
 }
 
@@ -859,18 +937,28 @@ static const char *notestr(int n, char *buf)
   return buf;
 }
 
+static int samephones(int a, int b, int n)
+{
+  int c;
+  for (c = 0; c < n; c++)
+    if (phones[a + c].ph != phones[b + c].ph) return 0;
+  return 1;
+}
+
 int speech_generate(const SPEECHPARAMS *p, int chn, int row, char *err, int errsize)
 {
   static PROG wp[MAXPHONES], pp[MAXPHONES], fp[MAXPHONES];
   int slot[MAXPHONES], inum[MAXPHONES];
   int c, k, need = 0, tlen[3], rows, patt, voicebit, sid;
   char phs[1024], nb[8];
+  SPEECHPARAMS fixed;
 
+  p = fixparams(p, &fixed, chn);
   listing[0] = 0;
   if (!speech_phonemes(p->text, phs, sizeof phs, err, errsize)) return 0;
   if (!parsetext(p->text, err, errsize)) return 0;
   durations(p);
-  quantize(p);
+  timeline(p);
   if (numframes >= MAXFRAMES)
   {
     snprintf(err, errsize, "The text is too long");
@@ -882,23 +970,23 @@ int speech_generate(const SPEECHPARAMS *p, int chn, int row, char *err, int errs
 
   voicebit = 1 << (chn % 3);
   sid = chn / 3;
-  // programs per phone (frames of the phone, the tables start one frame
-  // after the note)
-  for (c = 0; c < numphones; c++)
+  // programs per segment (the frames from its row to the next segment)
+  for (c = 0; c < numsegs; c++)
   {
-    int a = phones[c].start, b = a + phones[c].frames;
+    int a = segs[c].start, b = segs[c].end;
     makewave(&wp[c], a, b);
     makepulse(&pp[c], a, b);
     makefilter(&fp[c], a, b, voicebit);
   }
   // identical sounds share one instrument
-  for (c = 0; c < numphones; c++)
+  for (c = 0; c < numsegs; c++)
   {
     slot[c] = c;
     for (k = 0; k < c; k++)
     {
       // the first sound has its own instrument (gate retrigger, see below)
-      if ((k) && (slot[k] == k) && (phones[k].ph == phones[c].ph) &&
+      if ((k) && (slot[k] == k) && (segs[k].last - segs[k].first == segs[c].last - segs[c].first) &&
+          (samephones(segs[k].first, segs[c].first, segs[c].last - segs[c].first + 1)) &&
           (wp[k].n == wp[c].n) && (!memcmp(wp[k].l, wp[c].l, wp[c].n)) && (!memcmp(wp[k].r, wp[c].r, wp[c].n)) &&
           (pp[k].n == pp[c].n) && (!memcmp(pp[k].l, pp[c].l, pp[c].n)) && (!memcmp(pp[k].r, pp[c].r, pp[c].n)) &&
           (fp[k].n == fp[c].n) && (!memcmp(fp[k].l, fp[c].l, fp[c].n)) && (!memcmp(fp[k].r, fp[c].r, fp[c].n)))
@@ -923,7 +1011,7 @@ int speech_generate(const SPEECHPARAMS *p, int chn, int row, char *err, int errs
   {
     int sum = 0;
     tlen[k] = gettablelen(k);
-    for (c = 0; c < numphones; c++)
+    for (c = 0; c < numsegs; c++)
       if (slot[c] == c) sum += (k == 0 ? wp[c].n : (k == 1 ? pp[c].n : fp[c].n));
     if (tlen[k] + sum > MAX_TABLELEN)
     {
@@ -942,10 +1030,10 @@ int speech_generate(const SPEECHPARAMS *p, int chn, int row, char *err, int errs
 
   // instruments + tables
   k = 1;
-  for (c = 0; c < numphones; c++)
+  for (c = 0; c < numsegs; c++)
   {
     INSTR *in;
-    char name[MAX_INSTRNAMELEN + 8];
+    char name[MAX_INSTRNAMELEN + 8], sn[MAX_INSTRNAMELEN];
     int t;
     if (slot[c] != c) { inum[c] = inum[slot[c]]; continue; }
     while (!instrempty(k)) k++;
@@ -958,8 +1046,9 @@ int speech_generate(const SPEECHPARAMS *p, int chn, int row, char *err, int errs
     // first sound clears the gate one frame before its row, so the envelope
     // starts again even if the voice still holds a decayed note
     in->gatetimer = c ? (0xc0 | 1) : (0x80 | 1);
-    in->firstwave = frames[phones[c].start].wave == W_SILENT ? 0x01 : frames[phones[c].start].wave;
-    snprintf(name, sizeof name, "Say %s", phones[c].ph == PSILENCE ? "-" : phon[phones[c].ph].name);
+    in->firstwave = frames[segs[c].start].wave == W_SILENT ? 0x01 : frames[segs[c].start].wave;
+    segname(&segs[c], sn, MAX_INSTRNAMELEN - 4);
+    snprintf(name, sizeof name, "Say %s", sn);
     strncpy(in->name, name, MAX_INSTRNAMELEN - 1);
     for (t = 0; t < 3; t++)
     {
@@ -999,10 +1088,10 @@ int speech_generate(const SPEECHPARAMS *p, int chn, int row, char *err, int errs
       pattern[patt][r * 4 + 3] = 0;
     }
   }
-  for (c = 0; c < numphones; c++)
+  for (c = 0; c < numsegs; c++)
   {
-    int r = row + phones[c].start / p->tempo;
-    pattern[patt][r * 4] = FIRSTNOTE + phones[c].note;
+    int r = row + segs[c].row;
+    pattern[patt][r * 4] = FIRSTNOTE + phones[segs[c].first].note;
     pattern[patt][r * 4 + 1] = inum[c];
   }
   pattern[patt][(row + rows - 1) * 4] = KEYOFF;
@@ -1016,7 +1105,9 @@ int speech_generate(const SPEECHPARAMS *p, int chn, int row, char *err, int errs
   lst("C64 GrooveGoat speech generator\n===============================\n\n");
   lst("Text:      %s\nPhonemes:  %s\n", p->text, phs);
   lst("Voice:     channel %d.%d (SID %d voice %d), filter on this voice only (bitmask $%X)\n", sid + 1, chn % 3 + 1, sid + 1, chn % 3 + 1, voicebit);
-  lst("Timing:    tempo %d (%d ms per row, tables run in 20 ms frames), %d rows, %.2f s\n", p->tempo, p->tempo * 20, rows, numframes / 50.0);
+  lst("Timing:    song speed F%02X = %d frames per row (%d ms), tables run every frame (%d per second),\n"
+      "           %d rows, %.2f s. Several short sounds can share one row / instrument.\n",
+      p->tempo, p->tempo, p->tempo * 1000 / framespersec(), framespersec(), rows, (double)numframes / framespersec());
   lst("Model:     %s\n", p->mode ? "experimental" : "bandpass (resonance $F) on formant 1, pulse width follows formant 2, sawtooth for back vowels");
   lst("Filter:    the filter of SID %d is used by this voice only. Its other two voices should not use the\n"
       "           filter while the speech plays (the filter table of the speech sets it every frame).\n\n", sid + 1);
@@ -1025,7 +1116,7 @@ int speech_generate(const SPEECHPARAMS *p, int chn, int row, char *err, int errs
   lst("   the first one $81: gate off one frame before, so the envelope restarts),\n");
   lst("   vibrato off. 1stFrame wave = waveform of the first frame.\n\n");
   lst("   Nr  Name             Wave  Pulse Filter 1stWave\n");
-  for (c = 0; c < numphones; c++)
+  for (c = 0; c < numsegs; c++)
   {
     if (slot[c] != c) continue;
     lst("   %02X  %-16s %02X    %02X    %02X     %02X\n", inum[c], instr[inum[c]].name, instr[inum[c]].ptr[0],
@@ -1038,7 +1129,7 @@ int speech_generate(const SPEECHPARAMS *p, int chn, int row, char *err, int errs
                                  "2c. F TAB (filtertable: 90/A0/B0/C0 = lowpass/bandpass/LP+BP/highpass, right = resonance/voice;\n"
                                  "    00 XX = cutoff $XX, TT SS = TT frames speed SS)"};
     lst("\n%s\n\n", hdr[k]);
-    for (c = 0; c < numphones; c++)
+    for (c = 0; c < numsegs; c++)
     {
       int e, start;
       if (slot[c] != c) continue;
@@ -1052,19 +1143,18 @@ int speech_generate(const SPEECHPARAMS *p, int chn, int row, char *err, int errs
     }
   }
   lst("\n3. PATTERN (pattern %02X, channel %d.%d, from row %02X)\n\n", patt, sid + 1, chn % 3 + 1, row);
-  lst("   ROW  NOTE INS CMD   SOUND\n");
+  lst("   ROW  NOTE INS CMD   SOUNDS\n");
   {
     int r;
     for (r = row; r < row + rows; r++)
     {
       unsigned char *q = &pattern[patt][r * 4];
-      char ncol[8], snd[16] = "";
+      char ncol[8], snd[64] = "";
       if (q[0] <= LASTNOTE) notestr(q[0] - FIRSTNOTE, ncol);
       else if (q[0] == KEYOFF) strcpy(ncol, "===");
       else strcpy(ncol, "...");
-      for (c = 0; c < numphones; c++)
-        if (row + phones[c].start / p->tempo == r)
-          strcpy(snd, phones[c].ph == PSILENCE ? "(pause)" : phon[phones[c].ph].name);
+      for (c = 0; c < numsegs; c++)
+        if (row + segs[c].row == r) segname(&segs[c], snd, sizeof snd);
       if (q[0] == KEYOFF) strcpy(snd, "(off)");
       lst("   %02X   %-4s %02X  %X%02X   %s\n", r, ncol, q[1], q[2], q[3], snd);
     }

@@ -37,7 +37,8 @@ by Lasse Öörni (Cadaver) and the
   missing drum instruments are generated; looped preview without changing the song
 - Speech generator (`CTRL+K`): English text or CMU phonemes become formant speech on one SID
   voice (the channel of the cursor) - instruments, wave / pulse / filter tables and pattern
-  rows at speed 03, with voice, pitch, speed and melody options, preview and a text listing.
+  rows for the speed of your song (F03, F05, F06 ... or detected automatically), with voice,
+  pitch, speed and melody options, preview and a text listing.
   Example: `examples/together_we_hunt.sng`
 - Buttons for the pattern tools (transpose half step / octave, mark, mark all, select pattern,
   cut, copy, paste) and tooltips with the name and shortcut of every button

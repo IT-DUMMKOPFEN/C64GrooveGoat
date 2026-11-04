@@ -13,12 +13,17 @@ typedef struct
   int speed;                  // duration in percent (100 = normal, 150 = slower)
   int melody;                 // 0 monotone, 1 statement (falling), 2 question (rising), 3 command (strong accents)
   int voice;                  // 0 robot (pulse), 1 bright (sawtooth), 2 whisper (noise)
-  int tempo;                  // ticks per pattern row the timing is calculated for (3 = 60 ms)
+  int tempo;                  // song speed: frames (ticks) per pattern row, F02 ... F10;
+                              // 0 = take it from the song (speech_songtempo)
   int settempo;               // put an F0x tempo command on the first row
   int mode;                   // formant model (see gspeech.c), 0 = default
 } SPEECHPARAMS;
 
 void speech_defaults(SPEECHPARAMS *p);
+
+// Speed of the song around the cursor (frames per row): the first tempo
+// command in the current patterns, else the default tempo (6)
+int speech_songtempo(int chn);
 
 // Text -> phoneme string ("T AH0 G EH1 DH ER0 | W IY1 | HH AH1 N T").
 // Returns the number of phonemes, 0 on error (message in err).

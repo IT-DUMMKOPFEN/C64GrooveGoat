@@ -4,7 +4,7 @@
 # speech is added afterwards with the command line speech generator:
 #
 #   python3 tools/mkspeechdemo.py music.sng          (prints the speech patterns a b c)
-#   GG=build/linux/groovegoat; T="TOGETHER WE HUNT"; E="GG_SPEECHCHN=2 GG_SPEECHROW=5"
+#   GG=build/linux/groovegoat; T="TOGETHER WE HUNT"; E="GG_SPEECHCHN=2 GG_SPEECHROW=5 GG_SPEECHSETTEMPO=1"
 #   env $E GG_SPEECHPATT=a GG_SPEECHMELODY=1 $GG -E1 --speech="$T" --save=t1.sng music.sng
 #   env $E GG_SPEECHPATT=b GG_SPEECHMELODY=3 GG_SPEECHNOTE=38 $GG -E1 --speech="$T" --save=t2.sng t1.sng
 #   env $E GG_SPEECHPATT=c GG_SPEECHMELODY=1 GG_SPEECHVOICE=1 $GG -E1 --speech="$T" \
