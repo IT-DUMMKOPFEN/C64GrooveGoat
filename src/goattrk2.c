@@ -1836,6 +1836,7 @@ void mousecommands(void)
   {
     editorInfo.editmode = EDIT_INSTRUMENT;
     editorInfo.eipos = 9;
+    if (editorInfo.einum) editstring_click(instr[editorInfo.einum].name, mousex - RP_X - 17);
     return;
   }
 
@@ -1879,6 +1880,7 @@ void mousecommands(void)
   {
     editorInfo.editmode = EDIT_NAMES;
     editorInfo.enpos = mousey - NAMES_ROWS_Y;
+    editstring_click(editorInfo.enpos == 0 ? songname : (editorInfo.enpos == 1 ? authorname : copyrightname), mousex - NAMES_VAL_X);
     return;
   }
 

@@ -87,6 +87,7 @@ void speechdialog(void)
   int row = editorInfo.eppos;
   char msg[160] = "";
   int msgcol = 7;
+  int textofs = 0;
 
   if (!spinit)
   {
@@ -151,14 +152,15 @@ void speechdialog(void)
       if (c == 0)
       {
         int fw = w - 26;
-        int len = strlen(sp.text);
-        int ofs = len >= fw ? len - fw + 1 : 0;
+        int cur = editstring_cursor(sp.text);
+        int ofs = cur >= fw ? cur - fw + 1 : 0;
         char vis[128];
         printblankc(x0 + 21, ry, MKCOL(15, C_BEATROW), fw);
         strncpy(vis, sp.text + ofs, fw);
         vis[fw] = 0;
         printtext(x0 + 21, ry, MKCOL(15, C_BEATROW), vis);
-        if (isel) printcursor(x0 + 21 + len - ofs, ry, 1);
+        if (isel) printcursor(x0 + 21 + cur - ofs, ry, 1);
+        textofs = ofs;
       }
       if ((mousey == ry) && (mousex >= x0 + 2) && (mousex < x0 + w - 2)) hitrow = c;
     }
@@ -216,7 +218,11 @@ void speechdialog(void)
         sel = hitrow;
         key = 0;
         rawkey = (mouseb & MOUSEB_RIGHT) ? KEY_LEFT : KEY_RIGHT;
-        if (hitrow == 0) rawkey = 0;
+        if (hitrow == 0)
+        {
+          rawkey = 0;
+          if (mousex >= x0 + 21) editstring_click(sp.text, mousex - x0 - 21 + textofs);
+        }
         if (hitrow == 6) rawkey = KEY_SPACE;
         if (ui_arrowat(mousex, mousey) < 0) rawkey = KEY_LEFT;
         if (ui_arrowat(mousex, mousey) > 0) rawkey = KEY_RIGHT;
@@ -229,14 +235,11 @@ void speechdialog(void)
     }
 
     // typing into the text field
-    if ((sel == 0) && (key >= 32) && (key < 256) && (key != 127) && (rawkey != KEY_ENTER) && (rawkey != KEY_ESC))
+    if ((sel == 0) && (rawkey != KEY_ENTER) && (rawkey != KEY_ESC) && (rawkey != KEY_UP) && (rawkey != KEY_DOWN) && (rawkey != KEY_TAB) &&
+        (rawkey != KEY_F1) && (rawkey != KEY_F2) && ((key >= 32) || (key == 8) || (rawkey == KEY_BACKSPACE) || (rawkey == KEY_LEFT) || (rawkey == KEY_RIGHT) ||
+        (rawkey == KEY_HOME) || (rawkey == KEY_END) || (rawkey == KEY_DEL) || (rawkey == KEY_V) || (rawkey == KEY_C)))
     {
-      int len = strlen(sp.text);
-      if (len < SPEECH_MAXTEXT - 1)
-      {
-        sp.text[len] = key;
-        sp.text[len + 1] = 0;
-      }
+      editstring(sp.text, SPEECH_MAXTEXT);
       continue;
     }
 

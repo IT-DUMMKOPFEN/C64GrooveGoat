@@ -1106,8 +1106,11 @@ void joinsongsdialog(void)
       if ((mousey == ry) && (mousex >= x0 + 2) && (mousex < x0 + w - 2)) hitopt = c;
     }
     printtext(x0 + 3, repy, MKCOL(14, C_PANEL), reporterror ? "Check: the songs cannot be joined" : "Check:");
-    for (c = 0; c < numreport && c < 12; c++)
-      printtext(x0 + 5, repy + 1 + c, MKCOL((reporterror && c == numreport - 1) ? 10 : (!strncmp(report[c], "Result", 6) ? 13 : 8), C_PANEL), report[c]);
+    {
+      int yy = repy + 1, lim = y0 + h - 6;
+      for (c = 0; c < numreport && yy < lim; c++)
+        yy += dlg_printwrapped(x0 + 5, yy, w - 9, lim - yy, MKCOL((reporterror && c == numreport - 1) ? 10 : (!strncmp(report[c], "Result", 6) ? 13 : 8), C_PANEL), report[c]);
+    }
     printtext(x0 + 3, y0 + h - 5, MKCOL(3, C_PANEL),
               "Identical instruments, table programs and patterns are shared. A backup of the current song is saved first.");
     if (msg[0]) printtext(x0 + 3, y0 + h - 4, MKCOL(10, C_PANEL), msg);

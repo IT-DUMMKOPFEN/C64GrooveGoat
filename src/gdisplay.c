@@ -676,7 +676,7 @@ static void drawinstrument(void)
     if (editorInfo.eipos < 9)
       printcursor((editorInfo.eipos < 5 ? INS_COL1_X : INS_COL2_X) + INS_VAL_OFS + editorInfo.eicolumn, INS_ROWS_Y + (editorInfo.eipos % 5), 1);
     else
-      printcursor(RP_X + 17 + strlen(instr[editorInfo.einum].name), INS_Y, 1);
+      printcursor(RP_X + 17 + editstring_cursor(instr[editorInfo.einum].name), INS_Y, 1);
   }
 }
 
@@ -758,7 +758,7 @@ static void drawnames(void)
     printtext(NAMES_VAL_X, NAMES_ROWS_Y + c, MKCOL(15, C_BEATROW), buf);
   }
   if ((editorInfo.editmode == EDIT_NAMES) && (!eamode))
-    printcursor(NAMES_VAL_X + strlen(values[editorInfo.enpos]), NAMES_ROWS_Y + editorInfo.enpos, 1);
+    printcursor(NAMES_VAL_X + editstring_cursor(values[editorInfo.enpos]), NAMES_ROWS_Y + editorInfo.enpos, 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -1011,6 +1011,7 @@ static int tooltip(int id, const char **name, const char **keys)
 
 static void drawtooltip(void)
 {
+  clearclip();
   static int tipid = BTN_NONE, tipx = -1, tipy = -1, tipclicked = 0;
   static Uint32 tipstart = 0;
   int param = 0;
@@ -1047,6 +1048,7 @@ static void drawtooltip(void)
 
 void printstatus(void)
 {
+  clearclip();
   menu = 0;
   numuibuttons = 0;
 

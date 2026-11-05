@@ -503,6 +503,25 @@ void clearscreen(void)
   }
 }
 
+// Clip area of the open dialog window: text never runs over its frame
+static int clipon = 0, clipx0, clipx1, clipy0, clipy1;
+
+void setclip(int x0, int y0, int x1, int y1)
+{
+  clipon = 1;
+  clipx0 = x0; clipy0 = y0; clipx1 = x1; clipy1 = y1;
+}
+
+void clearclip(void)
+{
+  clipon = 0;
+}
+
+static int clipped(int x, int y)
+{
+  return (clipon) && (y >= clipy0) && (y <= clipy1) && ((x < clipx0) || (x > clipx1));
+}
+
 void printtext(int x, int y, int color, const char *text)
 {
   unsigned *dptr;
@@ -511,7 +530,7 @@ void printtext(int x, int y, int color, const char *text)
   dptr = scrbuffer + (x + y * MAX_COLUMNS);
   while (*text)
   {
-    if ((x >= 0) && (x < MAX_COLUMNS)) setcharcolor(dptr, (unsigned char)*text, color);
+    if ((x >= 0) && (x < MAX_COLUMNS) && (!clipped(x, y))) setcharcolor(dptr, (unsigned char)*text, color);
     dptr++;
     x++;
     text++;
@@ -543,7 +562,7 @@ void printblankc(int x, int y, int color, int length)
   dptr = scrbuffer + (x + y * MAX_COLUMNS);
   while (length--)
   {
-    if ((x >= 0) && (x < MAX_COLUMNS)) setcharcolor(dptr, 0x20, color);
+    if ((x >= 0) && (x < MAX_COLUMNS) && (!clipped(x, y))) setcharcolor(dptr, 0x20, color);
     dptr++;
     x++;
   }

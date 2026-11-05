@@ -7,9 +7,36 @@
 #include "goattrk2.h"
 #include "gres.h"
 
+// Text wrapped at word boundaries into lines of "width" columns; returns the
+// number of lines printed (at most maxlines)
+int dlg_printwrapped(int x, int y, int width, int maxlines, int color, const char *text)
+{
+  int n = 0;
+  char line[MAX_COLUMNS + 1];
+  while ((*text) && (n < maxlines))
+  {
+    int len = strlen(text), cut = len;
+    if (width > MAX_COLUMNS) width = MAX_COLUMNS;
+    if (len > width)
+    {
+      cut = width;
+      while ((cut > width / 2) && (text[cut] != ' ')) cut--;
+      if (text[cut] != ' ') cut = width;
+    }
+    snprintf(line, sizeof line, "%.*s", cut, text);
+    printtext(x + (n ? 2 : 0), y + n, color, line);
+    n++;
+    text += cut;
+    while (*text == ' ') text++;
+    if (n) width -= 0;
+  }
+  return n;
+}
+
 void dlg_drawframe(int x, int y, int w, int h, const char *title)
 {
   int c;
+  clearclip();
   // drop shadow
   for (c = 1; c <= h; c++)
     printbgx(x + w, y + c, C_LINE, 1);
@@ -29,6 +56,8 @@ void dlg_drawframe(int x, int y, int w, int h, const char *title)
     printglyph(x + c, y + h - 1, MKCOL(C_LINE, C_PANEL), GL_HLINE);
   printglyph(x, y + h - 1, MKCOL(C_LINE, C_PANEL), GL_BL);
   printglyph(x + w - 1, y + h - 1, MKCOL(C_LINE, C_PANEL), GL_BR);
+  // text inside the window stays inside the frame
+  setclip(x + 1, y + 1, x + w - 2, y + h - 2);
 }
 
 // Generic dialog: text lines and a row of buttons. Returns chosen button
@@ -42,6 +71,31 @@ int dlg_choose(const char *title, const char **lines, int numlines, const char *
   int btnw = 0;
   int result = -2;
 
+  // long lines are wrapped at word boundaries
+  static char wrapped[64][MAX_COLUMNS];
+  static const char *wl[64];
+  int nw = 0, maxw = MAX_COLUMNS - 12;
+  for (c = 0; (c < numlines) && (nw < 64); c++)
+  {
+    const char *t = lines[c];
+    do
+    {
+      int len = strlen(t), cut = len;
+      if (len > maxw)
+      {
+        cut = maxw;
+        while ((cut > maxw / 2) && (t[cut] != ' ')) cut--;
+        if (t[cut] != ' ') cut = maxw;
+      }
+      snprintf(wrapped[nw], MAX_COLUMNS, "%.*s", cut, t);
+      wl[nw] = wrapped[nw];
+      nw++;
+      t += cut;
+      while (*t == ' ') t++;
+    } while ((*t) && (nw < 64));
+  }
+  lines = wl;
+  numlines = nw;
   if (title) w = strlen(title) + 14;
   for (c = 0; c < numlines; c++)
     if ((int)strlen(lines[c]) + 6 > w) w = strlen(lines[c]) + 6;
@@ -240,20 +294,22 @@ int dlg_edittext(const char *title, const char *label, char *text, int maxlen, i
   key = 0;
   rawkey = 0;
 
+  editstring_click(buf, maxlen);     // cursor at the end
   while (result == -2)
   {
-    int len = strlen(buf);
-    int ofs = len >= fieldw ? len - fieldw + 1 : 0;
+    int len = strlen(buf), cur = editstring_cursor(buf);
+    int ofs = cur >= fieldw ? cur - fieldw + 1 : 0;
+    int fx = x + 4 + strlen(label);
     char vis[64];
     printstatus();
     dlg_drawframe(x, y, w, h, title);
     printtext(x + 3, y + 2, MKCOL(7, C_PANEL), label);
-    printblankc(x + 4 + strlen(label), y + 2, MKCOL(15, C_BEATROW), fieldw);
+    printblankc(fx, y + 2, MKCOL(15, C_BEATROW), fieldw);
     strncpy(vis, buf + ofs, fieldw);
     vis[fieldw] = 0;
-    printtext(x + 4 + strlen(label), y + 2, MKCOL(15, C_BEATROW), vis);
-    printcursor(x + 4 + strlen(label) + len - ofs, y + 2, 1);
-    printtext(x + 3, y + 4, MKCOL(3, C_PANEL), "ENTER = OK, ESC = cancel");
+    printtext(fx, y + 2, MKCOL(15, C_BEATROW), vis);
+    printcursor(fx + cur - ofs, y + 2, 1);
+    printtext(x + 3, y + 4, MKCOL(3, C_PANEL), "ENTER = OK, ESC = cancel, CTRL+V paste");
     fliptoscreen();
     getkey();
     if (win_quitted)
@@ -261,29 +317,22 @@ int dlg_edittext(const char *title, const char *label, char *text, int maxlen, i
       result = 0;
       break;
     }
-    if ((key >= 32) && (key < 256) && (len < maxlen) && (rawkey != KEY_ENTER) && (rawkey != KEY_ESC))
-    {
-      if ((!decimal) || ((key >= '0') && (key <= '9')) || (key == ':') || (key == '.'))
-      {
-        buf[len] = key;
-        buf[len + 1] = 0;
-      }
-    }
+    if ((mouseb & MOUSEB_LEFT) && (!prevmouseb) && (mousey == y + 2) && (mousex >= fx) && (mousex < fx + fieldw))
+      editstring_click(buf, mousex - fx + ofs);
     switch (rawkey)
     {
-      case KEY_BACKSPACE:
-      if (len > 0) buf[len - 1] = 0;
-      break;
-      case KEY_DEL:
-      buf[0] = 0;
-      break;
       case KEY_ENTER:
       result = 1;
       break;
       case KEY_ESC:
       result = 0;
       break;
+      default:
+      if ((decimal) && (key >= 32) && !(((key >= '0') && (key <= '9')) || (key == ':') || (key == '.'))) key = 0;
+      editstring(buf, maxlen + 1);
+      break;
     }
+    (void)len;
     if ((mouseb & MOUSEB_LEFT) && (!prevmouseb) && ((mousex < x) || (mousex >= x + w) || (mousey < y) || (mousey >= y + h)))
       result = 0;
   }

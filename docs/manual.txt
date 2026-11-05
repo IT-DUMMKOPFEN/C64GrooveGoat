@@ -1,4 +1,4 @@
-# C64 GrooveGoat 0.95b - Manual
+# C64 GrooveGoat 0.96b - Manual
 
 C64 GrooveGoat is a tracker-style music editor for the SID sound chip of the Commodore 64. It is
 based on GoatTracker 2 by Lasse Oorni (Cadaver) and the "Silver Fork" of Joel Ricci. It adds:
@@ -68,7 +68,7 @@ A song consists of:
 |  macOS        Unpack the ZIP file (AppleSilicon for Macs with M chips, Intel for Intel
 |               Macs) and move "C64 GrooveGoat.app" to Applications. On the first start
 |               use right click > Open (the app is not notarized by Apple).
-|  Linux        Make the AppImage executable (chmod +x C64_GrooveGoat-0.95b-x86_64.AppImage)
+|  Linux        Make the AppImage executable (chmod +x C64_GrooveGoat-0.96b-x86_64.AppImage)
 |               and start it. The instrument library and the examples are inside the
 |               AppImage. If your system lacks FUSE, start it with --appimage-extract-and-run.
 |  Linux tar.gz Unpack the archive and start ./groovegoat in the unpacked folder (the
@@ -611,6 +611,24 @@ The preview only works while the music is stopped. The result area shows the nam
 values with the envelope graph and the generated table rows (left:right values). If the tables
 are full, a message tells you to delete unused table data first (SHIFT+O in the table editor).
 
+## Editing text
+
+All text fields - song name, author, released, instrument names, file names, the text of the
+speech generator and the input fields of the dialogs - can be edited at any place: click into
+the text (or use LEFT / RIGHT, HOME / END) to put the cursor there; typing inserts at the
+cursor, BACKSPACE deletes before it, DEL at it. CTRL+V (CMD+V) pastes text from the clipboard,
+CTRL+C (CMD+C) copies the whole field.
+
+## Drum + bass instruments
+
+The instrument library has drum + bass instruments for both SIDs: Kick+Bass, Snare+Bass,
+HiHat+Bass, Clap+Bass and Tom+Bass (36 new ones of each kind per SID, plus the Kick+Bass
+instruments that were already there). The first frames play the drum with absolute notes,
+then the bass follows the pattern note - one SID voice plays the bass line and the drum on
+the same notes, the classic trick of Rob Hubbard and Martin Galway. They were combined from
+the drums and basses of the library and some new kit drums (tools/mkcombos.py), and every one
+was rendered on its chip and checked for an audible drum attack and a sustaining bass.
+
 ## Speech generator
 
 The Speech button in the pattern tool row (or CTRL+K, CMD+K on a Mac) opens the speech
@@ -725,6 +743,12 @@ the whole length of that pattern. Melodies are not touched: it only writes drum 
 |  Swing                     The beat's own feel, straight, or 58 / 62 / 66 / 75 %: the second
 |                            16th of each pair comes later (needs 2 or more rows per 16th)
 |  Fill                      Off, or a fill (toms, snare roll, break) in the last bar
+|  Dice (D)                  The dice button next to "Beat" (or D) makes a new beat in the
+|                            style of the subgenre: how often every drum plays on every 16th
+|                            in the beats of the subgenre decides - strong places always, rare
+|                            ones never, the rest by chance; the hi-hat figure comes from one of
+|                            the beats; the second bar varies a little, sometimes with a fill.
+|                            The preview plays it at once.
 |  Variation                 Original, or a random variation of the beat (R = a new one):
 |                            hats left out or doubled, extra ghost snares and kicks
 |  Preview                   Beat only (the other voices are muted) or with the other voices
@@ -808,6 +832,12 @@ a drum and a tone in one (BD+Bass, Snare+Bass ...) are found and kept.
 |                    or the other way round (approximate curves)
 |  Clean up          Removes instruments, patterns and table rows no subtune uses any more
 |                    (the whole song)
+
+The dice button (or D) rolls another improvement: which modules are on, the strength, the
+drum kit, how many slides, how deep the vibrato, how fast the pulse width moves, the echo
+delay and the balance - the roles stay as they are. Every roll is "Dice #n" and is heard at
+once (A/B). Changing a role or an option while the preview plays goes on playing with the
+new result.
 
 Below, the window lists what changes. F1 plays the subtune, SPACE switches between the
 original and the improved version while it plays (A/B), so you hear the difference at once.
@@ -1363,7 +1393,7 @@ The default sample rate is 48000 Hz; -M44100 selects 44100 Hz.
 
 # Credits
 
-C64 GrooveGoat 0.95b by IT-Dummkopfen.
+C64 GrooveGoat 0.96b by IT-Dummkopfen.
 
 |  GoatTracker 2 editor & playroutine   Lasse Oorni (Cadaver), Covert Bitops
 |  GoatTracker 2 "Silver Fork"          Joel Ricci (github.com/joelricci/goattracker2)

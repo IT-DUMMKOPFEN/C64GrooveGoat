@@ -399,12 +399,12 @@ int fileselector(char *name, char *path, char *filter, char *title, int filemode
     printtext(FS_X + 2, FS_LIST_Y + VISIBLEFILES + 1, MKCOL(7, C_PANEL), "Filter");
     sprintf(buf, "%-40.40s", filter);
     printtext(FS_X + 10, FS_LIST_Y + VISIBLEFILES + 1, MKCOL(filemode == 2 ? CEDIT : 15, C_BEATROW), buf);
-    if (filemode == 2) printcursor(FS_X + 10 + strlen(filter), FS_LIST_Y + VISIBLEFILES + 1, 1);
+    if (filemode == 2) printcursor(FS_X + 10 + editstring_cursor(filter), FS_LIST_Y + VISIBLEFILES + 1, 1);
 
     printtext(FS_X + 2, FS_LIST_Y + VISIBLEFILES + 2, MKCOL(7, C_PANEL), "Name");
     sprintf(buf, "%-60.60s", name);
     printtext(FS_X + 10, FS_LIST_Y + VISIBLEFILES + 2, MKCOL(filemode == 3 ? CEDIT : 15, C_BEATROW), buf);
-    if (filemode == 3) printcursor(FS_X + 10 + strlen(name), FS_LIST_Y + VISIBLEFILES + 2, 1);
+    if (filemode == 3) printcursor(FS_X + 10 + editstring_cursor(name), FS_LIST_Y + VISIBLEFILES + 2, 1);
 
     // Buttons
     bx = FS_X + 2;
@@ -501,8 +501,8 @@ int fileselector(char *name, char *path, char *filter, char *title, int filemode
       }
       // Select path / filter / name field
       else if (mousey == FS_Y + 1) filemode = 1;
-      else if (mousey == FS_LIST_Y + VISIBLEFILES + 1) filemode = 2;
-      else if (mousey == FS_LIST_Y + VISIBLEFILES + 2) filemode = 3;
+      else if (mousey == FS_LIST_Y + VISIBLEFILES + 1) { filemode = 2; editstring_click(filter, mousex - FS_X - 10); }
+      else if (mousey == FS_LIST_Y + VISIBLEFILES + 2) { filemode = 3; editstring_click(name, mousex - FS_X - 10); }
     }
     if ((mouseb) && (hitbutton < 100) && (!hitbutton))
     {
@@ -710,16 +710,80 @@ int fileselector(char *name, char *path, char *filter, char *title, int filemode
   return exitfilesel;
 }
 
-void editstring(char *buffer, int maxlength)
+// Text editing with a cursor (all name / text fields): the cursor belongs to
+// the buffer edited last; a new buffer starts with the cursor at its end.
+// LEFT / RIGHT / HOME / END move, BACKSPACE / DEL delete, typing inserts,
+// CTRL+V pastes from the clipboard, CTRL+C copies the field.
+static char *edbuf = NULL;
+static int edpos = 0;
+
+int editstring_cursor(char *buffer)
 {
   int len = strlen(buffer);
-
-  if (key)
+  if (buffer != edbuf)
   {
-    if ((key == 8) || (key == KEY_DEL))
+    edbuf = buffer;
+    edpos = len;
+  }
+  if (edpos > len) edpos = len;
+  if (edpos < 0) edpos = 0;
+  return edpos;
+}
+
+void editstring_click(char *buffer, int column)
+{
+  int len = strlen(buffer);
+  edbuf = buffer;
+  edpos = column < 0 ? 0 : (column > len ? len : column);
+}
+
+void editstring(char *buffer, int maxlength)
+{
+  int len = strlen(buffer), pos = editstring_cursor(buffer);
+
+  if (((ctrlpressed) || (metapressed)) && ((rawkey == KEY_V) || (rawkey == KEY_C)))
+  {
+    if (rawkey == KEY_C) SDL_SetClipboardText(buffer);
+    else
     {
-      if (len > 0) {
-        buffer[len-1] = 0;
+      char *clip = SDL_GetClipboardText();
+      if (clip)
+      {
+        const char *c;
+        for (c = clip; *c && (len < maxlength - 1); c++)
+        {
+          unsigned char ch = *c;
+          if ((ch < 32) || (ch == 127)) continue;
+          memmove(buffer + pos + 1, buffer + pos, len - pos + 1);
+          buffer[pos++] = ch;
+          len++;
+        }
+        SDL_free(clip);
+      }
+      edpos = pos;
+    }
+    key = 0;
+    rawkey = 0;
+    return;
+  }
+  switch (rawkey)
+  {
+    case KEY_LEFT: if (pos > 0) edpos = pos - 1; return;
+    case KEY_RIGHT: if (pos < len) edpos = pos + 1; return;
+    case KEY_HOME: edpos = 0; return;
+    case KEY_END: edpos = len; return;
+    case KEY_DEL:
+    if (pos < len) memmove(buffer + pos, buffer + pos + 1, len - pos);
+    return;
+  }
+  if ((key) || (rawkey == KEY_BACKSPACE))
+  {
+    if ((key == 8) || (rawkey == KEY_BACKSPACE))
+    {
+      if (pos > 0)
+      {
+        memmove(buffer + pos - 1, buffer + pos, len - pos + 1);
+        edpos = pos - 1;
       }
       return;
     }
@@ -727,8 +791,9 @@ void editstring(char *buffer, int maxlength)
     {
       if (len < maxlength-1)
       {
-        buffer[len] = key;
-        buffer[len+1] = 0;
+        memmove(buffer + pos + 1, buffer + pos, len - pos + 1);
+        buffer[pos] = key;
+        edpos = pos + 1;
       }
     }
   }

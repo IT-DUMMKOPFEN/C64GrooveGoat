@@ -44,6 +44,8 @@ void fliptoscreen(void);
 void forceredraw(void);
 void settheme(int t);
 void printtext(int x, int y, int color, const char *text);
+void setclip(int x0, int y0, int x1, int y1);
+void clearclip(void);
 void printtextc(int y, int color, const char *text);
 void printtextcp(int cp, int y, int color, const char *text);
 void printblank(int x, int y, int length);

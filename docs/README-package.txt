@@ -1,4 +1,4 @@
-C64 GrooveGoat 0.95b
+C64 GrooveGoat 0.96b
 ===================
 
 A multi-SID music editor for the Commodore 64 by IT-Dummkopfen,
@@ -55,20 +55,20 @@ macOS - two packages:
 
 Linux (x86-64, AppImage)
   Make the AppImage executable and start it:
-    chmod +x C64_GrooveGoat-0.95b-x86_64.AppImage
-    ./C64_GrooveGoat-0.95b-x86_64.AppImage
+    chmod +x C64_GrooveGoat-0.96b-x86_64.AppImage
+    ./C64_GrooveGoat-0.96b-x86_64.AppImage
   (or in the file manager: Properties -> Permissions -> "Allow executing").
   Nothing else has to be installed. Needs glibc 2.35 or newer (Ubuntu 22.04,
   Debian 12, Fedora 36 or newer) and an X11 or Wayland desktop (via XWayland).
   If the AppImage does not start because FUSE is missing, run it with
-    ./C64_GrooveGoat-0.95b-x86_64.AppImage --appimage-extract-and-run
+    ./C64_GrooveGoat-0.96b-x86_64.AppImage --appimage-extract-and-run
   The instrument library and the example songs are inside the AppImage; the
   file selector has the buttons "Library" and "Examples" to open them.
 
 Linux (x86-64, tar.gz - without AppImage)
   Unpack the archive and start the program in the unpacked folder:
-    tar xzf C64-GrooveGoat-0.95b-Linux-x86_64.tar.gz
-    cd C64-GrooveGoat-0.95b-Linux-x86_64
+    tar xzf C64-GrooveGoat-0.96b-Linux-x86_64.tar.gz
+    cd C64-GrooveGoat-0.96b-Linux-x86_64
     ./groovegoat
   Keep the "instruments" and "examples" folders next to the program.
   Optional: ./install.sh installs it for the current user (no root rights)

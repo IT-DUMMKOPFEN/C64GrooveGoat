@@ -8,6 +8,7 @@
 // by priority (crash > snare > clap > kick > toms > rimshot > open hat >
 // closed hat).
 
+#include <time.h>
 #include "goattrk2.h"
 #include "gres.h"
 #include "gbeat.h"
@@ -328,8 +329,83 @@ static int numvars(int g, int s)
 }
 
 static const BEATSUBGENRE *cursub(void) { return &beatcatalog[bs.genre].sub[bs.sub]; }
+// Dice: a new beat in the style of the subgenre. For every drum and 16th
+// note: how often it plays there in the beats of the subgenre; strong places
+// always, rare ones never, the rest by chance. The hi-hat line comes from one
+// of the beats (then slightly changed), so it stays a coherent figure.
+static XVAR randvar;
+static int israndom = 0;
+
+static unsigned rs;
+static int rnd(int n) { rs = rs * 1103515245u + 12345u; return (int)((rs >> 16) % (unsigned)n); }
+
+static void randombeat(int g, int s, unsigned seed)
+{
+  GRID gr, src;
+  int cnt[BR_NUM][16], lev[BR_NUM][3][16], nb = basevars(g, s), b, r, st, k, total = 0, hatsrc;
+  memset(cnt, 0, sizeof cnt);
+  memset(lev, 0, sizeof lev);
+  rs = seed * 2654435761u + 7;
+  for (b = 0; b < nb; b++)
+  {
+    if (!grid_read(beatcatalog[g].sub[s].var[b].grid, &src)) continue;
+    total++;
+    for (r = 0; r < BR_NUM; r++)
+      for (st = 0; st < src.steps; st++)
+      {
+        char c = src.c[r][st];
+        if (c == '.') continue;
+        cnt[r][st % 16]++;
+        lev[r][c == 'g' ? 0 : (c == 'X' ? 2 : 1)][st % 16]++;
+      }
+  }
+  if (!total) return;
+  // the beats of two bars count twice per step: normalise to "per bar"
+  memset(&gr, 0, sizeof gr);
+  for (r = 0; r < BR_NUM; r++) memset(gr.c[r], '.', 32);
+  gr.steps = 32;
+  hatsrc = rnd(nb);
+  grid_read(beatcatalog[g].sub[s].var[hatsrc].grid, &src);
+  for (r = 0; r < BR_NUM; r++)
+  {
+    int hat = (r == BR_CHAT) || (r == BR_OHAT);
+    for (st = 0; st < 16; st++)
+    {
+      int p = cnt[r][st] * 100 / total, hit;
+      if (p > 100) p = 100;
+      if (hat) hit = (src.c[r][st] != '.') ? (rnd(100) >= 8) : (rnd(100) < p / 5);
+      else hit = (p >= 75) || ((p > 5) && (rnd(100) < p));
+      if (!hit) continue;
+      {
+        int a = lev[r][2][st], g0 = lev[r][0][st], n = lev[r][1][st] + a + g0, x = n ? rnd(n) : 0;
+        gr.c[r][st] = (x < g0) ? 'g' : ((x < g0 + a) ? 'X' : 'x');
+      }
+    }
+  }
+  if ((cnt[BR_KICK][0]) && (gr.c[BR_KICK][0] == '.')) gr.c[BR_KICK][0] = 'x';
+  // second bar: the same with a few changes, sometimes a fill at the end
+  for (r = 0; r < BR_NUM; r++) memcpy(&gr.c[r][16], gr.c[r], 16);
+  for (k = 0; k < 3; k++)
+  {
+    int rr = rnd(2) ? BR_KICK : BR_CHAT, pos = 16 + 1 + rnd(14);
+    if (gr.c[rr][pos] == '.') { if (cnt[rr][pos - 16]) gr.c[rr][pos] = 'x'; }
+    else if (pos % 4) gr.c[rr][pos] = '.';
+  }
+  if ((rnd(100) < 40) && (beatcatalog[g].sub[s].fill))
+  {
+    GRID f;
+    if (grid_read(beatcatalog[g].sub[s].fill, &f))
+      for (r = 0; r < BR_NUM; r++) memcpy(&gr.c[r][28], &f.c[r][12], 4);
+  }
+  grid_write(&gr, randvar.grid, sizeof randvar.grid);
+  snprintf(randvar.name, sizeof randvar.name, "Dice #%u", seed % 10000);
+  randvar.swing = beatcatalog[g].sub[s].var[0].swing;
+  israndom = 1;
+}
+
 static const XVAR *curvar(void)
 {
+  if (israndom) return &randvar;
   buildvars(bs.genre, bs.sub);
   return &xv[bs.genre][bs.sub][bs.var < nxv[bs.genre][bs.sub] ? bs.var : 0];
 }
@@ -1059,6 +1135,8 @@ static int preview(int ch, char *err, int errsize)
     previewing = 1;
     initsongpos(editorInfo.esnum, PLAY_PATTERN, 0);
   }
+  // loading a library instrument stops the player: go on with the new sound
+  else if (!isplaying()) initsongpos(editorInfo.esnum, PLAY_PATTERN, 0);
   return 1;
 }
 
@@ -1225,7 +1303,7 @@ void beatdialog(void)
   for (;;)
   {
     char buf[200], err[160];
-    int c, hitrow = -1, hitbtn = -1, changed = 0;
+    int c, hitrow = -1, hitbtn = -1, hitdice = 0, changed = 0;
     int patt = chnpattern(ch), rows = pattlen[patt], r16 = currows16(ch), steps = 16;
     int used[BR_NUM];
     static BEATHIT tmp[MAXHITS];
@@ -1244,7 +1322,10 @@ void beatdialog(void)
       {
         case 0: sprintf(buf, "Genre        " GS_PREV " %s " GS_NEXT "  %d/%d", beatcatalog[bs.genre].name, bs.genre + 1, numgenres()); break;
         case 1: sprintf(buf, "Subgenre     " GS_PREV " %s " GS_NEXT "  %d/%d", cursub()->name, bs.sub + 1, numsubs(bs.genre)); break;
-        case 2: sprintf(buf, "Beat         " GS_PREV " %s " GS_NEXT "  %d/%d", curvar()->name, bs.var + 1, numvars(bs.genre, bs.sub)); break;
+        case 2:
+          if (israndom) snprintf(buf, sizeof buf, "Beat         " GS_PREV " %.40s " GS_NEXT "  (dice)", curvar()->name);
+          else snprintf(buf, sizeof buf, "Beat         " GS_PREV " %.40s " GS_NEXT "  %d/%d", curvar()->name, bs.var + 1, numvars(bs.genre, bs.sub));
+          break;
         case 3:
           if (bs.kit < 0) sprintf(buf, "Drum sounds  " GS_PREV " Auto (%s) " GS_NEXT, kitnames[cursub()->kit]);
           else sprintf(buf, "Drum sounds  " GS_PREV " %s " GS_NEXT, kitnames[bs.kit]);
@@ -1270,6 +1351,10 @@ void beatdialog(void)
       printtext(x0 + 3, ry, MKCOL(isel ? 15 : 8, bg), buf);
       if ((mousey == ry) && (mousex >= x0 + 2) && (mousex < x0 + 60)) hitrow = c;
     }
+
+    // dice button: a new random beat of the subgenre (D)
+    printtext(x0 + 55, y0 + 4, MKCOL(C_BUTTONTEXT, C_BUTTON), " " GS_DICE GS_DICER " ");
+    if ((mousey == y0 + 4) && (mousex >= x0 + 55) && (mousex < x0 + 59)) hitdice = 1;
 
     // grid
     drawgrid(x0 + 3, y0 + 13, w - 6, ch, used);
@@ -1314,7 +1399,7 @@ void beatdialog(void)
       if ((mousey == y0 + h - 2) && (mousex >= btnx[c]) && (mousex < btnx[c] + (int)strlen(btntext[c]))) hitbtn = c;
     }
     printtext(x0 + 3, y0 + h - 4, MKCOL(3, C_PANEL),
-              "UP/DOWN select, LEFT/RIGHT change, SPACE/F1 preview on/off, R variation, ENTER insert, ESC cancel");
+              "UP/DOWN select, LEFT/RIGHT change, SPACE/F1 preview, D dice (new beat), R variation, ENTER insert, ESC");
 
     fliptoscreen();
     getkey();
@@ -1326,7 +1411,12 @@ void beatdialog(void)
 
     if ((mouseb) && (!prevmouseb))
     {
-      if (hitbtn >= 0)
+      if (hitdice)
+      {
+        rawkey = KEY_D;
+        key = 0;
+      }
+      else if (hitbtn >= 0)
       {
         sel = S_PREVIEW + hitbtn;
         rawkey = KEY_ENTER;
@@ -1353,6 +1443,16 @@ void beatdialog(void)
       else { snprintf(msg, sizeof msg, "%s", err); msgcol = 10; }
       continue;
     }
+    if (rawkey == KEY_D)
+    {
+      static unsigned diceseed = 0;
+      if (!diceseed) diceseed = (unsigned)time(NULL);
+      diceseed = diceseed * 69069u + 1u;
+      randombeat(bs.genre, bs.sub, diceseed % 100000);
+      bs.variation = 0;
+      sel = 2;
+      changed = 1;
+    }
     if (rawkey == KEY_R)
     {
       bs.variation = (bs.variation % 999) + 1 + (rand() % 50);
@@ -1376,6 +1476,7 @@ void beatdialog(void)
 
       case KEY_PGUP:
       case KEY_PGDN:
+      israndom = 0;
       bs.var = (bs.var + (rawkey == KEY_PGDN ? 1 : -1) + numvars(bs.genre, bs.sub)) % numvars(bs.genre, bs.sub);
       bs.variation = 0;
       changed = 1;
@@ -1396,18 +1497,21 @@ void beatdialog(void)
         switch (sel)
         {
           case 0:
+          israndom = 0;
           bs.genre = (bs.genre + dir + numgenres()) % numgenres();
           bs.sub = 0;
           bs.var = 0;
           bs.variation = 0;
           break;
           case 1:
+          israndom = 0;
           bs.sub = (bs.sub + dir + numsubs(bs.genre)) % numsubs(bs.genre);
           bs.var = 0;
           bs.variation = 0;
           break;
           case 2:
-          bs.var = (bs.var + dir + numvars(bs.genre, bs.sub)) % numvars(bs.genre, bs.sub);
+          if (israndom) israndom = 0;
+          else bs.var = (bs.var + dir + numvars(bs.genre, bs.sub)) % numvars(bs.genre, bs.sub);
           bs.variation = 0;
           break;
           case 3:

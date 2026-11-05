@@ -1,7 +1,7 @@
 # C64 GrooveGoat
 
 A multi-SID music editor for the Commodore 64 SID chip, by **IT-Dummkopfen**.
-Version 0.95b. Based on [GoatTracker 2](https://sourceforge.net/projects/goattracker2/)
+Version 0.96b. Based on [GoatTracker 2](https://sourceforge.net/projects/goattracker2/)
 by Lasse Öörni (Cadaver) and the
 [GoatTracker 2 "Silver Fork"](https://github.com/joelricci/goattracker2) by Joel Ricci.
 
@@ -31,6 +31,10 @@ by Lasse Öörni (Cadaver) and the
 - Piano keyboard over 8 octaves with the played notes of all voices in the voice colours
   (click a key to play a note, `CTRL+B` switches it on / off), also in the MP4 video and on
   the screen of runnable C64 programs (split into two rows of 4 octaves, works at every speed)
+- Text fields with a cursor everywhere (click into the text, LEFT/RIGHT, HOME/END, CTRL+V
+  paste, CTRL+C copy); dialog texts always stay inside their windows
+- Drum + bass library instruments for 6581 and 8580: Kick+Bass, Snare+Bass, HiHat+Bass,
+  Clap+Bass, Tom+Bass (36 new ones each per SID, `tools/mkcombos.py`)
 - Improve (`CTRL+I`): automatic improvements of the current subtune - punchier drums, fuller
   and pushier bass, slides and vibrato in the melody, pulse width modulation, balance, gate
   timer fixes, echo on a free channel, bass filter sweeps, 6581/8580 filter adaptation and
@@ -38,7 +42,7 @@ by Lasse Öörni (Cadaver) and the
 - Join Songs (`SHIFT+F10`): load any number of `.sng` / `.ggt` songs into the current one as
   new subtunes or as a medley; identical instruments, table programs and patterns are shared,
   a backup of the current song is saved first, a check shows the result before joining
-- Beat editor (`CTRL+D`): 959 drum beats in 12 genres (Chiptune, Techno, EBM, Electro,
+- Beat editor (`CTRL+D`): 959 drum beats plus a dice for new beats in the style of the subgenre, in 12 genres (Chiptune, Techno, EBM, Electro,
   Hip-Hop, Funk, Drum & Bass, Rock, Metal, House, Reggae, Latin) with variants, drum kits,
   swing, fills and random variations, written over the whole pattern of the cursor channel;
   drum sounds from the instrument library or generated kits; looped preview without changing the song

@@ -47,6 +47,9 @@ static int modules = (1 << IM_NUM) - 1;
 static int strength = 2;
 static int drumkit = KIT_909;
 static int chipadapt = 0;
+static unsigned dice = 0;           // 0 = default, else the variant rolled with the dice
+// settings the dice changes (0 = default)
+static int t_slides, t_vib, t_pwm, t_echo, t_click, t_balance;
 static int roleof[MAX_INSTR];           // role per instrument (current subtune)
 static int roleset[MAX_INSTR];          // 1 = chosen by the user
 
@@ -332,6 +335,7 @@ static int guessrole(int i)
   int c, avg;
   for (c = 0; c < MAX_INSTRNAMELEN && instr[i].name[c]; c++) n[c] = tolower((unsigned char)instr[i].name[c]);
   n[c] = 0;
+  if (!strncmp(n, "say ", 4)) return RL_OTHER;       // speech generator
   // drum + tone in one instrument (BD+Bass, Snare+Bass ...): the drum frames
   // are followed by a tone that follows the note - kept as it is
   if ((f->absnotes >= 2) && (f->pitched)) return RL_COMBO;
@@ -340,7 +344,6 @@ static int guessrole(int i)
   if (strstr(n, "snare") || strstr(n, "clap") || !strncmp(n, "sd", 2)) return RL_SNARE;
   if (strstr(n, "hat") || strstr(n, "hh") || strstr(n, "cymb") || strstr(n, "crash") || strstr(n, "ride")) return RL_HAT;
   if (strstr(n, "tom")) return RL_TOM;
-  if (strstr(n, "say ")) return RL_OTHER;          // speech
   if (strstr(n, "arp")) return RL_ARP;
   if (strstr(n, "bass")) return RL_BASS;
   if (strstr(n, "pad") || strstr(n, "string") || strstr(n, "chord")) return RL_PAD;
@@ -562,7 +565,7 @@ static int improveinstr(int i, int tempo, char *err, int errsize)
     w.n = 0;
     if (push)
     {
-      if (strength >= 2) tadd(&w, 0x81, 0xc0 - 4 * (3 - strength));       // a click of noise
+      if ((strength >= 2) != (t_click != 0)) tadd(&w, 0x81, 0xc0 - 4 * (3 - strength));       // a click of noise
       tadd(&w, mw, 12);                                                    // octave pop
     }
     tadd(&w, mw, 0);
@@ -580,7 +583,7 @@ static int improveinstr(int i, int tempo, char *err, int errsize)
       in->sr = (s << 4) | (in->sr & 0x0f);
       if ((mw & 0x40) && (pulsestatic(i) || !in->ptr[PTBL]))
       {
-        int pp = pwmprog(n, 0x300, 0x300, 0x700, 0x30 - 8 * strength);
+        int pp = pwmprog(n, 0x300, 0x300, 0x700, 0x30 - 8 * strength + t_pwm);
         if (pp) in->ptr[PTBL] = pp;
       }
     }
@@ -589,7 +592,8 @@ static int improveinstr(int i, int tempo, char *err, int errsize)
   if (vib)
   {
     // note-independent vibrato: speed entry $8x (time), shift
-    int shift = 6 - strength, pos;
+    int shift = 6 - strength + t_vib, pos;
+    if (shift < 1) shift = 1;
     pos = makespeedtable(((0x80 | 4) << 8) | shift, MST_RAW, 0);
     if (pos >= 0)
     {
@@ -600,12 +604,12 @@ static int improveinstr(int i, int tempo, char *err, int errsize)
   }
   if (pwm)
   {
-    int pp = pwmprog(n, 0x400, 0x200, role == RL_PAD ? 0xa00 : 0x800, role == RL_PAD ? 0x60 : 0x40 - 8 * strength);
+    int pp = pwmprog(n, 0x400, 0x200, role == RL_PAD ? 0xa00 : 0x800, (role == RL_PAD ? 0x60 : 0x40 - 8 * strength) + t_pwm);
     if (pp) { in->ptr[PTBL] = pp; changed = 1; }
   }
   if (bal)
   {
-    int s = (in->sr >> 4) - (strength + 1);
+    int s = (in->sr >> 4) - (strength + 1 + t_balance);
     if (s < 4) s = 4;
     in->sr = (s << 4) | (in->sr & 0x0f);
     changed = 1;
@@ -706,7 +710,7 @@ static void countchannelroles(void)
 static int slides(void)
 {
   static unsigned char done[MAX_PATT];
-  int c, d, count = 0, pos, every = strength == 1 ? 3 : (strength == 2 ? 2 : 1), maxint = strength == 1 ? 2 : (strength == 2 ? 4 : 5);
+  int c, d, count = 0, pos, every = (strength == 1 ? 3 : (strength == 2 ? 2 : 1)) + t_slides, maxint = strength == 1 ? 2 : (strength == 2 ? 4 : 5);
   int mindur = strength == 1 ? 6 : (strength == 2 ? 4 : 3), k = 0;
   pos = makespeedtable((0x80 << 8) | (strength >= 3 ? 1 : 2), MST_RAW, 0);
   if (pos < 0) return 0;
@@ -791,7 +795,7 @@ static int echo(int tempo)
     for (r = 0; r < RL_NUM; r++) leadnotes += chnnotes[lc][r];
     if (best * 8 > leadnotes) { rep("   echo: no free channel (the emptiest has %d notes)", best); return 0; }
   }
-  delay = (12 + tempo / 2) / tempo;
+  delay = (12 + tempo / 2) / tempo + t_echo;
   if (delay < 1) delay = 1;
   nl = flatten(lc, le, MAX_SONGLEN);
   ne = flatten(ec, ee, MAX_SONGLEN);
@@ -957,6 +961,35 @@ int improve_cli(int mods, int str, int kit, int chip, char *msg, int msgsize)
 // Dialog
 // ---------------------------------------------------------------------------
 
+static void rolldice(void)
+{
+  unsigned r;
+  int k;
+  static unsigned seed = 0;
+  if (!seed) seed = (unsigned)time(NULL);
+  seed = seed * 69069u + 1u;
+  dice = seed % 9999 + 1;
+  r = dice * 2654435761u;
+#define RB(n) ((int)((r = r * 1103515245u + 12345u) >> 16) % (n))
+  strength = 1 + RB(3);
+  drumkit = RB(KIT_NUM);
+  // the modules: drums, bass, melody, PWM and balance by chance; fixes and
+  // clean-up stay as they are
+  for (k = IM_DRUMS; k <= IM_BALANCE; k++)
+    if (RB(100) < 70) modules |= 1 << k;
+    else modules &= ~(1 << k);
+  if (RB(100) < 50) modules |= 1 << IM_ECHO; else modules &= ~(1 << IM_ECHO);
+  if (RB(100) < 60) modules |= 1 << IM_FILTER; else modules &= ~(1 << IM_FILTER);
+  t_slides = RB(3) - 1;
+  if (t_slides < 0) t_slides = 0;
+  t_vib = RB(3) - 1;
+  t_pwm = (RB(5) - 2) * 8;
+  t_echo = RB(3) - 1;
+  t_click = RB(2);
+  t_balance = RB(3) - 1;
+#undef RB
+}
+
 static SNAP *orig = NULL, *better = NULL;
 static int showing = 0;            // 0 original, 1 improved (in the song memory)
 static int previewing = 0;
@@ -980,6 +1013,8 @@ static int rebuild(char *err, int errsize)
   snaprestore(showing ? better : orig);
   countpatternlengths();
   snd_unlock();
+  // the clean-up and new instruments stop the player: go on playing
+  if ((previewing) && (!isplaying())) initsong(sub, PLAY_BEGINNING);
   return ok;
 }
 
@@ -1037,7 +1072,7 @@ void improvedialog(void)
   for (;;)
   {
     char buf[200];
-    int hit = -1, hitbtn = -1, nsel, ly = y0 + 3, oy, ry, vis = 9;
+    int hit = -1, hitbtn = -1, hitdice = 0, nsel, ly = y0 + 3, oy, ry, vis = 9;
     const char *bt[B_NUM];
     if (dirty)
     {
@@ -1080,7 +1115,11 @@ void improvedialog(void)
     for (c = 0; c < O_NUM; c++)
     {
       int s = nlist + c, isel = (sel == s), bg = isel ? C_SELECT : C_PANEL, y = oy + c;
-      if (c == O_STRENGTH) sprintf(buf, "Strength       " GS_PREV " %s " GS_NEXT, strength == 1 ? "Subtle" : (strength == 2 ? "Medium" : "Strong"));
+      if (c == O_STRENGTH)
+      {
+        sprintf(buf, "Strength       " GS_PREV " %s " GS_NEXT, strength == 1 ? "Subtle" : (strength == 2 ? "Medium" : "Strong"));
+        if (dice) sprintf(buf + strlen(buf), "   Dice #%u", dice);
+      }
       else if (c == O_KIT) sprintf(buf, "Drum sounds    " GS_PREV " %s " GS_NEXT, kitnames[drumkit]);
       else if (c == O_CHIP) sprintf(buf, "SID chip       " GS_PREV " %s " GS_NEXT, chipadapt == 0 ? "Keep the filter values" : (chipadapt == 1 ? "Written for the 6581: adapt the filters to the 8580" : "Written for the 8580: adapt the filters to the 6581"));
       else sprintf(buf, "[%c] %s", modules & (1 << (c - O_MODS)) ? 'x' : ' ', modnames[c - O_MODS]);
@@ -1088,14 +1127,21 @@ void improvedialog(void)
       printtext(x0 + 3, y, MKCOL(isel ? 15 : 8, bg), buf);
       if ((mousey == y) && (mousex >= x0 + 2) && (mousex < x0 + 72)) hit = s;
     }
+    // dice: another improvement by chance (D)
+    printtext(x0 + 74, oy, MKCOL(C_BUTTONTEXT, C_BUTTON), " " GS_DICE GS_DICER " ");
+    printtext(x0 + 79, oy, MKCOL(3, C_PANEL), "another improvement (D)");
+    if ((mousey == oy) && (mousex >= x0 + 74) && (mousex < x0 + 78)) hitdice = 1;
     ry = oy + O_NUM + 1;
     printtext(x0 + 3, ry, MKCOL(14, C_PANEL), ok ? "What changes:" : "Cannot improve:");
-    if (!ok) printtext(x0 + 5, ry + 1, MKCOL(10, C_PANEL), err);
+    if (!ok) dlg_printwrapped(x0 + 5, ry + 1, w - 9, 3, MKCOL(10, C_PANEL), err);
     else
-      for (c = 0; c < numreport && c < h - (ry - y0) - 6; c++)
-        printtext(x0 + 5, ry + 1 + c, MKCOL(strncmp(report[c], "Result", 6) ? 8 : 13, C_PANEL), report[c]);
+    {
+      int yy = ry + 1, lim = y0 + h - 4;
+      for (c = 0; c < numreport && yy < lim; c++)
+        yy += dlg_printwrapped(x0 + 5, yy, w - 9, lim - yy, MKCOL(strncmp(report[c], "Result", 6) ? 8 : 13, C_PANEL), report[c]);
+    }
     if (msg[0]) printtext(x0 + 3, y0 + h - 4, MKCOL(10, C_PANEL), msg);
-    printtext(x0 + 3, y0 + h - 3, MKCOL(3, C_PANEL), "F1 play/stop, SPACE original <-> improved (A/B), ENTER apply (backup + one undo step), ESC cancel");
+    printtext(x0 + 3, y0 + h - 3, MKCOL(3, C_PANEL), "F1 play/stop, SPACE original <-> improved (A/B), D dice, ENTER apply (backup + undo step), ESC cancel");
     for (c = 0; c < B_NUM; c++)
     {
       int isel = (sel == nlist + O_NUM + c);
@@ -1108,7 +1154,8 @@ void improvedialog(void)
     if (win_quitted) break;
     if ((mouseb) && (!prevmouseb))
     {
-      if (hitbtn >= 0) { sel = nlist + O_NUM + hitbtn; rawkey = KEY_ENTER; }
+      if (hitdice) { rawkey = KEY_D; key = 0; }
+      else if (hitbtn >= 0) { sel = nlist + O_NUM + hitbtn; rawkey = KEY_ENTER; }
       else if (hit >= 0)
       {
         sel = hit;
@@ -1122,6 +1169,12 @@ void improvedialog(void)
       int action = -1;
       if (rawkey == KEY_F1) action = B_PLAY;
       if (rawkey == KEY_SPACE) action = B_AB;
+      if (rawkey == KEY_D)
+      {
+        rolldice();
+        dirty = 1;
+        if (!showing) show(1);    // hear the new variant
+      }
       switch (rawkey)
       {
         case KEY_ESC: goto cancel;
@@ -1143,7 +1196,7 @@ void improvedialog(void)
           else if (sel < nlist + O_NUM)
           {
             int o = sel - nlist;
-            if (o == O_STRENGTH) strength = (strength - 1 + dir + 3) % 3 + 1;
+            if (o == O_STRENGTH) { strength = (strength - 1 + dir + 3) % 3 + 1; dice = 0; t_slides = t_vib = t_pwm = t_echo = t_click = t_balance = 0; }
             else if (o == O_KIT) drumkit = (drumkit + dir + KIT_NUM) % KIT_NUM;
             else if (o == O_CHIP) chipadapt = (chipadapt + dir + 3) % 3;
             else modules ^= 1 << (o - O_MODS);
