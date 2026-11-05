@@ -193,7 +193,7 @@ static const char *newkeys[] = {
   "              SPACE preview, ENTER use it",
   "Audio/Video   Export WAV, MP3 or MP4 video",
   "Backups       .bak on save, autosave every",
-  "              2 min., restore after a crash",
+  "              3 min. (start dialog), recovery",
   "Piano         Played notes of all voices,",
   "              click a key to play (CTRL+B)",
   "Pattern tools Transpose, mark, cut/copy/paste",
@@ -827,7 +827,7 @@ void showwelcomewindow(void)
     "Instruments: Library button (search, favourites,",
     "preview) or the dice button for a random instrument.",
     "Share your song: Audio (WAV/MP3) and Video (MP4).",
-    "Your work is backed up automatically every 2 minutes.",
+    "Your work is backed up automatically (start dialog).",
     NULL
   };
 

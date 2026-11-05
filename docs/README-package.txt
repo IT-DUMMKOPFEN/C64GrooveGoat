@@ -19,8 +19,9 @@ based on GoatTracker 2 by Lasse Oorni (Cadaver) and its "Silver Fork".
 - Pattern tool buttons (transpose, mark, cut/copy/paste) and tooltips
 - Loads and saves GoatTracker 2 (.sng), GoatTracker Stereo (.sng) and the
   C64 GrooveGoat format (.ggt, for 4 and 8 SIDs); instruments (.ins)
-- Backup copies: NAME.bak on every save, automatic backup every 2 minutes,
-  restore after a crash
+- Project folder asked at the start; backup copies: NAME.bak on every save,
+  automatic backup every 3 minutes (one file in the project folder, interval
+  and on / off in the start dialog), restore after a crash
 - Export: SID files (PSID v2 / v3 / v5 multi-SID) with selectable SID
   addresses, runnable C64 programs (.prg) with a player screen, raw PRG/BIN
 - Audio export: WAV (also every voice as its own file) and MP3

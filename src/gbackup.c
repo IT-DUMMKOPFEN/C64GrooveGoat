@@ -2,8 +2,8 @@
 // C64 GrooveGoat - backup copies
 //
 //  - Saving a song keeps the previous version of the file as NAME.bak
-//  - Every 2 minutes an unsaved song is written to the autosave folder in
-//    the configuration folder (the newest 10 files are kept)
+//  - Every N minutes (3 by default, set at the start) an unsaved song is
+//    written to ONE backup file in the project folder (overwritten)
 //  - A session file remembers the newest autosave. If the program was not
 //    closed properly, the next start offers to restore it.
 //
@@ -19,8 +19,6 @@
 #include <signal.h>
 #endif
 
-#define AUTOSAVE_INTERVAL (2 * 60 * 1000)
-#define AUTOSAVE_KEEP 10
 
 static char autosavedir[MAX_PATHNAME];
 static char sessionfile[MAX_PATHNAME];
@@ -151,69 +149,25 @@ void backup_saved(void)
   writesession();
 }
 
-static int cmpstr(const void *a, const void *b)
-{
-  return strcmp(*(char * const *)a, *(char * const *)b);
-}
 
-// Delete all but the newest autosave files (the names start with a time stamp)
-static void pruneautosaves(void)
-{
-  DIR *d = opendir(autosavedir);
-  struct dirent *de;
-  char *names[1024];
-  int n = 0, c;
-  if (!d) return;
-  while ((de = readdir(d)) && (n < 1024))
-  {
-    if (de->d_name[0] == '.') continue;
-    if ((strlen(de->d_name) < 16) || (de->d_name[8] != '-')) continue;
-    names[n++] = strdup(de->d_name);
-  }
-  closedir(d);
-  qsort(names, n, sizeof(char *), cmpstr);
-  for (c = 0; c < n; c++)
-  {
-    if (c < n - AUTOSAVE_KEEP)
-    {
-      char p[MAX_PATHNAME];
-      snprintf(p, sizeof p, "%s/%s", autosavedir, names[c]);
-      remove(p);
-    }
-    free(names[c]);
-  }
-}
-
+// The automatic backup: ONE file, always overwritten - in the project
+// folder (GrooveGoat-autosave.sng, .ggt for 4 / 8 SIDs), or in the autosave
+// folder of the configuration if there is no project folder.
 static void autosave(void)
 {
-  char base[MAX_PATHNAME], name[MAX_PATHNAME], stamp[32];
-  const char *src = loadedsongfilename;
-  const char *slash;
-  time_t now = time(NULL);
-  struct tm *tm = localtime(&now);
+  char name[MAX_PATHNAME], other[MAX_PATHNAME], msg[200];
   int ggt = numsids > 2;
-  char *dot;
-  int c;
-
-  slash = strrchr(src, '/');
-  if (!slash) slash = strrchr(src, '\\');
-  if (slash) src = slash + 1;
-  snprintf(base, sizeof base, "%s", src[0] ? src : (songname[0] ? songname : "untitled"));
-  dot = strrchr(base, '.');
-  if (dot) *dot = 0;
-  for (c = 0; base[c]; c++)
-  {
-    unsigned char ch = base[c];
-    if ((ch < 32) || (strchr("\\/:*?\"<>|", ch))) base[c] = '_';
-  }
-  strftime(stamp, sizeof stamp, "%Y%m%d-%H%M%S", tm);
-  snprintf(name, sizeof name, "%s/%s_%.60s%s", autosavedir, stamp, base, ggt ? ".ggt" : ".sng");
+  const char *dir = projectdir[0] ? projectdir : autosavedir;
+  snprintf(name, sizeof name, "%s/GrooveGoat-autosave%s", dir, ggt ? ".ggt" : ".sng");
+  snprintf(other, sizeof other, "%s/GrooveGoat-autosave%s", dir, ggt ? ".sng" : ".ggt");
   if (writesongfile(name, ggt))
   {
+    remove(other);              // only one backup file
     strcpy(lastautosave, name);
     writesession();
-    pruneautosaves();
-    setstatusmessage("Backup copy saved (automatic backup every 2 minutes)");
+    snprintf(msg, sizeof msg, "Backup saved: GrooveGoat-autosave%s (every %u minute%s)", ggt ? ".ggt" : ".sng", autosavemin,
+             autosavemin > 1 ? "s" : "");
+    setstatusmessage(msg);
   }
 }
 
@@ -227,7 +181,12 @@ void backup_tick(void)
     lastsave = now;
     return;
   }
-  if (now - lastsave >= (getenv("GG_AUTOSAVEMS") ? (Uint32)atoi(getenv("GG_AUTOSAVEMS")) : AUTOSAVE_INTERVAL))
+  if (!autosaveon)
+  {
+    lastsave = now;
+    return;
+  }
+  if (now - lastsave >= (getenv("GG_AUTOSAVEMS") ? (Uint32)atoi(getenv("GG_AUTOSAVEMS")) : autosavemin * 60u * 1000u))
   {
     autosave();
     lastsave = now;
@@ -305,7 +264,7 @@ void backup_init(void)
     strftime(t, sizeof t, "%Y-%m-%d %H:%M", localtime(&when));
     snprintf(l0, sizeof l0, "C64 GrooveGoat was not closed properly last time.");
     snprintf(l1, sizeof l1, "There is an automatic backup of %.60s from %s.", shortname, t);
-    snprintf(l2, sizeof l2, "Restore it? (The backups are kept in the autosave folder.)");
+    snprintf(l2, sizeof l2, "Restore it? (The backup file stays where it is.)");
     lines[0] = l0;
     lines[1] = l1;
     lines[2] = "";

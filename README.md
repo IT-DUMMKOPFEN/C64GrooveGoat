@@ -53,7 +53,7 @@ by Lasse Öörni (Cadaver) and the
   Example: `examples/together_we_hunt.sng`
 - Buttons for the pattern tools (transpose half step / octave, mark, mark all, select pattern,
   cut, copy, paste) and tooltips with the name and shortcut of every button
-- Backup copies: `NAME.bak` on save, automatic backup every 2 minutes (newest 10 kept),
+- Backup copies: `NAME.bak` on save, automatic backup every 3 minutes into one file in the project folder (interval and on / off in the start dialog),
   crash recovery on the next start
 - File formats: GoatTracker 2 `.sng` (1 SID), GoatTracker Stereo `.sng` (2 SIDs),
   C64 GrooveGoat `.ggt` (4 and 8 SIDs), GoatTracker instruments `.ins`

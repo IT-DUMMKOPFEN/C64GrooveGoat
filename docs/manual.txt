@@ -1085,15 +1085,36 @@ C64 GrooveGoat protects your work in three ways:
 - Saving keeps the previous version: before a song file is overwritten, the old file is copied
   to NAME.bak (for example mysong.sng.bak) in the same folder. To go back to it, rename it
   (remove ".bak") and load it.
-- Automatic backup: while a song has unsaved changes, a copy is written every 2 minutes into
-  the "autosave" folder in the configuration folder (see below). The file names start with the
-  date and time (for example 20261020-143012_mysong.sng). The newest 10 copies are kept, older
-  ones are deleted. The message line shows when a copy was made. Your song file itself is not
-  touched by the automatic backup.
+- Automatic backup: while a song has unsaved changes, a copy is written every 3 minutes (the
+  interval is set in the start dialog, see "Project folder" below) into the project folder. It
+  is always ONE file, GrooveGoat-autosave.sng (GrooveGoat-autosave.ggt for 4 or 8 SIDs), which
+  is overwritten every time. Without a project folder the file goes to the "autosave" folder
+  in the configuration folder. The message line shows when a copy was made. Your song file
+  itself is not touched by the automatic backup. The automatic backup can be switched off in
+  the start dialog.
 - Crash recovery: if the program was not closed properly (crash, power failure, killed
-  process), the next start offers to restore the newest automatic backup. "Restore" loads it;
+  process), the next start offers to restore the automatic backup. "Restore" loads it;
   saving then writes to the original file name again. "Ignore" starts normally - the backup
-  stays in the autosave folder, so you can still load it later with Open.
+  file stays in the project folder, so you can still load it later with Open.
+
+## Project folder
+
+At every start C64 GrooveGoat asks for the working folder of your project:
+
+- Folder: the path of the folder. Click into it to edit it (cursor, HOME, END, CTRL+V paste).
+  A folder that does not exist yet is created. Songs, instruments, SID / PRG / WAV / MP3 / MP4
+  exports and the automatic backup are loaded and saved there.
+- Browse...: choose the folder in the file selector (open the folder, then pick any file in
+  it, or press ESC to take the folder you are in).
+- Automatic backup while you work: on / off (on by default).
+- every < N > minutes: the backup interval, 1 to 60 minutes (3 by default). Click the arrows
+  or press LEFT / RIGHT.
+- Ask at every start: switch it off to start in the saved folder without asking. To get the
+  dialog back, set the last entry in groovegoat.cfg to 1 (see Configuration).
+
+Start (or ENTER) uses the folder, "Use the current folder" (or ESC) starts in the folder the
+program was started from. A song given on the command line is still loaded from its own place.
+All settings of the dialog are remembered.
 
 ## Configuration
 
@@ -1104,7 +1125,7 @@ Settings are saved when the program exits:
 |  Linux    ~/.groovegoat/groovegoat.cfg
 
 The same folder contains favourites.txt (instrument library favourites) and the autosave folder
-with the automatic backup copies.
+(automatic backup when no project folder is used).
 
 # Export
 

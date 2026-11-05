@@ -35,6 +35,7 @@
 #include "gbeat.h"
 #include "gjoin.h"
 #include "gimprove.h"
+#include "gproject.h"
 
 int menu = 0;
 int recordmode = 1;
@@ -76,6 +77,10 @@ int stereowidth(void)
 unsigned themesetting = THEME_NIGHT;
 unsigned prgfrontend = 1;
 unsigned prgpiano = 1;          // piano keyboard on the screen of a runnable PRG
+char projectdir[MAX_PATHNAME] = "";   // working folder of the project (asked at the start)
+unsigned autosaveon = 1;        // automatic backup on / off
+unsigned autosavemin = 3;       // ... every N minutes (one file, overwritten)
+unsigned askproject = 1;        // ask for the project folder at every start
 int prgpianocmd = -1;           // --piano=0/1 on the command line (not saved)
 unsigned mastervolume = 80;
 unsigned showwelcome = 1;
@@ -641,6 +646,9 @@ int main(int argc, char **argv)
     dlg_message("Sound", lines, 2);
   }
 
+  // Project folder and automatic backup (asked at the start)
+  projectstart(((!getenv("GG_SCRIPT")) || (getenv("GG_PROJECTDIALOG"))) && (!getenv("GG_AUTOTEST")) && (!getenv("GG_NOPROJECT")));
+
   // Load song if applicable
   if (strlen(songfilename))
   {
@@ -813,7 +821,15 @@ static void loadconfig(void)
   getparam(configfile, &kbdlayoutsetting);
   getparam(configfile, &showpiano);
   getparam(configfile, &prgpiano);
+  getlineparam(configfile, projectdir);
+  getparam(configfile, &autosaveon);
+  getparam(configfile, &autosavemin);
+  getparam(configfile, &askproject);
   fclose(configfile);
+  if (!strcmp(projectdir, "-")) projectdir[0] = 0;
+  autosaveon &= 1;
+  askproject &= 1;
+  if ((autosavemin < 1) || (autosavemin > 120)) autosavemin = 3;
   showpiano &= 1;
   prgpiano &= 1;
   if (!strcmp(specialnotenames, "-")) specialnotenames[0] = 0;
@@ -876,7 +892,11 @@ static void saveconfig(void)
     ";Show the welcome window at startup (0 = no, 1 = yes)\n%d\n\n"
     ";Keyboard layout for shortcuts (0 = EN QWERTY, 1 = DE QWERTZ, 2 = detect)\n%d\n\n"
     ";Show the piano keyboard (0 = no, 1 = yes)\n%d\n\n"
-    ";Piano keyboard on the screen of runnable PRGs (0 = no, 1 = yes)\n%d\n\n",
+    ";Piano keyboard on the screen of runnable PRGs (0 = no, 1 = yes)\n%d\n\n"
+    ";Project folder (working folder, - = none)\n%s\n\n"
+    ";Automatic backup (0 = off, 1 = on)\n%d\n\n"
+    ";Automatic backup every N minutes\n%d\n\n"
+    ";Ask for the project folder at the start (0 = no, 1 = yes)\n%d\n\n",
     b,
     mr,
     hardsid,
@@ -924,7 +944,11 @@ static void saveconfig(void)
     showwelcome,
     kbdlayout,
     showpiano,
-    prgpiano);
+    prgpiano,
+    projectdir[0] ? projectdir : "-",
+    autosaveon,
+    autosavemin,
+    askproject);
   fclose(configfile);
 }
 
@@ -1073,6 +1097,7 @@ void waitkeymouse(void)
     getkey();
     if ((rawkey) || (key)) break;
     if (win_quitted) break;
+    if (exitprogram) break;
     if (mouseb) break;
     if ((prevmouseb) && (!mouseb)) break;   // button released (piano keys)
     if (mousewheel) break;
@@ -2469,6 +2494,21 @@ void getfloatparam(FILE *handle, float *value)
   configptr = configbuf;
   *value = 0.0f;
   sscanf(configptr, "%f", value);
+}
+
+// a whole line (paths with spaces)
+void getlineparam(FILE *handle, char *value)
+{
+  int l;
+  for (;;)
+  {
+    if (feof(handle)) return;
+    if (!fgets(configbuf, MAX_PATHNAME, handle)) return;
+    if ((configbuf[0]) && (configbuf[0] != ';') && (configbuf[0] != ' ') && (configbuf[0] != 13) && (configbuf[0] != 10)) break;
+  }
+  l = strlen(configbuf);
+  while ((l > 0) && ((configbuf[l - 1] == 10) || (configbuf[l - 1] == 13))) configbuf[--l] = 0;
+  snprintf(value, MAX_PATHNAME, "%s", configbuf);
 }
 
 void getstringparam(FILE *handle, char *value)

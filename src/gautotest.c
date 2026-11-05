@@ -16,6 +16,7 @@
 //   type:TEXT           type text (underscore = space)
 //   shot:FILE.bmp       screenshot of the current screen
 //   quit                exit immediately
+//   exit                end the program normally (saves the configuration)
 //
 
 #include "goattrk2.h"
@@ -139,6 +140,12 @@ static int dotoken(const char *tok)
   {
     fliptoscreen();
     savescreenshot(tok + 5);
+    return 1;
+  }
+  if (!strcmp(tok, "exit"))
+  {
+    extern int exitprogram;
+    exitprogram = 1;            // normal end (the configuration is saved)
     return 1;
   }
   if (!strcmp(tok, "quit"))
