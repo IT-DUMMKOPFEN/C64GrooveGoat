@@ -1022,7 +1022,8 @@ replaced; its tempo commands stay):
 
 Everything happens on a copy: the preview starts again after every change, D rolls the dice
 (other choices of the style), ENTER (Create) saves a backup next to the song
-(NAME_before-bass_DATE_TIME.sng) and keeps the new part, ESC brings the old song back. The
+(NAME_before-bass_DATE_TIME.sng) and keeps the new part as one undo step (CTRL+Z), ESC brings
+the old song back. The
 new instruments get free instrument slots and their programs are added to the tables.
 
 ## Song name editor (F8)

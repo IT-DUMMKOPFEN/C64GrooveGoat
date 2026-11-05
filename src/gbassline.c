@@ -731,7 +731,7 @@ void basslinedialog(void)
     }
     else dlg_printwrapped(x0 + 3, y, w - 6, 3, MKCOL(10, C_PANEL), err);
     if (msg[0]) printtext(x0 + 3, y0 + h - 5, MKCOL(10, C_PANEL), msg);
-    printtext(x0 + 3, y0 + h - 4, MKCOL(3, C_PANEL), "F1/SPACE play, D dice, ENTER create (keep), ESC cancel (the old song again)");
+    printtext(x0 + 3, y0 + h - 4, MKCOL(3, C_PANEL), "F1/SPACE play, D dice, ENTER create (backup + undo step), ESC cancel (the old song again)");
     {
       const char *bt[4] = {previewing ? " " GS_STOP " Stop " : " " GS_PLAY " Play ", " " GS_DICE GS_DICER " Dice ", "  Create  ", "  Cancel  "};
       int bx[4], xx = x0 + 3;
@@ -786,7 +786,18 @@ void basslinedialog(void)
       bsave(now);
       brestore(orig);
       if (!writebackup(bak, sizeof bak)) bak[0] = 0;
-      brestore(now);
+      // one undo step (CTRL+Z brings the old voices back)
+      {
+        void *ed = undoinstrbegin();
+        int s2, c;
+        undoAreaSetCheckForChange(UNDO_AREA_PATTERN_LEN, 0, UNDO_AREA_DIRTY_CHECK);
+        for (s2 = 0; s2 < MAX_SONGS; s2++)
+          for (c = 0; c < numchannels; c++)
+            undoAreaSetCheckForChange(UNDO_AREA_ORDERLIST, c + s2 * MAX_CHN, UNDO_AREA_DIRTY_CHECK);
+        undoAreaSetCheckForChange(UNDO_AREA_ORDERLIST_LEN, 0, UNDO_AREA_DIRTY_CHECK);
+        brestore(now);
+        undoinstrend(ed);
+      }
       free(now);
       songmodified = 1;
       snprintf(buf, sizeof buf, "%s written%s%s", partname[b_part], bak[0] ? " - backup of the old song: " : "", bak);
