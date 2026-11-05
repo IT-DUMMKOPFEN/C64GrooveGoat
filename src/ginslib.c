@@ -359,7 +359,8 @@ void instrumentlibrary(void)
     printtext(x0 + 5, y0 + 2, MKCOL(7, C_PANEL), "Search");
     printblankc(x0 + 12, y0 + 2, MKCOL(15, C_BEATROW), 30);
     printtext(x0 + 12, y0 + 2, MKCOL(15, C_BEATROW), search);
-    printcursor(x0 + 12 + strlen(search), y0 + 2, 1);
+    printcursor(x0 + 12 + editstring_cursor(search), y0 + 2, 1);
+    if ((mousey == y0 + 2) && (mousex >= x0 + 12) && (mousex < x0 + 42)) hitbtn = 6;
     printtext(x0 + 46, y0 + 2, MKCOL(7, C_PANEL), "SID");
     ui_drawbutton(x0 + 50, y0 + 2, " 6581 ", 1001, 0, curmodel == 0);
     ui_drawbutton(x0 + 57, y0 + 2, " 8580 ", 1002, 0, curmodel == 1);
@@ -456,7 +457,7 @@ void instrumentlibrary(void)
 
     printtext(x0 + 3, y0 + LIB_H - 3, MKCOL(3, C_PANEL),
       "Type to search  UP/DOWN/PGUP/PGDN select  LEFT/RIGHT category  TAB 6581/8580  SPACE or click: preview  INS/* favourite");
-    printtext(x0 + 3, y0 + LIB_H - 2, MKCOL(3, C_PANEL), "ENTER / double click = load into the instrument slot   ESC = close");
+    printtext(x0 + 3, y0 + LIB_H - 2, MKCOL(3, C_PANEL), "ENTER / double click = load into the instrument slot   ESC = close   With a search text LEFT/RIGHT move in it");
 
     fliptoscreen();
     getkey();
@@ -508,6 +509,7 @@ void instrumentlibrary(void)
         curmodel = hitbtn - 1;
         buildview();
       }
+      else if (hitbtn == 6) editstring_click(search, mousex - x0 - 12);
       else if (hitbtn == 3) rawkey = KEY_INS;
       else if (hitbtn == 4) rawkey = KEY_SPACE;
       else if (hitbtn == 5) rawkey = KEY_ENTER;
@@ -521,14 +523,23 @@ void instrumentlibrary(void)
     }
 
     // typing: search text
-    if ((key >= 32) && (key < 127) && (key != ' ') && (key != '*') && (strlen(search) < 30) &&
-        (!ctrlpressed) && (!altpressed) && (!metapressed))
+    // (with a search text, LEFT / RIGHT / HOME / END / DEL move and delete in it)
+    if (((key >= 32) && (key < 127) && (key != ' ') && (key != '*') && (strlen(search) < 30) &&
+         (!ctrlpressed) && (!altpressed) && (!metapressed)) ||
+        ((search[0]) && ((rawkey == KEY_LEFT) || (rawkey == KEY_RIGHT) || (rawkey == KEY_HOME) || (rawkey == KEY_END) ||
+                         (rawkey == KEY_DEL) || (rawkey == KEY_BACKSPACE))) ||
+        (((ctrlpressed) || (metapressed)) && (rawkey == KEY_V)))
     {
-      int l = strlen(search);
-      search[l] = key;
-      search[l + 1] = 0;
-      libpos = libview = 0;
-      buildview();
+      char old[64];
+      strcpy(old, search);
+      editstring(search, 31);
+      if (strcmp(old, search))
+      {
+        libpos = libview = 0;
+        buildview();
+      }
+      rawkey = 0;
+      key = 0;
     }
     if (key == '*') rawkey = KEY_INS;
 
@@ -544,14 +555,6 @@ void instrumentlibrary(void)
         buildview();
       }
       else done = 1;
-      break;
-
-      case KEY_BACKSPACE:
-      if (search[0])
-      {
-        search[strlen(search) - 1] = 0;
-        buildview();
-      }
       break;
 
       case KEY_UP: if (libpos > 0) libpos--; break;

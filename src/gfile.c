@@ -189,6 +189,7 @@ int fileselector(char *name, char *path, char *filter, char *title, int filemode
   int lowest;
   int exitfilesel;
   int instrmode = (filemode & FILESEL_INSTRUMENT) ? 1 : 0;
+  int pathofs = 0, filterofs = 0, nameofs = 0;     // scroll positions of the text fields
 
   DIR *dir;
   struct dirent *de;
@@ -339,11 +340,7 @@ int fileselector(char *name, char *path, char *filter, char *title, int filemode
 
     // Path line
     printtext(FS_X + 2, FS_Y + 1, MKCOL(7, C_PANEL), "Folder");
-    sprintf(buf, "%-*.*s", FS_W - 12, FS_W - 12, path);
-    if ((int)strlen(path) > FS_W - 12)
-      sprintf(buf, "...%-*.*s", FS_W - 15, FS_W - 15, path + strlen(path) - (FS_W - 15));
-    printtext(FS_X + 10, FS_Y + 1, MKCOL(filemode == 1 ? CEDIT : 15, C_BEATROW), buf);
-    if (filemode == 1) printcursor(FS_X + 10 + (strlen(path) < (unsigned)(FS_W - 12) ? strlen(path) : FS_W - 13), FS_Y + 1, 1);
+    drawtextfield(FS_X + 10, FS_Y + 1, FS_W - 12, path, MKCOL(filemode == 1 ? CEDIT : 15, C_BEATROW), filemode == 1, &pathofs);
 
     // Column header
     printblankc(FS_X + 1, FS_Y + 2, MKCOL(7, C_PANEL), FS_W - 2);
@@ -397,14 +394,10 @@ int fileselector(char *name, char *path, char *filter, char *title, int filemode
 
     // Filter & name
     printtext(FS_X + 2, FS_LIST_Y + VISIBLEFILES + 1, MKCOL(7, C_PANEL), "Filter");
-    sprintf(buf, "%-40.40s", filter);
-    printtext(FS_X + 10, FS_LIST_Y + VISIBLEFILES + 1, MKCOL(filemode == 2 ? CEDIT : 15, C_BEATROW), buf);
-    if (filemode == 2) printcursor(FS_X + 10 + editstring_cursor(filter), FS_LIST_Y + VISIBLEFILES + 1, 1);
+    drawtextfield(FS_X + 10, FS_LIST_Y + VISIBLEFILES + 1, 40, filter, MKCOL(filemode == 2 ? CEDIT : 15, C_BEATROW), filemode == 2, &filterofs);
 
     printtext(FS_X + 2, FS_LIST_Y + VISIBLEFILES + 2, MKCOL(7, C_PANEL), "Name");
-    sprintf(buf, "%-60.60s", name);
-    printtext(FS_X + 10, FS_LIST_Y + VISIBLEFILES + 2, MKCOL(filemode == 3 ? CEDIT : 15, C_BEATROW), buf);
-    if (filemode == 3) printcursor(FS_X + 10 + editstring_cursor(name), FS_LIST_Y + VISIBLEFILES + 2, 1);
+    drawtextfield(FS_X + 10, FS_LIST_Y + VISIBLEFILES + 2, 60, name, MKCOL(filemode == 3 ? CEDIT : 15, C_BEATROW), filemode == 3, &nameofs);
 
     // Buttons
     bx = FS_X + 2;
@@ -500,9 +493,13 @@ int fileselector(char *name, char *path, char *filter, char *title, int filemode
         exitfilesel = 0;
       }
       // Select path / filter / name field
-      else if (mousey == FS_Y + 1) filemode = 1;
-      else if (mousey == FS_LIST_Y + VISIBLEFILES + 1) { filemode = 2; editstring_click(filter, mousex - FS_X - 10); }
-      else if (mousey == FS_LIST_Y + VISIBLEFILES + 2) { filemode = 3; editstring_click(name, mousex - FS_X - 10); }
+      else if (mousey == FS_Y + 1)
+      {
+        filemode = 1;
+        editstring_click(path, mousex - FS_X - 10 + pathofs);
+      }
+      else if (mousey == FS_LIST_Y + VISIBLEFILES + 1) { filemode = 2; editstring_click(filter, mousex - FS_X - 10 + filterofs); }
+      else if (mousey == FS_LIST_Y + VISIBLEFILES + 2) { filemode = 3; editstring_click(name, mousex - FS_X - 10 + nameofs); }
     }
     if ((mouseb) && (hitbutton < 100) && (!hitbutton))
     {
@@ -713,7 +710,8 @@ int fileselector(char *name, char *path, char *filter, char *title, int filemode
 // Text editing with a cursor (all name / text fields): the cursor belongs to
 // the buffer edited last; a new buffer starts with the cursor at its end.
 // LEFT / RIGHT / HOME / END move, BACKSPACE / DEL delete, typing inserts,
-// CTRL+V pastes from the clipboard, CTRL+C copies the field.
+// CTRL+V pastes from the clipboard, CTRL+C copies the field. Word by word:
+// CTRL+LEFT/RIGHT (ALT on a Mac), start / end: CMD+LEFT/RIGHT on a Mac.
 static char *edbuf = NULL;
 static int edpos = 0;
 
@@ -766,10 +764,35 @@ void editstring(char *buffer, int maxlength)
     rawkey = 0;
     return;
   }
+  if ((rawkey == KEY_LEFT) || (rawkey == KEY_RIGHT))
+  {
+    int right = rawkey == KEY_RIGHT;
+    if (metapressed) edpos = right ? len : 0;                   // CMD: start / end of the text
+    else if ((ctrlpressed) || (altpressed))                     // word by word
+    {
+      int p = pos;
+#define WORDCH(ch) (isalnum((unsigned char)(ch)) || ((unsigned char)(ch) >= 128))
+      if (right)
+      {
+        while ((p < len) && (WORDCH(buffer[p]))) p++;
+        while ((p < len) && (!WORDCH(buffer[p]))) p++;
+      }
+      else
+      {
+        while ((p > 0) && (!WORDCH(buffer[p - 1]))) p--;
+        while ((p > 0) && (WORDCH(buffer[p - 1]))) p--;
+      }
+#undef WORDCH
+      edpos = p;
+    }
+    else if (right) { if (pos < len) edpos = pos + 1; }
+    else if (pos > 0) edpos = pos - 1;
+    key = 0;
+    rawkey = 0;
+    return;
+  }
   switch (rawkey)
   {
-    case KEY_LEFT: if (pos > 0) edpos = pos - 1; return;
-    case KEY_RIGHT: if (pos < len) edpos = pos + 1; return;
     case KEY_HOME: edpos = 0; return;
     case KEY_END: edpos = len; return;
     case KEY_DEL:
@@ -797,6 +820,30 @@ void editstring(char *buffer, int maxlength)
       }
     }
   }
+}
+
+// A text field of a given width that scrolls with the cursor: prints the
+// visible part (and the cursor when active). *ofs is the scroll position of
+// the field; a click maps to mousex - x + *ofs (editstring_click).
+void drawtextfield(int x, int y, int width, char *buffer, int color, int active, int *ofs)
+{
+  char buf[MAX_PATHNAME + 2];
+  int len = strlen(buffer), cur;
+  if (width < 2) width = 2;
+  if (active)
+  {
+    cur = editstring_cursor(buffer);
+    if (cur < *ofs) *ofs = cur;
+    if (cur >= *ofs + width) *ofs = cur - width + 1;
+  }
+  else if (len >= width) *ofs = len - width + 1;               // the end of a long text
+  else *ofs = 0;
+  if (*ofs > len) *ofs = len;
+  if (*ofs < 0) *ofs = 0;
+  snprintf(buf, sizeof buf, "%-*.*s", width, width, buffer + *ofs);
+  if ((*ofs > 0) && (!active)) buf[0] = buf[1] = buf[2] = '.';
+  printtext(x, y, color, buf);
+  if (active) printcursor(x + editstring_cursor(buffer) - *ofs, y, 1);
 }
 
 int cmpname(char *string1, char *string2)

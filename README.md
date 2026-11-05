@@ -35,8 +35,8 @@ by Lasse Öörni (Cadaver) and the
   jam mode plays the instrument on all voices of all SIDs (chords), sustain pedal, device
   choice and test in the MIDI dialog (MIDI button in the status bar), hot plugging
 - Project folder dialog at the start with the automatic backup (on / off, interval)
-- Text fields with a cursor everywhere (click into the text, LEFT/RIGHT, HOME/END, CTRL+V
-  paste, CTRL+C copy); dialog texts always stay inside their windows
+- Text fields with a cursor everywhere (click into the text, LEFT/RIGHT, HOME/END, word by word
+  with CTRL / ALT, CMD+LEFT/RIGHT on a Mac, CTRL+V paste, CTRL+C copy, long texts scroll); dialog texts always stay inside their windows
 - Drum + bass library instruments for 6581 and 8580: Kick+Bass, Snare+Bass, HiHat+Bass,
   Clap+Bass, Tom+Bass (36 new ones each per SID, `tools/mkcombos.py`)
 - Improve (`CTRL+I`): automatic improvements of the current subtune - punchier drums, fuller

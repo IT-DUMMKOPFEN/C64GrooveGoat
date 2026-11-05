@@ -644,11 +644,15 @@ are full, a message tells you to delete unused table data first (SHIFT+O in the 
 
 ## Editing text
 
-All text fields - song name, author, released, instrument names, file names, the text of the
-speech generator and the input fields of the dialogs - can be edited at any place: click into
-the text (or use LEFT / RIGHT, HOME / END) to put the cursor there; typing inserts at the
-cursor, BACKSPACE deletes before it, DEL at it. CTRL+V (CMD+V) pastes text from the clipboard,
-CTRL+C (CMD+C) copies the whole field.
+All text fields - song name, author, released, instrument names, file names, folders and the
+filter in the file selector, the search of the instrument library, the text of the speech
+generator, the project folder and the input fields of the dialogs - can be edited at any
+place: click into the text (or use LEFT / RIGHT, HOME / END) to put the cursor there; typing
+inserts at the cursor, BACKSPACE deletes before it, DEL at it. CTRL+LEFT / RIGHT (ALT on a
+Mac) jumps word by word, CMD+LEFT / RIGHT on a Mac (FN+LEFT / RIGHT, HOME / END everywhere) to
+the start or the end. Long texts scroll with the cursor. CTRL+V (CMD+V) pastes text from the
+clipboard, CTRL+C (CMD+C) copies the whole field. In the instrument library LEFT / RIGHT choose
+the category while the search is empty, and move in the search text when there is one.
 
 ## Drum + bass instruments
 
