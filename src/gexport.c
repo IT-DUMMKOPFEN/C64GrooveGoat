@@ -841,6 +841,7 @@ static int doavexport(const char *name, char *error, int errorsize)
   lastprogress = 0;
   error[0] = 0;
   if (!cli) printmainscreen();
+  if (!cli) fliptoscreen();
   render_enter();
   songframes = calcsonglengthex(avs.subtune, &stopped);
   calclength(&len, songframes, stopped);

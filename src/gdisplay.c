@@ -159,12 +159,15 @@ void validatechnview(void)
   }
 }
 
+// Draws the main screen into the screen buffer only. The caller shows it
+// (fliptoscreen): a dialog draws itself on top first - presenting the main
+// screen alone here made every dialog flicker (each frame without and with
+// the dialog, very visible with the vsync of macOS)
 void printmainscreen(void)
 {
   clearscreen();
   printstatus();
   forceredraw();
-  fliptoscreen();
 }
 
 static void drawtooltip(void);
