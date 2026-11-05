@@ -36,6 +36,7 @@
 #include "gjoin.h"
 #include "gimprove.h"
 #include "gproject.h"
+#include "gsgbuild.h"
 
 int menu = 0;
 int recordmode = 1;
@@ -188,6 +189,7 @@ static char speechtext[SPEECH_MAXTEXT];
 static char beatspec[64];
 static char joinspec[4096];
 static int improveopt = 0;
+static char composespec[200] = "";
 static char speechlist[MAX_PATHNAME];
 static int renderseconds = 0;
 static int renderstems = 0;
@@ -272,6 +274,11 @@ int main(int argc, char **argv)
         if (!strcmp(argv[c], "--improve"))
         {
           improveopt = 1;
+          break;
+        }
+        if (!strncmp(argv[c], "--compose=", 10))
+        {
+          strncpy(composespec, argv[c] + 10, sizeof composespec - 1);
           break;
         }
         if (!strncmp(argv[c], "--join=", 7))
@@ -551,6 +558,16 @@ int main(int argc, char **argv)
       sscanf(beatspec, "%d,%d,%d,%d", &g, &s, &v, &f);
       if (getenv("GG_BEATPATT")) editorUndoInfo.editorInfo[chn].epnum = atoi(getenv("GG_BEATPATT"));
       if (!beat_generate_cli(chn, g - 1, s - 1, v - 1, f, err, sizeof err))
+      {
+        fprintf(stderr, "error: %s\n", err);
+        return EXIT_FAILURE;
+      }
+    }
+    // --compose=STYLE[/SUB],SEED,SECONDS,SIDS[,MODEL]: random song like SIDGen
+    if (composespec[0])
+    {
+      char err[200];
+      if (!sidgen_compose_cli(composespec, err, sizeof err))
       {
         fprintf(stderr, "error: %s\n", err);
         return EXIT_FAILURE;
