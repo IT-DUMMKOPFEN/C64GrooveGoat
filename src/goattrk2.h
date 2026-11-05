@@ -2,7 +2,7 @@
 #define GOATTRK2_H
 
 #define PROGRAMNAME "C64 GrooveGoat"
-#define PROGRAMVERSION "0.96b"
+#define PROGRAMVERSION "0.99b"
 #define PROGRAMAUTHOR "IT-Dummkopfen"
 #define PATCHNAME "based on GoatTracker v2.76 (Silver Fork)"
 
@@ -36,6 +36,7 @@
 #include "gdialog.h"
 #include "gadsr.h"
 #include "gbackup.h"
+#include "gmidi.h"
 
 #define EDIT_PATTERN 0
 #define EDIT_ORDERLIST 1

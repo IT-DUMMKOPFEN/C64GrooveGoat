@@ -1,4 +1,4 @@
-# C64 GrooveGoat 0.96b - Manual
+# C64 GrooveGoat 0.99b - Manual
 
 C64 GrooveGoat is a tracker-style music editor for the SID sound chip of the Commodore 64. It is
 based on GoatTracker 2 by Lasse Oorni (Cadaver) and the "Silver Fork" of Joel Ricci. It adds:
@@ -68,7 +68,7 @@ A song consists of:
 |  macOS        Unpack the ZIP file (AppleSilicon for Macs with M chips, Intel for Intel
 |               Macs) and move "C64 GrooveGoat.app" to Applications. On the first start
 |               use right click > Open (the app is not notarized by Apple).
-|  Linux        Make the AppImage executable (chmod +x C64_GrooveGoat-0.96b-x86_64.AppImage)
+|  Linux        Make the AppImage executable (chmod +x C64_GrooveGoat-0.99b-x86_64.AppImage)
 |               and start it. The instrument library and the examples are inside the
 |               AppImage. If your system lacks FUSE, start it with --appimage-extract-and-run.
 |  Linux tar.gz Unpack the archive and start ./groovegoat in the unpacked folder (the
@@ -123,6 +123,34 @@ The Piano button in the status bar or CTRL+B (CMD+B on a Mac) switches the keybo
 it is on by default and the setting is saved. Without the piano the pattern editor, the tables
 and the song info get the space back (4 more rows).
 
+## MIDI keyboard
+
+A MIDI keyboard (a USB keyboard, or a keyboard on a MIDI interface) can be used to play and enter
+notes on Windows, macOS and Linux. No driver or setting is needed: connect the keyboard, it is
+found automatically (also while the program is running), and all MIDI devices are listened to.
+
+- EDIT MODE in the pattern editor (F5): every key enters its note at the cursor, exactly like a
+  note key of the computer keyboard - with the current instrument, the cursor moves on by the
+  step size (Advance). The note C4 of the keyboard (middle C, MIDI note 60) is C-4 in the
+  tracker; the octave setting of the editor is not used. Chords are entered note by note.
+  Each note can be undone with CTRL+Z.
+- JAM MODE, and in all other editors and dialogs: the current instrument is played on all
+  voices of all SIDs, so you can play chords - with 1 SID up to 3 notes at the same time, with
+  2 SIDs up to 6 and so on. Every key takes a free voice (the voice of the cursor first);
+  when all voices are busy, the oldest note is replaced. Muted voices are not used.
+- The note sounds as long as the key is held. The sustain pedal holds the notes.
+- The velocity (how hard a key is pressed) is ignored, the SID has no volume per note.
+
+The MIDI button in the status bar opens the MIDI dialog. It is lit while a MIDI device is
+listened to. In the dialog you choose "All MIDI devices" (default), one device, or "Off". The
+line "Last key" shows the last key that was received - press a key to test the connection. The
+choice is saved with the other settings.
+
+If nothing arrives: check that the keyboard is switched on and connected before or after the
+start (both work), and that no other program uses it exclusively (Windows lets only one program
+open a MIDI device at a time). On Linux the ALSA sequencer is used (libasound, it is part of
+every desktop system); PipeWire and JACK MIDI devices appear there as well.
+
 ## Toolbar
 
 |  New          Start a new, empty song (asks for 1, 2, 4 or 8 SIDs)
@@ -168,7 +196,7 @@ or INSTRUMENT <01>) always steps back or forward.
 ## Status bar and volume
 
 The bottom lines show the octave, edit/jam mode, autoadvance mode, note entry mode (Keys),
-keyboard layout (Kbd), the step size, the Undo, Redo and Piano buttons, the play state and
+keyboard layout (Kbd), the step size, the Undo, Redo, Piano and MIDI buttons, the play state and
 time, the positions of the visible voices and the SID addresses.
 
 The volume slider at the bottom right sets the output volume of the editor from 0% to 100%
@@ -1414,7 +1442,7 @@ The default sample rate is 48000 Hz; -M44100 selects 44100 Hz.
 
 # Credits
 
-C64 GrooveGoat 0.96b by IT-Dummkopfen.
+C64 GrooveGoat 0.99b by IT-Dummkopfen.
 
 |  GoatTracker 2 editor & playroutine   Lasse Oorni (Cadaver), Covert Bitops
 |  GoatTracker 2 "Silver Fork"          Joel Ricci (github.com/joelricci/goattracker2)

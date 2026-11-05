@@ -16,6 +16,7 @@
 //   type:TEXT           type text (underscore = space)
 //   shot:FILE.bmp       screenshot of the current screen
 //   quit                exit immediately
+//   midi:S,D1,D2        MIDI message (decimal), e.g. midi:144,60,100 note on C-4
 //   exit                end the program normally (saves the configuration)
 //
 
@@ -140,6 +141,14 @@ static int dotoken(const char *tok)
   {
     fliptoscreen();
     savescreenshot(tok + 5);
+    return 1;
+  }
+  if (!strncmp(tok, "midi:", 5))
+  {
+    int st = 0, d1 = 0, d2 = 0;
+    sscanf(tok + 5, "%d,%d,%d", &st, &d1, &d2);
+    midi_inject(st, d1, d2);    // a MIDI message as if from a keyboard
+    waitframes = 2;
     return 1;
   }
   if (!strcmp(tok, "exit"))

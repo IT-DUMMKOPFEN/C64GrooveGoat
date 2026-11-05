@@ -38,6 +38,9 @@ int cmdcopyrows = 0;
 //int editorInfo.epmarkstart;
 //int editorInfo.epmarkend;
 
+static void enternote(int newnote, int play);
+static void patterncommands2(void);
+
 void patterncommands(void)
 {
   int c, scrrep;
@@ -290,7 +293,18 @@ void patterncommands(void)
       }
     }
 
-    if (newnote >= 0)
+    if (newnote >= 0) enternote(newnote, 1);
+  }
+  {
+    int mn;
+    while ((mn = midi_nextentry()) >= 0) enternote(mn, 0);   // MIDI keyboard (already sounding)
+  }
+  patterncommands2();
+}
+
+// enter a note at the cursor (recordmode) and play it
+static void enternote(int newnote, int play)
+{
     {
       if ((recordmode) && (editorInfo.eppos < pattlen[editorUndoInfo.editorInfo[editorInfo.epchn].epnum]))
       {
@@ -320,9 +334,13 @@ void patterncommands(void)
           }
         }
       }
-      playtestnote(newnote, editorInfo.einum, editorInfo.epchn);
+      if (play) playtestnote(newnote, editorInfo.einum, editorInfo.epchn);
     }
-  }
+}
+
+static void patterncommands2(void)
+{
+  int c, scrrep;
   switch(rawkey)
   {
     case KEY_O:

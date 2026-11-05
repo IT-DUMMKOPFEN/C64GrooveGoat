@@ -94,6 +94,7 @@ static const char *buttonhint(int id)
     case BTN_HELP: return "Help: keys and commands - F12";
     case BTN_INFO: return "Version, author, credits and licenses";
     case BTN_UNDO: return "Undo the last change - Ctrl+Z";
+    case BTN_MIDI: return "MIDI keyboard: choose the device and test it";
     case BTN_REDO: return "Redo - Ctrl+Y or Ctrl+Shift+Z";
     case BTN_KBDLAYOUT: return "Keyboard layout for shortcuts (EN: QWERTY, DE: QWERTZ - Z and Y swapped)";
     case BTN_LIBRARY: return "Instrument library: search, favourites, preview and load";
@@ -801,6 +802,8 @@ static void drawstatusarea(void)
   ui_drawbutton(x, STATUS_Y, " " GS_REDO " Redo ", BTN_REDO, 0, 0);
   x += 9;
   ui_drawbutton(x, STATUS_Y, " " GS_NOTE " Piano ", BTN_PIANO, 0, showpiano);
+  x += 10;
+  ui_drawbutton(x, STATUS_Y, " MIDI ", BTN_MIDI, 0, midi_active());
 
   // Play status and time
   if (editorInfo.multiplier)
@@ -973,6 +976,7 @@ static int tooltip(int id, const char **name, const char **keys)
     case BTN_UNDO: *name = "Undo"; *keys = "CTRL+Z"; break;
     case BTN_REDO: *name = "Redo"; *keys = "CTRL+Y"; break;
     case BTN_PIANO: *name = "Piano keyboard on / off"; *keys = "CTRL+B"; break;
+    case BTN_MIDI: *name = "MIDI keyboard (device, test)"; break;
     case BTN_PIANOKEY: *name = "Click a key to play the note (current instrument and voice)"; break;
     case BTN_CHNVIEW: *name = "Show the voices of these SIDs"; break;
     case BTN_ORDVIEW: *name = "Scroll the orderlist voices"; break;

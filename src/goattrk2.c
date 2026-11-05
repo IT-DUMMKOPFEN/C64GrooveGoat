@@ -668,16 +668,21 @@ int main(int argc, char **argv)
   // Start editor mainloop
   printmainscreen();
   backup_init();
+  midi_init();
   if ((showwelcome) && (!getenv("GG_SCRIPT"))) showwelcomewindow();
   while (!exitprogram)
   {
+    midi_inmain = 1;
     waitkeymouse();
+    midi_inmain = 0;
     handledrop();
     docommand();
     updatetitle();
     backup_tick();
   }
   backup_shutdown();
+  midi_allnotesoff();
+  midi_shutdown();
 
   // Shutdown sound output now
   if (getenv("GG_AUDIODEBUG")) fprintf(stderr, "audio underruns: %u\n", snd_getunderruns());
@@ -825,7 +830,11 @@ static void loadconfig(void)
   getparam(configfile, &autosaveon);
   getparam(configfile, &autosavemin);
   getparam(configfile, &askproject);
+  getparam(configfile, &midion);
+  getlineparam(configfile, mididevice);
   fclose(configfile);
+  midion &= 1;
+  if (!strcmp(mididevice, "-")) mididevice[0] = 0;
   if (!strcmp(projectdir, "-")) projectdir[0] = 0;
   autosaveon &= 1;
   askproject &= 1;
@@ -896,7 +905,9 @@ static void saveconfig(void)
     ";Project folder (working folder, - = none)\n%s\n\n"
     ";Automatic backup (0 = off, 1 = on)\n%d\n\n"
     ";Automatic backup every N minutes\n%d\n\n"
-    ";Ask for the project folder at the start (0 = no, 1 = yes)\n%d\n\n",
+    ";Ask for the project folder at the start (0 = no, 1 = yes)\n%d\n\n"
+    ";MIDI keyboard input (0 = off, 1 = on)\n%d\n\n"
+    ";MIDI device (- = all devices)\n%s\n\n",
     b,
     mr,
     hardsid,
@@ -948,7 +959,9 @@ static void saveconfig(void)
     projectdir[0] ? projectdir : "-",
     autosaveon,
     autosavemin,
-    askproject);
+    askproject,
+    midion,
+    mididevice[0] ? mididevice : "-");
   fclose(configfile);
 }
 
@@ -1098,6 +1111,7 @@ void waitkeymouse(void)
     if ((rawkey) || (key)) break;
     if (win_quitted) break;
     if (exitprogram) break;
+    if ((midi_pending) && (midi_inmain)) break;
     if (mouseb) break;
     if ((prevmouseb) && (!mouseb)) break;   // button released (piano keys)
     if (mousewheel) break;
@@ -1534,6 +1548,7 @@ static void buttoncommand(int id, int param)
     case BTN_SIDADDR: showsidinfo(); break;
     case BTN_QUIT: quit(); break;
     case BTN_PIANO: togglepiano(); break;
+    case BTN_MIDI: mididialog(); break;
     case BTN_TRANSUP: patternkey(KEY_Q); break;
     case BTN_TRANSDN: patternkey(KEY_A); break;
     case BTN_OCTUP: patternkey(KEY_W); break;

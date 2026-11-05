@@ -196,6 +196,8 @@ static const char *newkeys[] = {
   "              3 min. (start dialog), recovery",
   "Piano         Played notes of all voices,",
   "              click a key to play (CTRL+B)",
+  "MIDI          MIDI keyboard: edit mode enters",
+  "              notes, jam mode plays chords",
   "Pattern tools Transpose, mark, cut/copy/paste",
   "              buttons above the pattern editor",
   "Beat editor   CTRL+D: drum beats by genre,",

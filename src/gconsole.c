@@ -910,6 +910,7 @@ void getkey(void)
 {
   int c;
   autoscript_tick();
+  midi_service();
   win_asciikey = 0;
   win_symkey = 0;
   cursorflashdelay += win_getspeed(50);

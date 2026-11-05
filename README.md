@@ -1,7 +1,7 @@
 # C64 GrooveGoat
 
 A multi-SID music editor for the Commodore 64 SID chip, by **IT-Dummkopfen**.
-Version 0.96b. Based on [GoatTracker 2](https://sourceforge.net/projects/goattracker2/)
+Version 0.99b. Based on [GoatTracker 2](https://sourceforge.net/projects/goattracker2/)
 by Lasse Öörni (Cadaver) and the
 [GoatTracker 2 "Silver Fork"](https://github.com/joelricci/goattracker2) by Joel Ricci.
 
@@ -31,6 +31,10 @@ by Lasse Öörni (Cadaver) and the
 - Piano keyboard over 8 octaves with the played notes of all voices in the voice colours
   (click a key to play a note, `CTRL+B` switches it on / off), also in the MP4 video and on
   the screen of runnable C64 programs (split into two rows of 4 octaves, works at every speed)
+- MIDI keyboard input on Windows, macOS and Linux: edit mode enters the notes at the cursor,
+  jam mode plays the instrument on all voices of all SIDs (chords), sustain pedal, device
+  choice and test in the MIDI dialog (MIDI button in the status bar), hot plugging
+- Project folder dialog at the start with the automatic backup (on / off, interval)
 - Text fields with a cursor everywhere (click into the text, LEFT/RIGHT, HOME/END, CTRL+V
   paste, CTRL+C copy); dialog texts always stay inside their windows
 - Drum + bass library instruments for 6581 and 8580: Kick+Bass, Snare+Bass, HiHat+Bass,
