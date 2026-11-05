@@ -211,6 +211,9 @@ At startup a welcome window with the most important keys is shown. Close it with
 button, ENTER, SPACE or ESC. Uncheck "Show at startup" (click it or press S) if you do not want
 to see it again.
 
+The first start of a new version shows the version info instead: what the version brings, with
+fireworks. "Show again at the start" (click it or press S) shows it at every start.
+
 ## Keyboard layout (Kbd: EN / DE)
 
 C64 GrooveGoat reads the notes from the position of the keys, like a piano, so note entry works

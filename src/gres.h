@@ -11,6 +11,7 @@ extern const RESIMAGE res_images[];
 extern const RESFILE res_files[];
 const unsigned char *res_getfile(const char *name, int *len);
 const RESIMAGE *res_getimage(const char *name);
+void res_init(void);
 
 #define GL_HLINE 1
 #define GS_HLINE "\x01"
@@ -156,5 +157,7 @@ const RESIMAGE *res_getimage(const char *name);
 #define GS_DICER "\xae"
 #define GL_SEARCH 175
 #define GS_SEARCH "\xaf"
+#define GL_HEART 182
+#define GS_HEART "\xb6"
 
 #endif

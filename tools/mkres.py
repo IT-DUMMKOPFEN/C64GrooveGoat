@@ -33,7 +33,7 @@ G = {
     'PRG': 157, 'GEAR': 158, 'UNDO': 159,
     # rarely used Latin-1 symbols replaced by UI glyphs
     'WAVE': 164, 'FILM': 165, 'REDO': 166, 'STAR': 168, 'STAROFF': 172, 'DICE': 173, 'DICER': 174,
-    'SEARCH': 175, 'ENV': 127,
+    'SEARCH': 175, 'ENV': 127, 'HEART': 182,
 }
 
 def glyph_custom(code, cw, ch):
@@ -273,6 +273,11 @@ def glyph_custom(code, cw, ch):
             d.polygon(pts, fill=255)
         else:
             d.polygon(pts, outline=255, width=max(SS, lw * 2 // 3))
+    elif name == 'HEART':
+        r = W * 0.24
+        d.ellipse([cx - 2 * r, cy - r * 1.6, cx, cy + r * 0.4], fill=255)
+        d.ellipse([cx, cy - r * 1.6, cx + 2 * r, cy + r * 0.4], fill=255)
+        d.polygon([(cx - 1.93 * r, cy - r * 0.4), (cx + 1.93 * r, cy - r * 0.4), (cx, cy + r * 2.0)], fill=255)
     elif name == 'SEARCH':
         r = W * 0.26
         ox, oy = cx - W * 0.08, cy - W * 0.08
@@ -341,6 +346,33 @@ def main():
         lines.append(cbytes(data))
         lines.append('};')
         imgs.append((name, sz, sz))
+    # the picture of the version info (welcome window of a new version)
+    # (256 colours: palette + indices, expanded to RGBA by res_init())
+    art = Image.open(os.path.join(ROOT, 'res', 'version-1.0.jpg')).convert('RGB')
+    q = art.quantize(colors=256, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
+    pal = bytes(q.getpalette()[:768]).ljust(768, b'\0')
+    idx = q.tobytes()
+    aw, ah = art.size
+    lines.append('static const unsigned char res_versionart_pal[768] = {')
+    lines.append(cbytes(pal))
+    lines.append('};')
+    lines.append('static const unsigned char res_versionart_idx[%d] = {' % len(idx))
+    lines.append(cbytes(idx, 64))
+    lines.append('};')
+    lines.append('static unsigned char res_versionart[%d];' % (aw * ah * 4))
+    lines.append('void res_init(void)')
+    lines.append('{')
+    lines.append('  int k;')
+    lines.append('  for (k = 0; k < %d; k++)' % (aw * ah))
+    lines.append('  {')
+    lines.append('    const unsigned char *c = res_versionart_pal + res_versionart_idx[k] * 3;')
+    lines.append('    res_versionart[k * 4] = c[0];')
+    lines.append('    res_versionart[k * 4 + 1] = c[1];')
+    lines.append('    res_versionart[k * 4 + 2] = c[2];')
+    lines.append('    res_versionart[k * 4 + 3] = 255;')
+    lines.append('  }')
+    lines.append('}')
+    imgs.append(('versionart', aw, ah))
     lines.append('const RESIMAGE res_images[] = {')
     for name, w, h in imgs:
         lines.append('  {"%s", %d, %d, res_%s},' % (name, w, h, name))
@@ -410,7 +442,7 @@ const RESIMAGE *res_getimage(const char *name)
          'extern const unsigned char res_font1[];', 'extern const unsigned char res_font2[];',
          'extern const RESIMAGE res_images[];', 'extern const RESFILE res_files[];',
          'const unsigned char *res_getfile(const char *name, int *len);',
-         'const RESIMAGE *res_getimage(const char *name);', '']
+         'const RESIMAGE *res_getimage(const char *name);', 'void res_init(void);', '']
     for k, v in sorted(G.items(), key=lambda kv: kv[1]):
         h.append('#define GL_%s %d' % (k, v))
         h.append('#define GS_%s "\\x%02x"' % (k, v))

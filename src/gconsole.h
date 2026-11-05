@@ -73,6 +73,10 @@ void canvas_draw(int id, int x, int y, int color);
 #define RGBCANVAS_STRIDE (RGBCANVAS_MAXCW * 16)
 unsigned *rgbcanvas_begin(int cw, int ch);
 void rgbcanvas_draw(int x, int y);
+// effect canvases (two, full colour, 16x32 pixels per cell, redrawn every frame)
+unsigned *fxcanvas_begin(int id, int cw, int ch);
+void fxcanvas_draw(int id, int x, int y);
+void fxcanvas_end(void);
 void getkey(void);
 int savescreenshot(const char *filename);
 extern char autoshotname[1024];

@@ -172,8 +172,7 @@ static void buildtileimage(TILEIMAGE *t)
   int w = t->cw * CELLW * scale;
   int h = t->ch * CELLH * scale;
   int side = w < h ? w : h;
-  int ox = (w - side) / 2;
-  int oy = (h - side) / 2;
+  int ox, oy, dw, dh;
   int x, y;
   char base[32];
 
@@ -192,16 +191,27 @@ static void buildtileimage(TILEIMAGE *t)
   t->pw = w;
   t->ph = h;
   if ((!src) || (!t->pixels)) return;
-
-  for (y = 0; y < side; y++)
+  // fit into the cells with the aspect ratio of the picture
+  dw = w;
+  dh = (int)((double)w * src->h / src->w + 0.5);
+  if (dh > h)
   {
-    for (x = 0; x < side; x++)
+    dh = h;
+    dw = (int)((double)h * src->w / src->h + 0.5);
+  }
+  ox = (w - dw) / 2;
+  oy = (h - dh) / 2;
+  (void)side;
+
+  for (y = 0; y < dh; y++)
+  {
+    for (x = 0; x < dw; x++)
     {
       // box filter from source
-      int sx0 = x * src->w / side;
-      int sx1 = (x + 1) * src->w / side;
-      int sy0 = y * src->h / side;
-      int sy1 = (y + 1) * src->h / side;
+      int sx0 = x * src->w / dw;
+      int sx1 = (x + 1) * src->w / dw;
+      int sy0 = y * src->h / dh;
+      int sy1 = (y + 1) * src->h / dh;
       int sx, sy, n = 0;
       unsigned r = 0, g = 0, b = 0, a = 0;
       if (sx1 <= sx0) sx1 = sx0 + 1;
@@ -356,6 +366,59 @@ void rgbcanvas_draw(int x, int y)
   }
 }
 
+// ---------------------------------------------------------------------------
+// Effect canvases: full colour pixels (16x32 per cell) for animations that
+// change every frame (the fireworks of the version info); two of them
+// ---------------------------------------------------------------------------
+
+#define FXCANVAS_BASE 0xd400
+#define FXCANVAS_CELLS 1536
+
+static unsigned *fxbuf[2];
+static int fxcw[2], fxch[2];
+
+unsigned *fxcanvas_begin(int id, int cw, int ch)
+{
+  if ((id < 0) || (id > 1)) return NULL;
+  if (cw < 1) cw = 1;
+  if (ch < 1) ch = 1;
+  while (cw * ch > FXCANVAS_CELLS) ch--;
+  if ((!fxbuf[id]) || (fxcw[id] != cw) || (fxch[id] != ch))
+  {
+    free(fxbuf[id]);
+    fxbuf[id] = (unsigned *)calloc((size_t)cw * 16 * ch * 32, sizeof(unsigned));
+    fxcw[id] = cw;
+    fxch[id] = ch;
+  }
+  return fxbuf[id];
+}
+
+void fxcanvas_end(void)
+{
+  int k;
+  for (k = 0; k < 2; k++)
+  {
+    free(fxbuf[k]);
+    fxbuf[k] = NULL;
+    fxcw[k] = fxch[k] = 0;
+  }
+}
+
+void fxcanvas_draw(int id, int x, int y)
+{
+  int cx, cy;
+  if ((id < 0) || (id > 1) || (!fxbuf[id]) || (!scrbuffer)) return;
+  for (cy = 0; cy < fxch[id]; cy++)
+    for (cx = 0; cx < fxcw[id]; cx++)
+    {
+      int idx;
+      if ((x + cx < 0) || (x + cx >= MAX_COLUMNS) || (y + cy < 0) || (y + cy >= MAX_ROWS)) continue;
+      idx = (x + cx) + (y + cy) * MAX_COLUMNS;
+      scrbuffer[idx] = FXCANVAS_BASE + id * FXCANVAS_CELLS + cy * fxcw[id] + cx;
+      if (prevscrbuffer) prevscrbuffer[idx] = 0xffffffff;     // changes every frame
+    }
+}
+
 void drawimage(int x, int y, const char *name, int cellsw, int cellsh)
 {
   TILEIMAGE *t = gettileimage(name, cellsw, cellsh);
@@ -445,6 +508,7 @@ static int setupscale(void)
 
 int initscreen(void)
 {
+  res_init();                  // the pictures that are stored with a palette
   if (!plat_init("C64 GrooveGoat", MAX_COLUMNS * CELLW, MAX_ROWS * CELLH))
     return 0;
   seticon();
@@ -710,6 +774,32 @@ static void rendercell(int x, int y, unsigned cell)
   Uint32 *dst = fb + (y * ch) * fbw + x * cw;
   int px, py;
 
+  if ((glyph >= FXCANVAS_BASE) && (glyph < FXCANVAS_BASE + 2 * FXCANVAS_CELLS))
+  {
+    int id = (glyph - FXCANVAS_BASE) / FXCANVAS_CELLS, idx = (glyph - FXCANVAS_BASE) % FXCANVAS_CELLS;
+    int ccw = fxcw[id] ? fxcw[id] : 1, stride = ccw * 16;
+    int tx = idx % ccw, ty = idx / ccw;
+    const unsigned *a;
+    if (!fxbuf[id]) return;
+    a = fxbuf[id] + (ty * 32) * stride + tx * 16;
+    for (py = 0; py < ch; py++)
+    {
+      for (px = 0; px < cw; px++)
+      {
+        if (scale == 1)
+        {
+          const unsigned *q = a + (py * 2) * stride + px * 2;
+          unsigned r = ((q[0] >> 16) & 0xff) + ((q[1] >> 16) & 0xff) + ((q[stride] >> 16) & 0xff) + ((q[stride + 1] >> 16) & 0xff);
+          unsigned g = ((q[0] >> 8) & 0xff) + ((q[1] >> 8) & 0xff) + ((q[stride] >> 8) & 0xff) + ((q[stride + 1] >> 8) & 0xff);
+          unsigned b = (q[0] & 0xff) + (q[1] & 0xff) + (q[stride] & 0xff) + (q[stride + 1] & 0xff);
+          dst[px] = 0xff000000 | (((r + 2) >> 2) << 16) | (((g + 2) >> 2) << 8) | ((b + 2) >> 2);
+        }
+        else dst[px] = 0xff000000 | a[py * stride + px];
+      }
+      dst += fbw;
+    }
+    return;
+  }
   if ((glyph >= RGBCANVAS_BASE) && (glyph < CANVAS_BASE))
   {
     int idx = glyph - RGBCANVAS_BASE;

@@ -5,6 +5,7 @@
 
 #define GHELP_C
 
+#include <math.h>
 #include "goattrk2.h"
 #include "gres.h"
 
@@ -885,6 +886,194 @@ void showwelcomewindow(void)
       if ((mousex < x) || (mousex >= x + w) || (mousey < y) || (mousey >= y + h)) break;
     }
   }
+  printmainscreen();
+  key = 0;
+  rawkey = 0;
+}
+
+
+// ---------------------------------------------------------------------------
+// Version info: the first start of a new version (picture, what it can do,
+// thanks) with fireworks on the left and the right
+// ---------------------------------------------------------------------------
+
+typedef struct { float x, y, vx, vy; int life, maxlife; unsigned col; int rocket; } SPARK;
+#define MAXSPARKS 900
+
+static SPARK sparks[2][MAXSPARKS];
+static int nsparks[2];
+static unsigned fxseed = 12345;
+
+static float fxrand(void)
+{
+  fxseed = fxseed * 1103515245u + 12345u;
+  return ((fxseed >> 8) & 0xffff) / 65536.0f;
+}
+
+static const unsigned fxcolours[8] = {0xff5050, 0xffd23c, 0x50dcff, 0x78ff78, 0xff78ff, 0xffa03c, 0xffffff, 0xa0a0ff};
+
+static void fxspark(int side, float x, float y, float vx, float vy, int life, unsigned col, int rocket)
+{
+  SPARK *s;
+  if (nsparks[side] >= MAXSPARKS) return;
+  s = &sparks[side][nsparks[side]++];
+  s->x = x;
+  s->y = y;
+  s->vx = vx;
+  s->vy = vy;
+  s->life = s->maxlife = life;
+  s->col = col;
+  s->rocket = rocket;
+}
+
+static void fxplot(unsigned *buf, int w, int h, int x, int y, unsigned col, float f, int size)
+{
+  int dx, dy;
+  for (dy = 0; dy < size; dy++)
+    for (dx = 0; dx < size; dx++)
+    {
+      int px = x + dx, py = y + dy;
+      unsigned *p, r, g, b, o;
+      if ((px < 0) || (py < 0) || (px >= w) || (py >= h)) continue;
+      p = &buf[py * w + px];
+      o = *p;
+      r = (unsigned)(((col >> 16) & 255) * f);
+      g = (unsigned)(((col >> 8) & 255) * f);
+      b = (unsigned)((col & 255) * f);
+      if (((o >> 16) & 255) > r) r = (o >> 16) & 255;
+      if (((o >> 8) & 255) > g) g = (o >> 8) & 255;
+      if ((o & 255) > b) b = o & 255;
+      *p = (r << 16) | (g << 8) | b;
+    }
+}
+
+// one frame of the fireworks of one side (canvas cw x ch cells)
+static void fxframe(int side, int cw, int ch)
+{
+  unsigned *buf = fxcanvas_begin(side, cw, ch);
+  int w = cw * 16, h = ch * 32, k, n;
+  const unsigned night = 0x0e0b24;
+  if (!buf) return;
+  // trails: everything fades towards the night sky
+  for (k = 0; k < w * h; k++)
+  {
+    unsigned o = buf[k];
+    int r = (o >> 16) & 255, g = (o >> 8) & 255, b = o & 255;
+    r = 0x0e + (r - 0x0e) * 11 / 12;
+    g = 0x0b + (g - 0x0b) * 11 / 12;
+    b = 0x24 + (b - 0x24) * 11 / 12;
+    buf[k] = (r << 16) | (g << 8) | b;
+  }
+  if (!buf[0]) for (k = 0; k < w * h; k++) buf[k] = night;
+  // a new rocket now and then
+  if ((fxrand() < 0.05f) || (!nsparks[side]))
+    fxspark(side, w * (0.15f + 0.7f * fxrand()), (float)h, (fxrand() - 0.5f) * 1.5f, -(19 + fxrand() * 9), 60 + (int)(fxrand() * 60),
+            fxcolours[(int)(fxrand() * 8) & 7], 1);
+  n = nsparks[side];
+  for (k = 0; k < n; k++)
+  {
+    SPARK *s = &sparks[side][k];
+    float f = (float)s->life / s->maxlife;
+    s->x += s->vx;
+    s->y += s->vy;
+    s->vy += s->rocket ? 0.28f : 0.12f;
+    s->vx *= 0.985f;
+    if (s->rocket)
+    {
+      fxplot(buf, w, h, (int)s->x, (int)s->y, 0xfff0b0, 1.0f, 5);
+      // the rocket bursts at the top of its way
+      if ((--s->life <= 0) || (s->vy > -2))
+      {
+        int j, cnt = 50 + (int)(fxrand() * 40);
+        unsigned col = s->col, col2 = fxcolours[(int)(fxrand() * 8) & 7];
+        for (j = 0; j < cnt; j++)
+        {
+          float a = fxrand() * 6.2832f, v = 3 + fxrand() * 6;
+          fxspark(side, s->x, s->y, cosf(a) * v, sinf(a) * v * 1.1f, 45 + (int)(fxrand() * 35), (j & 3) ? col : col2, 0);
+        }
+        s->life = 0;
+      }
+    }
+    else
+    {
+      int twinkle = (f < 0.35f) && (fxrand() < 0.5f);
+      if (!twinkle) fxplot(buf, w, h, (int)s->x, (int)s->y, s->col, 0.45f + 0.55f * f, f > 0.5f ? 6 : 4);
+      s->life--;
+    }
+  }
+  // remove the dead sparks
+  for (k = 0, n = 0; k < nsparks[side]; k++)
+    if ((sparks[side][k].life > 0) && (sparks[side][k].y < h + 40)) sparks[side][n++] = sparks[side][k];
+  nsparks[side] = n;
+}
+
+void showversioninfo(void)
+{
+  int w = 98, h = 47;
+  int x = (MAX_COLUMNS - w) / 2;
+  int y = (MAX_ROWS - h) / 2;
+  int sidew = x, rightx = x + w, rightw = MAX_COLUMNS - x - w;
+  static const char *items[] =
+  {
+    "New songs from 33 genres and their subgenres - 1 to 8 SIDs, 6581 / 8580, subtunes",
+    "MIDI import: every MIDI file becomes a SID song, for 1 to 8 SIDs",
+    "Bass, Chords & Arps from the chords of your song, beat editor, Improve, Join songs",
+    "5000+ instruments for the 6581 and the 8580, speech, MIDI keyboard with chords",
+    "Up to 8 SIDs with 24 voices, WAV / MP3 / MP4 export and runnable C64 programs",
+    NULL
+  };
+  if (y < 0) y = 0;
+  nsparks[0] = nsparks[1] = 0;
+  fxseed = (unsigned)SDL_GetTicks() | 1;
+  key = 0;
+  rawkey = 0;
+  for (;;)
+  {
+    int c, ly, bx = x + 3, by = y + h - 2, cbx = x + w - 33;
+    printmainscreen();
+    // the night sky with the fireworks, left and right of the window
+    if (sidew > 0)
+    {
+      fxframe(0, sidew, MAX_ROWS);
+      fxcanvas_draw(0, 0, 0);
+    }
+    if (rightw > 0)
+    {
+      fxframe(1, rightw, MAX_ROWS);
+      fxcanvas_draw(1, rightx, 0);
+    }
+    dlg_drawframe(x, y, w, h, "Welcome to C64 GrooveGoat " PROGRAMVERSION);
+    drawimage(x + 14, y + 2, "versionart", 70, 26);
+    ly = y + 29;
+    printtext(x + 3, ly++, MKCOL(14, C_PANEL), "Version " PROGRAMVERSION " - The Monster Awakens");
+    ly++;
+    printtext(x + 3, ly++, MKCOL(7, C_PANEL), "What began as a fresh coat of paint for GoatTracker 2 is now a complete C64 music studio:");
+    ly++;
+    for (c = 0; items[c]; c++)
+    {
+      printglyph(x + 4, ly, MKCOL(11, C_PANEL), GL_NOTE);
+      printtext(x + 6, ly++, MKCOL(15, C_PANEL), items[c]);
+    }
+    ly++;
+    printtext(x + 3, ly++, MKCOL(15, C_PANEL), "Thanks to the many comments from so many of you last week, GrooveGoat has grown into a");
+    printtext(x + 3, ly, MKCOL(14, C_PANEL), "real monster. Thank you!");
+    printglyph(x + 28, ly, MKCOL(C_RB1, C_PANEL), GL_HEART);
+    printtext(x + 3, by - 2, MKCOL(3, C_PANEL), "ENTER / ESC / click: start   (shown once for every new version)");
+    printtext(bx, by, MKCOL(C_BUTTONTEXT, C_BUTTONHI), "  Let's groove!  ");
+    printtext(cbx, by, MKCOL(versioninfoalways ? 15 : 8, C_PANEL), versioninfoalways ? "[x] Show again at the start" : "[ ] Show again at the start");
+    fliptoscreen();
+    getkey();
+    if (win_quitted) break;
+    if ((rawkey == KEY_ESC) || (rawkey == KEY_ENTER) || (rawkey == KEY_SPACE)) break;
+    if ((rawkey == KEY_S) || (rawkey == KEY_X)) versioninfoalways ^= 1;
+    if ((mouseb) && (!prevmouseb))
+    {
+      if ((mousey == by) && (mousex >= cbx) && (mousex < cbx + 27)) versioninfoalways ^= 1;
+      else break;
+    }
+  }
+  snprintf(versioninfoseen, sizeof versioninfoseen, "%s", PROGRAMVERSION);
+  fxcanvas_end();
   printmainscreen();
   key = 0;
   rawkey = 0;

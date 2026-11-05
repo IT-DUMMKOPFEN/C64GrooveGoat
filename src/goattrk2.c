@@ -86,6 +86,8 @@ unsigned askproject = 1;        // ask for the project folder at every start
 int prgpianocmd = -1;           // --piano=0/1 on the command line (not saved)
 unsigned mastervolume = 80;
 unsigned showwelcome = 1;
+unsigned versioninfoalways = 0;          // the version info at every start
+char versioninfoseen[32] = "";          // the version whose info was shown
 unsigned kbdlayoutsetting = 2;
 unsigned showpiano = 1;        // piano keyboard above the status bar
 float basepitch = 0.0f;
@@ -720,7 +722,9 @@ int main(int argc, char **argv)
   printmainscreen();
   backup_init();
   midi_init();
-  if ((showwelcome) && (!getenv("GG_SCRIPT"))) showwelcomewindow();
+  if (getenv("GG_SCRIPT")) ;
+  else if ((versioninfoalways) || (strcmp(versioninfoseen, PROGRAMVERSION))) showversioninfo();
+  else if (showwelcome) showwelcomewindow();
   while (!exitprogram)
   {
     midi_inmain = 1;
@@ -883,7 +887,11 @@ static void loadconfig(void)
   getparam(configfile, &askproject);
   getparam(configfile, &midion);
   getlineparam(configfile, mididevice);
+  getlineparam(configfile, versioninfoseen);
+  getparam(configfile, &versioninfoalways);
   fclose(configfile);
+  versioninfoalways &= 1;
+  if (!strcmp(versioninfoseen, "-")) versioninfoseen[0] = 0;
   midion &= 1;
   if (!strcmp(mididevice, "-")) mididevice[0] = 0;
   if (!strcmp(projectdir, "-")) projectdir[0] = 0;
@@ -958,7 +966,9 @@ static void saveconfig(void)
     ";Automatic backup every N minutes\n%d\n\n"
     ";Ask for the project folder at the start (0 = no, 1 = yes)\n%d\n\n"
     ";MIDI keyboard input (0 = off, 1 = on)\n%d\n\n"
-    ";MIDI device (- = all devices)\n%s\n\n",
+    ";MIDI device (- = all devices)\n%s\n\n"
+    ";Version whose info window was shown (- = none)\n%s\n\n"
+    ";Show the version info at every start (0 = no, 1 = yes)\n%d\n\n",
     b,
     mr,
     hardsid,
@@ -1012,7 +1022,9 @@ static void saveconfig(void)
     autosavemin,
     askproject,
     midion,
-    mididevice[0] ? mididevice : "-");
+    mididevice[0] ? mididevice : "-",
+    versioninfoseen[0] ? versioninfoseen : "-",
+    versioninfoalways);
   fclose(configfile);
 }
 
@@ -1108,6 +1120,7 @@ static void runautotest(void)
     if (!strcmp(scr, "history")) showhistory();
     if (!strcmp(scr, "info")) showinfo();
     if (!strcmp(scr, "welcome")) showwelcomewindow();
+    if (!strcmp(scr, "version")) showversioninfo();
     if (!strcmp(scr, "sidinfo")) showsidinfo();
     if (!strcmp(scr, "exportsid")) exportsid();
     if (!strcmp(scr, "exportprg")) exportprg();
