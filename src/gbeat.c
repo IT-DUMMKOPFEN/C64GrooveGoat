@@ -1074,6 +1074,15 @@ static int prevlen[MAX_PATT];
 static unsigned char prevmute[MAX_CHN];
 static int previewing = 0;
 
+// stop the player and wait until it has really stopped (stopsong() only asks
+// for it; the player thread silences the SID on its next call)
+static void stopandwait(void)
+{
+  int t;
+  stopsong();
+  for (t = 0; (t < 100) && (isplaying()); t++) SDL_Delay(5);
+}
+
 static void restoresong(void)
 {
   snd_lock();
@@ -1113,7 +1122,11 @@ static int preview(int ch, char *err, int errsize)
     memcpy(prevlen, pattlen, sizeof prevlen);
     for (c = 0; c < MAX_CHN; c++) prevmute[c] = chn[c].mute;
   }
-  else restoresong();
+  else
+  {
+    stopandwait();
+    restoresong();
+  }
   snd_lock();
   ok = writebeat(ch, err, errsize);
   for (c = 0; c < numchannels; c++)
@@ -1136,7 +1149,13 @@ static int preview(int ch, char *err, int errsize)
     initsongpos(editorInfo.esnum, PLAY_PATTERN, 0);
   }
   // loading a library instrument stops the player: go on with the new sound
-  else if (!isplaying()) initsongpos(editorInfo.esnum, PLAY_PATTERN, 0);
+  else
+  {
+    // a new drum sound or a new dice roll: stop, then start again (clean
+    // SID state: filter, envelopes)
+    stopandwait();
+    initsongpos(editorInfo.esnum, PLAY_PATTERN, 0);
+  }
   return 1;
 }
 

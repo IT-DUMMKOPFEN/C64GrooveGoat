@@ -1003,9 +1003,21 @@ static void show(int which)
   showing = which;
 }
 
+// stop the player and wait until it has really stopped (stopsong() only asks
+// for it; the player thread silences the SID on its next call)
+static void stopandwait(void)
+{
+  int t;
+  stopsong();
+  for (t = 0; (t < 100) && (isplaying()); t++) SDL_Delay(5);
+}
+
 static int rebuild(char *err, int errsize)
 {
   int ok;
+  // a new role, option or dice roll: stop the preview first, start it
+  // again afterwards (clean SID state: filter, envelopes)
+  if (previewing) stopandwait();
   snd_lock();
   snaprestore(orig);
   ok = improve(err, errsize);
@@ -1014,7 +1026,7 @@ static int rebuild(char *err, int errsize)
   countpatternlengths();
   snd_unlock();
   // the clean-up and new instruments stop the player: go on playing
-  if ((previewing) && (!isplaying())) initsong(sub, PLAY_BEGINNING);
+  if (previewing) initsong(sub, PLAY_BEGINNING);
   return ok;
 }
 
