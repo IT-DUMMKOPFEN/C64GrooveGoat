@@ -1,4 +1,4 @@
-// C64 GrooveGoat - random songs like SIDGen: dialog and command line
+// C64 GrooveGoat - random songs: dialog and command line
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -9,7 +9,7 @@
 #include "gsgbuild.h"
 #include "gsgmidi.h"
 
-// style variant from "key" or "key/subindex" (no sub: chosen by weight, as SIDGen)
+// style variant from "key" or "key/subindex" (no sub: chosen by weight)
 static int findvariant(const char *spec, unsigned seed)
 {
   char key[40];
@@ -37,7 +37,7 @@ static int findvariant(const char *spec, unsigned seed)
 
 // compose and build into the song memory; 4-8 SIDs: if the piece does not
 // fit into one song, again without the variant sections, then also without
-// the register arc (as SIDGen's app)
+// the register arc
 static COMP *subcomp(int v, unsigned seed, double seconds, int sids, int voices, int model, int variants, int compact,
                      COMP *fixed, int jingle)
 {
@@ -61,9 +61,9 @@ static COMP *subcomp(int v, unsigned seed, double seconds, int sids, int voices,
 
 // compose and build into the song memory; 4-8 SIDs: if the piece does not
 // fit into one song, again without the variant sections, then also without
-// the register arc (as SIDGen's app). subtunes: title music, in-game music
+// the register arc. subtunes: title music, in-game music
 // and a game over jingle with the same instruments.
-COMP *sidgen_make(int v, unsigned seed, double seconds, int sids, int voices, int model, char *err, int errsize, int subtunes,
+COMP *song_make(int v, unsigned seed, double seconds, int sids, int voices, int model, char *err, int errsize, int subtunes,
                   int enhanced)
 {
   int attempt;
@@ -111,7 +111,7 @@ COMP *sidgen_make(int v, unsigned seed, double seconds, int sids, int voices, in
   return NULL;
 }
 
-// the built song (as tools/sgdumpsong.py)
+// the built song (test dump)
 static void dumpsong(const char *path)
 {
     FILE *f = fopen(path, "w");
@@ -160,7 +160,7 @@ static void dumpsong(const char *path)
     }
   }
 
-int sidgen_compose_cli(const char *spec, char *err, int errsize)
+int compose_cli(const char *spec, char *err, int errsize)
 {
   char st[64] = "techno";
   unsigned seed = 1;
@@ -177,7 +177,7 @@ int sidgen_compose_cli(const char *spec, char *err, int errsize)
     snprintf(err, errsize, "Unknown style %s", st);
     return 0;
   }
-  c = sidgen_make(v, seed, seconds, sids, voices, model, err, errsize, subtunes, enhanced);
+  c = song_make(v, seed, seconds, sids, voices, model, err, errsize, subtunes, enhanced);
   if (!c)
   {
     if (getenv("GG_SGDUMPSONG"))
@@ -242,8 +242,8 @@ int sidgen_compose_cli(const char *spec, char *err, int errsize)
 
 
 // command line: --midi=FILE,SIDS[,VOICES,MODEL,VARIANT,ACCOMP,HARMONY]
-// (4-8 SIDs: fewer SIDs when the piece does not fit into one song, as SIDGen)
-int sidgen_midi_cli(const char *spec, char *err, int errsize)
+// (4-8 SIDs: fewer SIDs when the piece does not fit into one song)
+int midi_cli(const char *spec, char *err, int errsize)
 {
   static const char *accn[6] = {"auto", "arp", "stabs", "pads", "broken", "counter"};
   static const char *harmn[3] = {"normal", "careful", "loose"};
@@ -339,7 +339,7 @@ int sidgen_midi_cli(const char *spec, char *err, int errsize)
 }
 
 // ---------------------------------------------------------------------------
-// Dialog: New song like SIDGen (CTRL+G)
+// Dialog: New song (CTRL+G)
 // ---------------------------------------------------------------------------
 
 #include "gres.h"
@@ -581,7 +581,7 @@ void composedialog(void)
       dirty = 0;
     }
     printmainscreen();
-    dlg_drawframe(x0, y0, w, h, "New song like SIDGen");
+    dlg_drawframe(x0, y0, w, h, "New song");
     gfirst = g_genre >= 0 ? style_genre_first(g_genre) : -1;
     gcount = g_genre >= 0 ? style_genre_count(g_genre) : 0;
     for (k = 0; k < O_NUM; k++)
@@ -841,7 +841,7 @@ void composedialog(void)
 }
 
 // ---------------------------------------------------------------------------
-// Dialog: MIDI import like SIDGen (CTRL+F)
+// Dialog: MIDI import (CTRL+F)
 // ---------------------------------------------------------------------------
 
 static const char *gm_family[16] = {"Piano", "Chrom. percussion", "Organ", "Guitar", "Bass", "Strings", "Ensemble", "Brass",
@@ -853,7 +853,7 @@ static int m_sids = 1, m_voices = 3, m_chip = -1, m_acc = 0, m_harm = 0, m_drums
 static int m_melody = -1, m_bass = -2;          // index into the parts; -1 auto (melody), -2 auto / -1 none (bass)
 static char midipath[MAX_PATHNAME] = "";
 
-// convert: 4-8 SIDs: fewer SIDs when the piece does not fit into one song (as SIDGen)
+// convert: 4-8 SIDs: fewer SIDs when the piece does not fit into one song
 static COMP *midi_convert(const unsigned char *data, int len, const char *base, MIDIINFO *info, int *sids_used, char *err, int errsize)
 {
   MIDIOPTS o;
@@ -1003,7 +1003,7 @@ void midiimportdialog(void)
       dirty = 0;
     }
     printmainscreen();
-    dlg_drawframe(x0, y0, w, h, "Import MIDI file like SIDGen");
+    dlg_drawframe(x0, y0, w, h, "Import MIDI file");
     for (k = 0; k < O_NUM; k++)
     {
       int ry = y0 + 2 + k, isel = sel == k, bg = isel ? C_SELECT : C_PANEL;

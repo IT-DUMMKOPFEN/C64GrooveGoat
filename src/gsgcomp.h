@@ -1,7 +1,7 @@
 #ifndef GSGCOMP_H
 #define GSGCOMP_H
 
-// C64 GrooveGoat - the SIDGen composer (composer.py, layers.py) in C
+// C64 GrooveGoat - the composer
 
 #include "gsg.h"
 
@@ -151,7 +151,7 @@ void comp_render_layers(COMP *c, int sec, int nbars, CHORD *chords, int row0, in
 
 const JV *comp_style(COMP *c, const char *key);
 
-// SIDGen style helpers
+// style helpers
 JV *style_parse(int styleidx);
 int style_count(void);
 int style_numgenres(void);

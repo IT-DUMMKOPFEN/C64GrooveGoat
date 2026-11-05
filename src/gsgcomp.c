@@ -1,5 +1,5 @@
-// C64 GrooveGoat - SIDGen composer, part 1: choices, structure, material,
-// melody, bass and drum figures (port of SIDGen composer.py by IT-DUMMKOPFEN)
+// C64 GrooveGoat - composer, part 1: choices, structure, material,
+// melody, bass and drum figures
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -351,7 +351,7 @@ static void gen_alt(COMP *c, char *name, double p)
       if (m) n = m;
       else
       {
-        // like SIDGen: "or tp" - all of the theme again
+        // "or tp": all of the theme again
         n = 0;
         for (i = 0; i < ng; i++)
         {
@@ -441,7 +441,7 @@ static void better(COMP *c, SGRNG *pr, char *cur, const JV *list, double margin)
   for (k = 0; k < n; k++)
     if (sc[k] > top) top = sc[k];
   if (mine >= top - margin) return;
-  // sorted descending like SIDGen: (score, name) pairs, highest first
+  // sorted descending: (score, name) pairs, highest first
   {
     int a, z;
     for (a = 0; a < n; a++)
@@ -631,7 +631,7 @@ static void pick_instruments(COMP *c)
   for (k = 0; k < SK_NUM; k++) c->kit[k][0] = 0;
   for (k = 0; k < jv_len(kit); k++)
   {
-    // in the order of the style's kit (as SIDGen's dict)
+    // in the order of the style's kit 
     int cat;
     for (cat = 0; cat < SK_NUM; cat++)
       if (!strcmp(kit->keys[k], sg_kitcat[cat])) break;
@@ -689,7 +689,7 @@ static void pick_instruments(COMP *c)
   gen_alt(c, c->i_counter, 0.25);
   gen_alt(c, c->i_broken, 0.25);
   {
-    // sorted kit categories like SIDGen (clap crash hat kick ohat perc ride snare tom)
+    // sorted kit categories (clap crash hat kick ohat perc ride snare tom)
     static const int sorted_kit[SK_NUM] = {SK_CLAP, SK_CRASH, SK_HAT, SK_KICK, SK_OHAT, SK_PERC, SK_RIDE, SK_SNARE, SK_TOM};
     int dance_kick = jv_true(S(c, "dance_kick"));
     for (k = 0; k < SK_NUM; k++)
@@ -1091,7 +1091,7 @@ static void make_motif(COMP *c, const RCELL *rh, int nr, int up, MOTIF *m)
       if (keys[k] * bias > 0) w[k] *= 1.6;
       if (last_leap) w[k] *= (keys[k] * last_leap < 0) ? 2.5 : 0.5;
     }
-    // SIDGen's dict order: strong {-2,-1,0,1,2}, weak {-1,1,0,-2,2}
+    // order: strong {-2,-1,0,1,2}, weak {-1,1,0,-2,2}
     {
       int dlt;
       if (strong) dlt = keys[rng_wchoice(rng, w, 5)];
@@ -1984,7 +1984,7 @@ int comp_compose(COMP *c)
   return 1;
 }
 
-// SIDGen's chords_for() for gsgrender.c
+// chords of a section for gsgrender.c
 void comp_chords_for(COMP *c, int sec, int nbars, int last, CHORD *out) { chords_for(c, sec, nbars, last, out); }
 const JV *comp_style(COMP *c, const char *key) { return S(c, key); }
 int comp_isstraight(COMP *c) { return isstraight(c->stylekey); }

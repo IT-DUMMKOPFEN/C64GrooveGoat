@@ -1,5 +1,5 @@
-// C64 GrooveGoat - SIDGen core: JSON, random numbers, music theory,
-// instrument data, tracks (C port of SIDGen by IT-DUMMKOPFEN)
+// C64 GrooveGoat - core: JSON, random numbers, music theory,
+// instrument data, tracks
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -834,7 +834,7 @@ void sg_makearp(const SGARP *t, int q, SGINS *o)
            q == Q_DOM7 ? "7" : q == Q_POW ? "5" : q == Q_MIN6 ? "m6" : "6");
   snprintf(o->en, sizeof o->en, "%s %s", t->en + 4, sg_qfile[q]);
   {
-    // the English name from SIDGen (i18n.en)
+    // the English name
     static char *at = NULL;
     char key[64], *p;
     if (!at) at = jointext(sg_arpentext);

@@ -1,6 +1,6 @@
-// C64 GrooveGoat - SIDGen composer, part 2: rendering the sections into the
+// C64 GrooveGoat - composer, part 2: rendering the sections into the
 // voices (1 SID: layouts, shared voices; 2 SIDs: six voices) and the
-// accompaniment modes (port of SIDGen composer.py by IT-DUMMKOPFEN)
+// accompaniment modes
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -605,7 +605,7 @@ static void render3(COMP *c, int sec, int nbars, CHORD *chords, int row0, int fi
   memset(&x, 0, sizeof x);
   x.lay = lay; x.lead = lead; x.nlead = nlead; x.drums = drums; x.has_drums = has_drums; x.a = a;
   x.ch_lead = ch_lead; x.ch_drum = ch_drum; x.ch_bass = ch_bass; x.bn = bn; x.bd = bd;
-  x.last = 0;                    // SIDGen's 3-voice context has no 'last' (the last bar gets the octaves too)
+  x.last = 0;                    // 3-voice context has no 'last' (the last bar gets the octaves too)
 
   if ((lay == 0) || (lay == 4)) render_bassdrum(c, &c->tracks[0], row0, nbars, chords, bn, bd, drums);
   else if (lay == 3)

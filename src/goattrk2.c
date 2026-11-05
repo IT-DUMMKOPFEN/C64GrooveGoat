@@ -576,21 +576,21 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
       }
     }
-    // --midi=FILE,SIDS[,VOICES,MODEL,VARIANT,ACCOMP,HARMONY]: MIDI import like SIDGen
+    // --midi=FILE,SIDS[,VOICES,MODEL,VARIANT,ACCOMP,HARMONY]: MIDI import
     if (midispec[0])
     {
       char err[200];
-      if (!sidgen_midi_cli(midispec, err, sizeof err))
+      if (!midi_cli(midispec, err, sizeof err))
       {
         fprintf(stderr, "error: %s\n", err);
         return EXIT_FAILURE;
       }
     }
-    // --compose=STYLE[/SUB],SEED,SECONDS,SIDS[,MODEL]: random song like SIDGen
+    // --compose=STYLE[/SUB],SEED,SECONDS,SIDS[,MODEL]: random song
     if (composespec[0])
     {
       char err[200];
-      if (!sidgen_compose_cli(composespec, err, sizeof err))
+      if (!compose_cli(composespec, err, sizeof err))
       {
         fprintf(stderr, "error: %s\n", err);
         return EXIT_FAILURE;

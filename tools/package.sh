@@ -53,6 +53,8 @@ cp examples/goatcompo.txt $DIST/common/examples/goattracker2/ 2>/dev/null || tru
 mkdir -p $DIST/common/instruments
 cp -r "$INSTRUMENTS/6581" "$INSTRUMENTS/8580" $DIST/common/instruments/
 cp "$INSTRUMENTS/README.txt" $DIST/common/instruments/ 2>/dev/null || true
+# title of the library
+[ -f $DIST/common/instruments/README.txt ] && sed -i '1s/.*/C64 GrooveGoat instruments/; 2s/.*/==========================/' $DIST/common/instruments/README.txt
 find $DIST/common/instruments -name "__MACOSX" -prune -exec rm -rf {} \; 2>/dev/null || true
 find $DIST/common/instruments -name ".DS_Store" -delete
 # instruments that are silent with the GoatTracker playroutine (envelope over

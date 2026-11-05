@@ -1,6 +1,5 @@
-// C64 GrooveGoat - SIDGen timbre: similarity of instruments from measured
-// spectra, alternatives, placing six voices on two SIDs (port of SIDGen
-// timbre.py by IT-DUMMKOPFEN)
+// C64 GrooveGoat - timbre: similarity of instruments from measured
+// spectra, alternatives, placing six voices on two SIDs
 
 #include <stdio.h>
 #include <stdlib.h>

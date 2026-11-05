@@ -1,5 +1,4 @@
-// C64 GrooveGoat - Enhanced SID calculation (port of SIDGen enhanced.py by
-// IT-DUMMKOPFEN): the piece is composed for 8 SIDs (24 voices), written as a
+// C64 GrooveGoat - Enhanced SID calculation: the piece is composed for 8 SIDs (24 voices), written as a
 // multi-track MIDI score and then calculated down to 1 or 2 SIDs by the MIDI
 // importer, with hints of the composer (grid, swing, roles, instruments);
 // afterwards the style's playing technique is added to the reduced voices.
@@ -482,7 +481,7 @@ COMP *sg_enhance(COMP *big, int sids, int voices, char *err, int errsize)
   c = sg_import_midi(mid, len, &o, NULL, err, errsize);
   free(mid);
   if (!c) return NULL;
-  // the style's playing technique on the reduced voices (expression.py)
+  // the style's playing technique on the reduced voices
   c->expressive = 1;
   c->compact = 0;
   c->st = big->st;                 // the style data moves over (big is freed by the caller)

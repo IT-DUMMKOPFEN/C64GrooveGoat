@@ -1,7 +1,7 @@
-// C64 GrooveGoat - SIDGen playing technique: register arc, glides, acid
+// C64 GrooveGoat - playing technique: register arc, glides, acid
 // slides, scoops, fall-offs, delayed vibrato, filter sweeps, and the
 // arrangement ideas (key change, stop before a chorus)
-// (port of SIDGen expression.py by IT-DUMMKOPFEN)
+//
 
 #include <stdio.h>
 #include <stdlib.h>

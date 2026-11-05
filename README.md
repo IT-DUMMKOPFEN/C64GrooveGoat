@@ -50,18 +50,18 @@ by Lasse Öörni (Cadaver) and the
   Hip-Hop, Funk, Drum & Bass, Rock, Metal, House, Reggae, Latin) with variants, drum kits,
   swing, fills and random variations, written over the whole pattern of the cursor channel;
   drum sounds from the instrument library or generated kits; looped preview without changing the song
-- New song like SIDGen (`CTRL+G`): the composer of SIDGen in C, note for note the same pieces -
+- New song (`CTRL+G`): a composer for complete pieces -
   33 genres with their subgenres as templates (full songs with intro, verses, choruses, bridge
   and outro), 1-8 SIDs, 6581 / 8580, subtunes (title, in-game, game over jingle), new melody /
   new instruments, playing technique of the style; "Enhanced": composed for 8 SIDs, then
   calculated down to 1 or 2 SIDs
-- MIDI import (`CTRL+F`): the MIDI importer of SIDGen - grid and tempo map, roles of the parts,
+- MIDI import (`CTRL+F`): grid and tempo map, roles of the parts,
   melody and bass lines, chords checked against the melody, arpeggios / stabs / pads / broken
   chords / counter melody, drums in the gaps, velocity and volume as sustain commands; 1, 2, 4,
   6 or 8 SIDs, "Convert again" for other arrangements
-- Bass, Chords & Arps (`CTRL+P`): a bassline (32 SIDGen bass figures) and / or chords and
+- Bass, Chords & Arps (`CTRL+P`): a bassline (32 bass figures) and / or chords and
   arpeggios for the voice of the cursor, from the chords recognised in the song or from the
-  progression of a SIDGen style; preview, dice, backup
+  progression of a style; preview, dice, backup
 - Speech generator (`CTRL+K`): English text or CMU phonemes become formant speech on one SID
   voice (the channel of the cursor) - instruments, wave / pulse / filter tables and pattern
   rows for the speed of your song (F03, F05, F06 ... or detected automatically), with voice,
@@ -127,9 +127,6 @@ in `src/codecs` and built with the program.
 - `GG_REPLACETEST=1` / `GG_RANDOMREPLACETEST=1 groovegoat song.sng --export=/dev/null` replace
   every instrument of a song with library / random instruments and check that the rest of the
   song (all other instruments' table programs and all table commands in the patterns) stays the same.
-- `tests/sidgen_test.sh SIDGEN_DIR` compares new songs, the enhanced calculation and MIDI
-  imports with SIDGen itself (`tools/sgdumpsong.py`, `sgdumpenh.py`, `sgdumpmidi.py`): the
-  songs must be the same - instruments, tables, orderlists and patterns.
 - `GG_SCRIPT="..."` drives the user interface with scripted key presses and mouse clicks
   and takes screenshots (see `src/gautotest.c`).
 

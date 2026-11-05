@@ -1,5 +1,5 @@
-// C64 GrooveGoat - SIDGen layers for 4, 6 and 8 SIDs: extra voices on top of
-// the 2-SID arrangement (port of SIDGen layers.py by IT-DUMMKOPFEN)
+// C64 GrooveGoat - layers for 4, 6 and 8 SIDs: extra voices on top of
+// the 2-SID arrangement
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -318,7 +318,7 @@ void comp_pick_layer_instruments(COMP *c)
     nv = valid(kicks, nk, vk);
     if (nv)
     {
-      // _valid() is called twice in SIDGen: the choice is from the same list
+      // the check runs twice: the choice is from the same list
       snprintf(c->i_kick2, 48, "%s", vk[rng_below(&rl, nv)]);
     }
     else snprintf(c->i_kick2, 48, "%s", c->kit[SK_KICK]);

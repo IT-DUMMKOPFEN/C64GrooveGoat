@@ -1,7 +1,6 @@
-// C64 GrooveGoat - SIDGen song build: filter roles, voice tracks -> patterns
+// C64 GrooveGoat - song build: filter roles, voice tracks -> patterns
 // and orderlists, instrument programs -> the four GoatTracker tables, all
-// written into the song in memory (port of SIDGen composer.build_song,
-// songbuild.py and song.py by IT-DUMMKOPFEN)
+// written into the song in memory
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -185,7 +184,7 @@ typedef struct { unsigned char note, ins, cmd; int sym; unsigned char rcmd, data
 
 #define MAX_PACKED 248
 
-// command data as in SIDGen: plain bytes, ('spd', left, right), ('fprog', name, mask)
+// command data: plain bytes, ('spd', left, right), ('fprog', name, mask)
 typedef struct { int kind, a, b; char fname[24]; } SYM;
 static SYM *syms = NULL;
 static int nsyms = 0, capsyms = 0;
@@ -254,7 +253,7 @@ static void freepatterns(void)
   npatts = 0;
 }
 
-// size of a pattern packed by the relocator (greloc.c packpattern), as SIDGen's gt_packed_size
+// size of a pattern packed by the relocator (greloc.c packpattern), as the relocator counts
 static int packedsize(const PROW *rows, int n)
 {
   static char out[MAX_PATTROWS * 4 * 8 + 16];
@@ -807,7 +806,7 @@ int sg_buildsongs(COMP **subs, int nsubs, int writeto, char *err, int errsize)
     spanlo[k] = lo;
     spanhi[k] = hi;
   }
-  // instrument tables first (as SIDGen: wave, pulse, filter, vibrato)
+  // instrument tables first (wave, pulse, filter, vibrato)
   for (k = 0; k < nins; k++)
   {
     SGINS *i = &c->ins[order[k]];
@@ -824,7 +823,7 @@ int sg_buildsongs(COMP **subs, int nsubs, int writeto, char *err, int errsize)
     ptr[k][3] = s;
   }
   // patterns: cut the voices into patterns of 4 bars, the same ones only once
-  // (rows keep symbolic command data until the final layout, as SIDGen)
+  // (rows keep symbolic command data until the final layout)
   nsyms = 0;
   plen = c->kind == 1 ? c->plen0 : 4 * c->spb;
   for (;;)
@@ -905,7 +904,7 @@ int sg_buildsongs(COMP **subs, int nsubs, int writeto, char *err, int errsize)
     }
     if (nch > 6)
     {
-      // 4-8 SIDs: SIDGen checks per SID pair here; the whole song is cut again below
+      // 4-8 SIDs: checks per SID pair here; the whole song is cut again below
       int pp, worst = 0;
       for (pp = 0; pp < nch; pp += 6)
       {
@@ -1119,9 +1118,9 @@ int sg_buildsongs(COMP **subs, int nsubs, int writeto, char *err, int errsize)
     }
     snprintf(songname, sizeof songname, "%.31s", c->title);
     snprintf(authorname, sizeof authorname, "%.31s", "C64 GrooveGoat");
-    if ((c->kind == 1) && (!c->expressive)) snprintf(copyrightname, sizeof copyrightname, "2026 MIDI import (SIDGen)");
-    else if (c->kind == 1) snprintf(copyrightname, sizeof copyrightname, "2026 SIDGen enhanced (Seed %u)", c->seed);
-    else snprintf(copyrightname, sizeof copyrightname, "2026 SIDGen style (Seed %u)", c->seed);
+    if ((c->kind == 1) && (!c->expressive)) snprintf(copyrightname, sizeof copyrightname, "2026 MIDI import");
+    else if (c->kind == 1) snprintf(copyrightname, sizeof copyrightname, "2026 Enhanced (Seed %u)", c->seed);
+    else snprintf(copyrightname, sizeof copyrightname, "2026 C64 GrooveGoat (Seed %u)", c->seed);
     for (ch = 0; ch < MAX_CHN; ch++)
     {
       editorUndoInfo.editorInfo[ch].epnum = songorder[0][ch][0] < MAX_PATT ? songorder[0][ch][0] : 0;
@@ -1143,7 +1142,7 @@ int sg_buildsong(COMP *c, int writeto, char *err, int errsize)
 }
 
 // ---------------------------------------------------------------------------
-// One SIDGen instrument into the song in memory (Bass & Arps tool): a free
+// One instrument into the song in memory (Bass & Arps tool): a free
 // instrument slot, its table programs appended to the tables of the song.
 // chmask: voices that play it (filter routing); gt: gate timer (0 = keep).
 // Returns the instrument number (1-63) or 0 with err.

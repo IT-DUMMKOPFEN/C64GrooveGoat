@@ -1,4 +1,4 @@
-// C64 GrooveGoat - MIDI import (port of the SIDGen MIDI importer)
+// C64 GrooveGoat - MIDI import
 #ifndef GSGMIDI_H
 #define GSGMIDI_H
 

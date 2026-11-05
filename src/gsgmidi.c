@@ -1,7 +1,6 @@
-// C64 GrooveGoat - MIDI files: reader, the SIDGen MIDI importer (roles,
+// C64 GrooveGoat - MIDI files: reader, the MIDI importer (roles,
 // melody/bass lines, chords checked against everything that sounds, voices
-// for 1-8 SIDs) and the SID loudness model (port of SIDGen midi.py,
-// midiimport.py and dynamics.py by IT-DUMMKOPFEN)
+// for 1-8 SIDs) and the SID loudness model
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -447,7 +446,7 @@ static double mf_seconds(MFILE *m, double tick)
 }
 
 // ---------------------------------------------------------------------------
-// Loudness on the SID (dynamics.py)
+// Loudness on the SID
 // ---------------------------------------------------------------------------
 
 static const int RATE[16] = {9, 32, 63, 95, 149, 220, 267, 313, 392, 977, 1954, 3126, 3907, 11720, 19532, 31251};

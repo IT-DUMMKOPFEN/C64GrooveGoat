@@ -105,7 +105,7 @@ Click "Help" for the keyboard reference and "Manual" for the full manual.
 Files in this package
 ---------------------
 
-  instruments/   instrument library ("SIDGen instruments for GoatTracker 2"),
+  instruments/   instrument library (C64 GrooveGoat instruments),
                  6581/ for the old and 8580/ for the new SID chip
   examples/      example songs: "Solar Voyage" by IT-Dummkopfen (2 SIDs, also as
                  .sid and runnable .prg) and the GoatTracker 2 example songs

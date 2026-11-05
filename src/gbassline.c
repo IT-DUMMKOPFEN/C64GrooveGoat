@@ -3,10 +3,10 @@
 // A bassline and / or chord arpeggios for the current subtune:
 //   - the chords are recognised from what the other voices play (arpeggio
 //     instruments count with the intervals of their wavetable); when there
-//     is nothing to recognise, a chord progression of a SIDGen style is used
+//     is nothing to recognise, a chord progression of a style is used
 //   - the bass figures (root, octave, walking, offbeat, acid, disco ...), the
 //     arpeggio, stab, pad and broken-chord parts and the instruments come from
-//     the SIDGen composer (gsgcomp.c, gsgrender.c)
+//     the composer (gsgcomp.c, gsgrender.c)
 //   - the part is written into the voice of the cursor from the start of the
 //     subtune (new patterns; tempo commands of that voice are kept)
 // Everything happens on a copy of the song: the preview starts again after
@@ -79,7 +79,7 @@ static int b_source = 0;               // 0 recognise (random when nothing is fo
 static int b_bt = 4, b_key = -1, b_arpchn = -1;
 static unsigned b_seed = 0;
 
-// bass instruments of the library (SIDGen hand-made ones)
+// bass instruments of the library (hand-made ones)
 static int nbassins, bassins[512];
 
 static void listbass(void)

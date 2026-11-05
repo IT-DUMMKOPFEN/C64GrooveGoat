@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 #
-# C64 GrooveGoat - repairs instruments of the SIDGen library that are silent
+# C64 GrooveGoat - repairs instruments of the library that are silent
 # with the GoatTracker playroutine.
 #
 # About 380 instruments (mostly drums, percussion and arpeggios) have

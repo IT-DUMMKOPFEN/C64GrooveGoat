@@ -1,10 +1,9 @@
 #ifndef GSG_H
 #define GSG_H
 
-// C64 GrooveGoat - C port of the SIDGen core (composer, playing technique,
-// layers for 4-8 SIDs, MIDI importer). SIDGen: IT-DUMMKOPFEN,
-// https://github.com/IT-DUMMKOPFEN/sidgen - the data comes from
-// tools/mksidgen.py (gsgdata.c).
+// C64 GrooveGoat - the core of the composer (composer, playing technique,
+// layers for 4-8 SIDs, MIDI importer); the style and instrument data are in
+// gsgdata.c.
 
 #include <stdint.h>
 
@@ -103,8 +102,8 @@ const char *jv_choicestr(SGRNG *r, const JV *list); // plain list of strings
 // Music theory
 // ---------------------------------------------------------------------------
 enum { Q_MAJ = 0, Q_MIN, Q_DIM, Q_AUG, Q_SUS4, Q_SUS2, Q_MAJ7, Q_MIN7, Q_DOM7, Q_POW, Q_MIN6, Q_MAJ6, Q_NUM };
-extern const char *sg_qname[Q_NUM];       // maj, min ... (SIDGen names)
-extern const char *sg_qlabel[Q_NUM];      // Dur, Moll ... (SIDGen labels)
+extern const char *sg_qname[Q_NUM];       // maj, min ... (names)
+extern const char *sg_qlabel[Q_NUM];      // Dur, Moll ... (labels)
 extern const char *sg_qfile[Q_NUM];       // arpeggio library suffix: maj, min, dim, aug, sus4, sus2, maj7, m7, 7, 5, m6, 6
 extern const int sg_qiv[Q_NUM][4];
 extern const int sg_qlen[Q_NUM];
@@ -130,14 +129,14 @@ void scale_init(SCALE *s, int key, int mode);
 int scale_contains(const SCALE *s, int n);
 
 // ---------------------------------------------------------------------------
-// Instruments (SIDGen data: hand-made + generated per SID model)
+// Instruments (data: hand-made + generated per SID model)
 // ---------------------------------------------------------------------------
 typedef struct
 {
   char name[48];
   char cat[12];
   char fam[16];
-  char group[16];           // SIDGen instrument group (lead / pad families)
+  char group[16];           // instrument group (lead / pad families)
   char theme[12];
   int model;              // 0 hand-made, 6581 / 8580 generated
   int ad, sr, gt, fw;

@@ -334,8 +334,8 @@ hardware.
 |  CTRL+Y       Redo (also CTRL+SHIFT+Z; CMD+Y / CMD+SHIFT+Z on a Mac)
 |  CTRL+R       Random instrument generator for the current instrument slot
 |  CTRL+L       Instrument library
-|  CTRL+G       New song like SIDGen (genre templates, random pieces)
-|  CTRL+F       MIDI import like SIDGen
+|  CTRL+G       New song (genre templates, random pieces)
+|  CTRL+F       MIDI import
 |  CTRL+P       Bass, Chords & Arps for the voice of the cursor
 |  SHIFT+ESC    Optimize music data, or clear music data and set the default pattern length
 |  ESC          Exit the program (asks to save changes)
@@ -514,8 +514,7 @@ Wave $00 the gate is also left untouched, but the table pointers and ADSR are in
 
 ## Instrument library
 
-C64 GrooveGoat comes with a library of more than 5000 ready-made instruments ("SIDGen
-instruments for GoatTracker 2") in two sets, one for the old SID (6581) and one for the new SID
+C64 GrooveGoat comes with a library of more than 5000 ready-made instruments in two sets, one for the old SID (6581) and one for the new SID
 (8580), sorted into categories such as bass, lead, drums, pads, strings and effects.
 
 Open the library with the Library button in the instrument header or with CTRL+L. The library
@@ -548,7 +547,7 @@ instrument could make the next one inaudible). When the library is closed, the e
 and filter settings are restored. The same applies to the preview in the file selector (Load
 Ins, SPACE) and in the random instrument generator.
 
-About 450 instruments of the original SIDGen library had an envelope that was already over
+About 450 instruments of the original library had an envelope that was already over
 during the first frame of a note (Attack/Decay $x0 or $x1 with sustain 0), in which the test bit
 of "1stFrame Wave 09" keeps the voice silent - they only produced a click, in the preview and in
 songs. In the library that comes with C64 GrooveGoat their decay was set to the intended value
@@ -932,11 +931,11 @@ Notes:
 - Medley: all channels of the current subtune and of the joined song must have the same length
   in rows (otherwise the parts would not start together).
 
-## New song like SIDGen (CTRL+G)
+## New song (CTRL+G)
 
 The Compose button in the pattern header (or CTRL+G, CMD+G on a Mac) writes a complete new
-song with the composer of SIDGen - the same piece SIDGen makes for the same choices, note for
-note: intro, verses, choruses, bridge and outro with melody, bass, drums, chords and the
+song with the built-in composer - the same seed and the same choices always give the same
+piece: intro, verses, choruses, bridge and outro with melody, bass, drums, chords and the
 playing technique of the style (glides, bends, fall-offs, vibrato, bass slides, filter sweeps).
 Every genre is a template with its subgenres: 33 genres, from techno, house and trance over
 rock, metal, pop, schlager and jazz to film music, the decades (sixties to noughties) and C64
@@ -963,8 +962,7 @@ current song - after a question if it has unsaved changes), ESC brings the old s
 ## MIDI import (CTRL+F)
 
 The MIDI file button in the pattern header (or CTRL+F) turns a MIDI file (.mid, .midi, .rmi,
-.kar; format 0, 1 and 2) into a new song - with the MIDI importer of SIDGen, which gives the
-same result as SIDGen:
+.kar; format 0, 1 and 2) into a new song:
 
 - the grid (16ths, triplets, 32nds, eighths) and the tempo come from the tempo map; slow
   pieces get a funk tempo, tempo changes become tempo commands
@@ -1004,11 +1002,11 @@ replaced; its tempo commands stay):
 |  Chords             Recognised from the song: what the other voices play, bar by bar
 |                     (arpeggio instruments count with the notes of their wavetable, drums
 |                     do not count). When there is nothing (or too little) to recognise, or
-|                     with "Progression of the style", the chords of a SIDGen style are used
+|                     with "Progression of the style", the chords of a style are used
 |                     - a chord and arpeggio generator for a new song
-|  Style              The SIDGen style: its chord progression, key, bass figure and sounds
+|  Style              The style: its chord progression, key, bass figure and sounds
 |  Key (style)        The key of the style's progression
-|  Bass figure        From the style, or one of 32 SIDGen figures: root 8ths / 16ths,
+|  Bass figure        From the style, or one of 32 figures: root 8ths / 16ths,
 |                     offbeat, rolling, octave, rock, pop, syncopated, walking, boogie, reggae,
 |                     sustain, acid, drum & bass, halftime, drone, march, oompah, arpeggio
 |                     bass, Alberti, surf, Motown, disco, eighties, gallop, ostinato, pedal,
@@ -1016,7 +1014,7 @@ replaced; its tempo commands stay):
 |  Bass sound         From the style, or one of the bass instruments of the library
 |  Chord part         Arpeggio held per chord, arpeggio stabs, pad, broken chords or a
 |                     counter line of chord tones
-|  Arpeggio sound     From the style, or one of the SIDGen arpeggio templates (the chord is
+|  Arpeggio sound     From the style, or one of the arpeggio templates (the chord is
 |                     played by the wavetable: one instrument per chord type)
 |  Rows per beat      2, 3, 4, 6 or 8 (4 = 16 rows per bar)
 
@@ -1530,9 +1528,9 @@ Export and rendering without opening a window:
 |  --beat=G,S,B[,F]   Beat editor: genre G, subgenre S, beat B (numbers from 1, as in the
 |                     window), F = 1 with the fill; into the first pattern of channel 1
 |  --compose=STYLE[/SUB],SEED,SECONDS,SIDS[,MODEL,SUBTUNES,VOICES,ENHANCED]
-|                     New song like SIDGen (STYLE = techno, house, rock ...; then --save)
+|                     New song (STYLE = techno, house, rock ...; then --save)
 |  --midi=FILE,SIDS[,VOICES,MODEL,VARIANT,ACCOMP,HARMONY]
-|                     MIDI import like SIDGen (ACCOMP auto, arp, stabs, pads, broken, counter;
+|                     MIDI import (ACCOMP auto, arp, stabs, pads, broken, counter;
 |                     HARMONY normal, careful, loose; then --save)
 |  --bassline=PART,STYLE,FIGURE,ARPMODE,SEED
 |                     Bass, Chords & Arps on the song given (PART 0 bass, 1 chords, 2 both;
@@ -1567,7 +1565,7 @@ C64 GrooveGoat 1.0 by IT-Dummkopfen.
 |  faac AAC encoder 2.2.0               M. Bakker, K. Nikiel, N. Schimmelmann et al. (LGPL 2.1)
 |  minih264 H.264 encoder               lieff, github.com/lieff (CC0, public domain)
 |  minimp4 MP4 muxer                    lieff, github.com/lieff (CC0, public domain)
-|  SIDGen instrument library            6581 & 8580 instrument sets
+|  Instrument library                   6581 & 8580 instrument sets (IT-Dummkopfen)
 |  SID file format (PSID v2/v3/v5)      High Voltage SID Collection
 |  CMU Pronouncing Dictionary           Carnegie Mellon University (BSD license, speech
 |                                       generator word list)
