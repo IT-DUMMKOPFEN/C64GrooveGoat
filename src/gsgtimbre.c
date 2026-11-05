@@ -76,6 +76,9 @@ static const char *basename_(const char *n)
   return !strncmp(n, "Echo ", 5) ? n + 5 : n;
 }
 
+// loudness / spectrum key: a counter copy or arpeggio is measured as its source
+#define LK(i) ((i)->loudref[0] ? (i)->loudref : (i)->name)
+
 static double pyround(double x)
 {
   double f = floor(x), d = x - f;
@@ -106,18 +109,23 @@ static int profile(const char *name, double shift, double *out)
   top = out[0];
   for (i = 1; i < n; i++)
     if (out[i] > top) top = out[i];
-  for (i = 0; i < n; i++)
   {
-    if (out[i] < top - 40) out[i] = top - 40;
-    m += out[i];
+    PYSUM ps;
+    ps_init(&ps);
+    for (i = 0; i < n; i++)
+    {
+      if (out[i] < top - 40) out[i] = top - 40;
+      ps_add(&ps, out[i]);
+    }
+    m = ps_get(&ps) / n;
+    ps_init(&ps);
+    for (i = 0; i < n; i++)
+    {
+      out[i] -= m;
+      ps_add(&ps, out[i] * out[i]);
+    }
+    norm = sqrt(ps_get(&ps));
   }
-  m /= n;
-  for (i = 0; i < n; i++)
-  {
-    out[i] -= m;
-    norm += out[i] * out[i];
-  }
-  norm = sqrt(norm);
   if (norm == 0) norm = 1.0;
   for (i = 0; i < n; i++) out[i] /= norm;
   return n;
@@ -139,10 +147,15 @@ static int spectral(const SGINS *a, const SGINS *b, int pa, int pb, double *out)
   (void)BAND;
   if (refpitch(a, &ra)) sa = pyround((pa - ra) / band * 2) / 2.0;
   if (refpitch(b, &rb)) sb = pyround((pb - rb) / band * 2) / 2.0;
-  na = profile(a->name, sa, A);
-  nb = profile(b->name, sb, B);
+  na = profile(LK(a), sa, A);
+  nb = profile(LK(b), sb, B);
   if ((!na) || (!nb)) return 0;
-  for (k = 0; (k < na) && (k < nb); k++) s += A[k] * B[k];
+  {
+    PYSUM ps;
+    ps_init(&ps);
+    for (k = 0; (k < na) && (k < nb); k++) ps_add(&ps, A[k] * B[k]);
+    s = ps_get(&ps);
+  }
   *out = s;
   return 1;
 }
@@ -152,7 +165,7 @@ double tb_similarity(const SGINS *a, const SGINS *b, int pa, int pb)
   int reg = abs(pa - pb);
   double c, rf;
   tbinit();
-  if (((!strcmp(basename_(a->name), basename_(b->name))) || (!strcmp(a->name, b->name))) && (!tb_isdrum(a->cat)))
+  if (((!strcmp(basename_(LK(a)), basename_(LK(b)))) || (!strcmp(a->name, b->name))) && (!tb_isdrum(a->cat)))
     return reg <= 7 ? 1.0 : (reg <= 14 ? 0.75 : 0.4);
   if (!spectral(a, b, pa, pb, &c)) c = sg_timbrewave(a) == sg_timbrewave(b) ? 0.5 : 0.2;
   if (c < 0) c = 0;
@@ -290,6 +303,16 @@ static int hasfilter(COMP *c, const SGTRACK *t)
   return 0;
 }
 
+static double sum3(double a, double b, double c)
+{
+  PYSUM p;
+  ps_init(&p);
+  ps_add(&p, a);
+  ps_add(&p, b);
+  ps_add(&p, c);
+  return ps_get(&p);
+}
+
 void tb_place_tracks(COMP *c, SGTRACK *tracks, int total, int fixed_empty, int *order, double *before, double *after)
 {
   double M[6][6], best = 0;
@@ -319,7 +342,7 @@ void tb_place_tracks(COMP *c, SGTRACK *tracks, int total, int fixed_empty, int *
       M[a][b] = M[b][a] = s / (total > 1 ? total : 1);
     }
   {
-#define COST3(x, y, z) (M[x][y] + M[x][z] + M[y][z] + ((filt[x] + filt[y] + filt[z]) > 1 ? 10.0 : 0.0))
+#define COST3(x, y, z) (sum3(M[x][y], M[x][z], M[y][z]) + ((filt[x] + filt[y] + filt[z]) > 1 ? 10.0 : 0.0))
     int i, j, k;
     *before = COST3(0, 1, 2) + COST3(3, 4, 5);
     // combinations(range(6), 3) in Python's order

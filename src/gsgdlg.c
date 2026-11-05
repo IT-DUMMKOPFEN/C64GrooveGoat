@@ -7,6 +7,7 @@
 #include "goattrk2.h"
 #include "gsgcomp.h"
 #include "gsgbuild.h"
+#include "gsgmidi.h"
 
 // style variant from "key" or "key/subindex" (no sub: chosen by weight, as SIDGen)
 static int findvariant(const char *spec, unsigned seed)
@@ -62,9 +63,29 @@ static COMP *subcomp(int v, unsigned seed, double seconds, int sids, int voices,
 // fit into one song, again without the variant sections, then also without
 // the register arc (as SIDGen's app). subtunes: title music, in-game music
 // and a game over jingle with the same instruments.
-COMP *sidgen_make(int v, unsigned seed, double seconds, int sids, int voices, int model, char *err, int errsize, int subtunes)
+COMP *sidgen_make(int v, unsigned seed, double seconds, int sids, int voices, int model, char *err, int errsize, int subtunes,
+                  int enhanced)
 {
   int attempt;
+  if ((enhanced) && (sids <= 2) && (!subtunes))
+  {
+    // enhanced SID calculation: composed for 8 SIDs, calculated down like a big MIDI file
+    COMP *big = comp_new(v, seed, seconds, 8, 3, model), *c;
+    int r;
+    if (!comp_compose(big))
+    {
+      snprintf(err, errsize, "%s", big->err[0] ? big->err : "The style data could not be read");
+      comp_free(big);
+      return NULL;
+    }
+    c = sg_enhance(big, sids, voices, err, errsize);
+    comp_free(big);
+    if (!c) return NULL;
+    r = sg_buildsongs(&c, 1, 1, err, errsize);
+    if (r > 0) return c;
+    comp_free(c);
+    return NULL;
+  }
   for (attempt = 0; attempt < 3; attempt++)
   {
     COMP *subs[3] = {NULL, NULL, NULL};
@@ -90,6 +111,55 @@ COMP *sidgen_make(int v, unsigned seed, double seconds, int sids, int voices, in
   return NULL;
 }
 
+// the built song (as tools/sgdumpsong.py)
+static void dumpsong(const char *path)
+{
+    FILE *f = fopen(path, "w");
+    int k, r, t;
+    if (f)
+    {
+      for (k = 1; k < MAX_INSTR; k++)
+      {
+        INSTR *i = &instr[k];
+        if ((!i->ad) && (!i->sr) && (!i->ptr[0]) && (!i->name[0])) break;
+        fprintf(f, "ins %d %02x %02x %d %d %d %d %d %02x %02x %s\n", k, i->ad, i->sr, i->ptr[0], i->ptr[1], i->ptr[2], i->ptr[3],
+                i->vibdelay, i->gatetimer, i->firstwave, i->name);
+      }
+      for (t = 0; t < 4; t++)
+      {
+        static const char *tn[4] = {"wave", "pulse", "filt", "speed"};
+        int len = gettablelen(t);
+        fprintf(f, "tab %s ", tn[t]);
+        for (r = 0; r < len; r++) fprintf(f, "%s%02x:%02x", r ? " " : "", ltable[t][r], rtable[t][r]);
+        fprintf(f, "\n");
+      }
+      {
+        int s2;
+        for (s2 = 0; s2 < 3; s2++)
+        {
+          if (!songlen[s2][0]) break;
+          for (k = 0; k < numchannels; k++)
+          {
+            int rs = songorder[s2][k][songlen[s2][k] + 1];
+            if (s2) fprintf(f, "order %d.%d", s2, k);
+            else fprintf(f, "order %d", k);
+            for (r = 0; r < songlen[s2][k]; r++) fprintf(f, " %d", songorder[s2][k][r]);
+            if (rs) fprintf(f, " / %d", rs);
+            fprintf(f, "\n");
+          }
+        }
+      }
+      for (k = 0; k <= highestusedpattern; k++)
+      {
+        fprintf(f, "patt %d", k);
+        for (r = 0; r < pattlen[k]; r++)
+          fprintf(f, " %02x%02x%x%02x", pattern[k][r * 4], pattern[k][r * 4 + 1], pattern[k][r * 4 + 2], pattern[k][r * 4 + 3]);
+        fprintf(f, "\n");
+      }
+      fclose(f);
+    }
+  }
+
 int sidgen_compose_cli(const char *spec, char *err, int errsize)
 {
   char st[64] = "techno";
@@ -99,15 +169,15 @@ int sidgen_compose_cli(const char *spec, char *err, int errsize)
   COMP *c;
   const char *p = strchr(spec, ',');
   snprintf(st, sizeof st, "%.*s", p ? (int)(p - spec) : (int)strlen(spec), spec);
-  int subtunes = 0, voices = 3;
-  if (p) sscanf(p + 1, "%u,%lf,%d,%d,%d,%d", &seed, &seconds, &sids, &model, &subtunes, &voices);
+  int subtunes = 0, voices = 3, enhanced = 0;
+  if (p) sscanf(p + 1, "%u,%lf,%d,%d,%d,%d,%d", &seed, &seconds, &sids, &model, &subtunes, &voices, &enhanced);
   v = findvariant(st, seed);
   if (v < 0)
   {
     snprintf(err, errsize, "Unknown style %s", st);
     return 0;
   }
-  c = sidgen_make(v, seed, seconds, sids, voices, model, err, errsize, subtunes);
+  c = sidgen_make(v, seed, seconds, sids, voices, model, err, errsize, subtunes, enhanced);
   if (!c)
   {
     if (getenv("GG_SGDUMPSONG"))
@@ -162,58 +232,110 @@ int sidgen_compose_cli(const char *spec, char *err, int errsize)
       fclose(f);
     }
   }
-  if (getenv("GG_SGDUMPSONG"))
-  {
-    FILE *f = fopen(getenv("GG_SGDUMPSONG"), "w");
-    int k, r, t;
-    if (f)
-    {
-      for (k = 1; k < MAX_INSTR; k++)
-      {
-        INSTR *i = &instr[k];
-        if ((!i->ad) && (!i->sr) && (!i->ptr[0]) && (!i->name[0])) break;
-        fprintf(f, "ins %d %02x %02x %d %d %d %d %d %02x %02x %s\n", k, i->ad, i->sr, i->ptr[0], i->ptr[1], i->ptr[2], i->ptr[3],
-                i->vibdelay, i->gatetimer, i->firstwave, i->name);
-      }
-      for (t = 0; t < 4; t++)
-      {
-        static const char *tn[4] = {"wave", "pulse", "filt", "speed"};
-        int len = gettablelen(t);
-        fprintf(f, "tab %s ", tn[t]);
-        for (r = 0; r < len; r++) fprintf(f, "%s%02x:%02x", r ? " " : "", ltable[t][r], rtable[t][r]);
-        fprintf(f, "\n");
-      }
-      {
-        int s2;
-        for (s2 = 0; s2 < 3; s2++)
-        {
-          if (!songlen[s2][0]) break;
-          for (k = 0; k < numchannels; k++)
-          {
-            int rs = songorder[s2][k][songlen[s2][k] + 1];
-            if (s2) fprintf(f, "order %d.%d", s2, k);
-            else fprintf(f, "order %d", k);
-            for (r = 0; r < songlen[s2][k]; r++) fprintf(f, " %d", songorder[s2][k][r]);
-            if (rs) fprintf(f, " / %d", rs);
-            fprintf(f, "\n");
-          }
-        }
-      }
-      for (k = 0; k <= highestusedpattern; k++)
-      {
-        fprintf(f, "patt %d", k);
-        for (r = 0; r < pattlen[k]; r++)
-          fprintf(f, " %02x%02x%x%02x", pattern[k][r * 4], pattern[k][r * 4 + 1], pattern[k][r * 4 + 2], pattern[k][r * 4 + 3]);
-        fprintf(f, "\n");
-      }
-      fclose(f);
-    }
-  }
+  if (getenv("GG_SGDUMPSONG")) dumpsong(getenv("GG_SGDUMPSONG"));
   fprintf(stderr, "%s - %s%s%s, %s %s, %.0f BPM, %d bars, %.0f s, layout %s\n", c->title, sg_styles[v].name,
           sg_styles[v].sub[0] ? " / " : "", sg_styles[v].sub, sg_keyname[c->key], sg_modelabel[c->mode], c->bpm, c->total_bars,
           c->seconds, c->layout);
   comp_free(c);
   return 1;
+}
+
+
+// command line: --midi=FILE,SIDS[,VOICES,MODEL,VARIANT,ACCOMP,HARMONY]
+// (4-8 SIDs: fewer SIDs when the piece does not fit into one song, as SIDGen)
+int sidgen_midi_cli(const char *spec, char *err, int errsize)
+{
+  static const char *accn[6] = {"auto", "arp", "stabs", "pads", "broken", "counter"};
+  static const char *harmn[3] = {"normal", "careful", "loose"};
+  char file[1024], acc[16] = "auto", harm[16] = "normal";
+  const char *p = strchr(spec, ',');
+  int sids = 1, voices = 3, model = 6581, variant = 0, k, len, r = 0, s2, tries[4], ntries = 0;
+  unsigned char *data;
+  FILE *f;
+  MIDIOPTS o;
+  snprintf(file, sizeof file, "%.*s", p ? (int)(p - spec) : (int)strlen(spec), spec);
+  if (p) sscanf(p + 1, "%d,%d,%d,%d,%15[^,],%15s", &sids, &voices, &model, &variant, acc, harm);
+  f = fopen(file, "rb");
+  if (!f)
+  {
+    snprintf(err, errsize, "Cannot open %s", file);
+    return 0;
+  }
+  fseek(f, 0, SEEK_END);
+  len = ftell(f);
+  fseek(f, 0, SEEK_SET);
+  data = (unsigned char *)malloc(len + 1);
+  len = fread(data, 1, len, f);
+  fclose(f);
+  midiopts_default(&o);
+  o.sids = sids;
+  o.voices = voices;
+  o.model = model;
+  o.variant = variant;
+  {
+    const char *b = strrchr(file, '/'), *b2 = strrchr(file, '\\'), *dot;
+    if ((b2) && ((!b) || (b2 > b))) b = b2;
+    b = b ? b + 1 : file;
+    dot = strrchr(b, '.');
+    snprintf(o.basename, sizeof o.basename, "%.*s", dot && dot != b ? (int)(dot - b) : (int)strlen(b), b);
+  }
+  for (k = 0; k < 6; k++)
+    if (!strcmp(acc, accn[k])) o.accomp = k;
+  for (k = 0; k < 3; k++)
+    if (!strcmp(harm, harmn[k])) o.harmony = k;
+  tries[ntries++] = sids;
+  if (sids > 2)
+    for (k = 0; k < 3; k++)
+    {
+      static const int lower[3] = {4, 2, 1};
+      if (lower[k] < sids) tries[ntries++] = lower[k];
+    }
+  for (s2 = 0; s2 < ntries; s2++)
+  {
+    MIDIINFO info;
+    COMP *c;
+    o.sids = tries[s2];
+    c = sg_import_midi(data, len, &o, &info, err, errsize);
+    if (!c) break;
+    if (getenv("GG_SGDUMP"))
+    {
+      FILE *d = fopen(getenv("GG_SGDUMP"), "w");
+      int t, row;
+      for (t = 0; (d) && (t < c->ntracks); t++)
+        for (row = 0; row < c->tracks[t].rows; row++)
+        {
+          SGEV *e = &c->tracks[t].ev[row];
+          if (e->type == EV_NOTE)
+          {
+            fprintf(d, "t%d %d n %d %s ", t, row, e->note, c->ins[e->ins].name);
+            if (e->dur >= 0) fprintf(d, "%d", e->dur);
+            else fprintf(d, "-");
+            if (c->tracks[t].haslv[row]) fprintf(d, " lv%.4f", c->tracks[t].lv[row]);
+            if (e->hascmd) fprintf(d, " c%x:%02x", e->cmd.cmd, e->cmd.a);
+            fprintf(d, "\n");
+          }
+          else if (e->type == EV_OFF) fprintf(d, "t%d %d off\n", t, row);
+        }
+      if (d) fclose(d);
+    }
+    r = sg_buildsongs(&c, 1, 1, err, errsize);
+    if (r > 0)
+    {
+      fprintf(stderr, "%s - MIDI import, %d parts, %d bars, %d SIDs\n", c->title, info.nparts, info.nbars, o.sids);
+      comp_free(c);
+      break;
+    }
+    comp_free(c);
+    if (r == 0) break;
+  }
+  free(data);
+  if (r > 0)
+  {
+    if (getenv("GG_SGDUMPSONG")) dumpsong(getenv("GG_SGDUMPSONG"));
+    return 1;
+  }
+  if (r < 0) snprintf(err, errsize, "The piece does not fit into one song");
+  return 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -304,7 +426,7 @@ static void stopwait(void)
 
 // settings (kept while the program runs)
 static int g_genre = -1, g_sub = -1, g_sids = 1, g_voices = 3, g_chip = -1, g_subtunes = 0, g_key = -1, g_mode = -1, g_bpm = 0;
-static int g_seconds = 90;
+static int g_seconds = 90, g_enhanced = 0;
 static unsigned g_seed = 0;
 static int g_melvar = 0, g_insvar = 0;
 
@@ -346,6 +468,31 @@ static COMP *compose_now(char *err, int errsize, int *variant)
   int sub, v = genrevariant(g_seed, &sub), attempt;
   int model = g_chip ? 8580 : 6581;
   *variant = v;
+  if ((g_enhanced) && (g_sids <= 2) && (!g_subtunes))
+  {
+    // enhanced SID calculation: composed for 8 SIDs, calculated down like a big MIDI file
+    COMP *big = comp_new(v, g_seed, g_seconds, 8, 3, model), *c;
+    int r;
+    comp_setvariations(big, g_melvar, g_insvar);
+    big->want_key = g_key;
+    big->want_mode = g_mode;
+    big->want_bpm = g_bpm;
+    if (!comp_compose(big))
+    {
+      snprintf(err, errsize, "%s", big->err);
+      comp_free(big);
+      return NULL;
+    }
+    c = sg_enhance(big, g_sids, g_voices, err, errsize);
+    comp_free(big);
+    if (!c) return NULL;
+    snd_lock();
+    r = sg_buildsongs(&c, 1, 1, err, errsize);
+    snd_unlock();
+    if (r > 0) return c;
+    comp_free(c);
+    return NULL;
+  }
   for (attempt = 0; attempt < 3; attempt++)
   {
     COMP *subs[3] = {NULL, NULL, NULL};
@@ -402,7 +549,7 @@ void composedialog(void)
   int sel = 0, previewing = 0, ok = 0, variant = 0, dirty = 1;
   char msg[200] = "", err[200] = "";
   COMP *c = NULL;
-  enum { O_GENRE = 0, O_SUB, O_LEN, O_SIDS, O_VOICES, O_CHIP, O_SUBT, O_KEY, O_MODE, O_BPM, O_SEED, O_NUM };
+  enum { O_GENRE = 0, O_SUB, O_LEN, O_SIDS, O_VOICES, O_CHIP, O_SUBT, O_ENH, O_KEY, O_MODE, O_BPM, O_SEED, O_NUM };
   enum { B_PLAY = O_NUM, B_DICE, B_MEL, B_INS, B_CREATE, B_CANCEL, S_NUM };
 
   sg_init();
@@ -458,6 +605,11 @@ void composedialog(void)
         case O_VOICES: snprintf(buf, sizeof buf, "Voices      " GS_PREV " %s " GS_NEXT, g_voices == 3 ? "All voices" : "Voice 3 free for sound effects"); break;
         case O_CHIP: snprintf(buf, sizeof buf, "SID chip    " GS_PREV " %s " GS_NEXT, g_chip ? "8580" : "6581"); break;
         case O_SUBT: snprintf(buf, sizeof buf, "Subtunes    " GS_PREV " %s " GS_NEXT, g_subtunes ? "3: title, in-game, game over jingle" : "Off"); break;
+        case O_ENH:
+        if ((g_sids > 2) || (g_subtunes)) snprintf(buf, sizeof buf, "Enhanced    -  (only for 1 or 2 SIDs without subtunes)");
+        else snprintf(buf, sizeof buf, "Enhanced    " GS_PREV " %s " GS_NEXT "%s", g_enhanced ? "On" : "Off",
+                      g_enhanced ? "  composed for 8 SIDs, then calculated down" : "");
+        break;
         case O_KEY: snprintf(buf, sizeof buf, "Key         " GS_PREV " %s " GS_NEXT, g_key < 0 ? "Random" : sg_keyname[g_key]); break;
         case O_MODE: snprintf(buf, sizeof buf, "Scale       " GS_PREV " %s " GS_NEXT, g_mode < 0 ? "From the style" : sg_modelabel[g_mode]); break;
         case O_BPM:
@@ -487,7 +639,8 @@ void composedialog(void)
         int o = snprintf(buf, sizeof buf, "Playing technique:");
         for (k = 0; k < 6; k++)
           if (c->expr_stats[k]) { o += snprintf(buf + o, sizeof buf - o, "%s %d %s", n ? "," : "", c->expr_stats[k], nm[k]); n++; }
-        if (!n) snprintf(buf + o, sizeof buf - o, " none");
+        if (!n) o += snprintf(buf + o, sizeof buf - o, " none");
+        if (c->kind == 1) snprintf(buf + o, sizeof buf - o, "; %d volume commands", c->nlevels);
         printtext(x0 + 3, y++, MKCOL(8, C_PANEL), buf);
       }
       {
@@ -651,6 +804,10 @@ void composedialog(void)
             case O_VOICES: g_voices = g_voices == 3 ? 2 : 3; break;
             case O_CHIP: g_chip ^= 1; break;
             case O_SUBT: g_subtunes ^= 1; break;
+            case O_ENH:
+            if ((g_sids <= 2) && (!g_subtunes)) g_enhanced ^= 1;
+            else dirty = 0;
+            break;
             case O_KEY: g_key = ((g_key + 1 + d) % 13 + 13) % 13 - 1; break;
             case O_MODE: g_mode = ((g_mode + 1 + d) % (M_NUM + 1) + M_NUM + 1) % (M_NUM + 1) - 1; break;
             case O_BPM:
@@ -676,6 +833,399 @@ void composedialog(void)
   // cancel: the old song again
   stopwait();
   if (c) comp_free(c);
+  snd_lock();
+  fullrestore(&snap);
+  snd_unlock();
+  key = rawkey = 0;
+  printmainscreen();
+}
+
+// ---------------------------------------------------------------------------
+// Dialog: MIDI import like SIDGen (CTRL+F)
+// ---------------------------------------------------------------------------
+
+static const char *gm_family[16] = {"Piano", "Chrom. percussion", "Organ", "Guitar", "Bass", "Strings", "Ensemble", "Brass",
+                                    "Reed", "Pipe", "Synth lead", "Synth pad", "Synth effects", "Ethnic", "Percussive", "Sound effects"};
+static const char *acc_label[6] = {"Auto (decided per 2 bars)", "Arpeggios", "Stabs (short chords)", "Pads (held chords)",
+                                   "Broken chords (piano / guitar)", "Counter melody"};
+static const char *harm_label[3] = {"Normal", "Careful (fewer wrong notes)", "Loose (all chords)"};
+static int m_sids = 1, m_voices = 3, m_chip = -1, m_acc = 0, m_harm = 0, m_drums = 1, m_len = 0, m_variant = 0;
+static int m_melody = -1, m_bass = -2;          // index into the parts; -1 auto (melody), -2 auto / -1 none (bass)
+static char midipath[MAX_PATHNAME] = "";
+
+// convert: 4-8 SIDs: fewer SIDs when the piece does not fit into one song (as SIDGen)
+static COMP *midi_convert(const unsigned char *data, int len, const char *base, MIDIINFO *info, int *sids_used, char *err, int errsize)
+{
+  MIDIOPTS o;
+  int tries[4], ntries = 0, k, s2;
+  midiopts_default(&o);
+  o.voices = m_voices;
+  o.model = m_chip ? 8580 : 6581;
+  o.variant = m_variant;
+  o.accomp = m_acc;
+  o.harmony = m_harm;
+  o.drums_off = !m_drums;
+  o.max_seconds = m_len;
+  snprintf(o.basename, sizeof o.basename, "%s", base);
+  if ((m_melody >= 0) && (m_melody < info->nparts)) snprintf(o.melody, sizeof o.melody, "%d:%d", info->track[m_melody], info->channel[m_melody]);
+  if (m_bass == -1) snprintf(o.bass, sizeof o.bass, "none");
+  else if ((m_bass >= 0) && (m_bass < info->nparts)) snprintf(o.bass, sizeof o.bass, "%d:%d", info->track[m_bass], info->channel[m_bass]);
+  tries[ntries++] = m_sids;
+  if (m_sids > 2)
+    for (k = 0; k < 3; k++)
+    {
+      static const int lower[3] = {4, 2, 1};
+      if (lower[k] < m_sids) tries[ntries++] = lower[k];
+    }
+  for (s2 = 0; s2 < ntries; s2++)
+  {
+    COMP *c;
+    MIDIINFO in2;
+    int r;
+    o.sids = tries[s2];
+    c = sg_import_midi(data, len, &o, &in2, err, errsize);
+    if (!c) return NULL;
+    snd_lock();
+    r = sg_buildsongs(&c, 1, 1, err, errsize);
+    snd_unlock();
+    if (r > 0)
+    {
+      *info = in2;
+      *sids_used = o.sids;
+      return c;
+    }
+    comp_free(c);
+    if (r == 0) return NULL;
+  }
+  snprintf(err, errsize, "The piece does not fit into one song, even with one SID");
+  return NULL;
+}
+
+static unsigned char *midi_loadfile(const char *path, int *len)
+{
+  FILE *f = fopen(path, "rb");
+  unsigned char *d;
+  long n;
+  if (!f) return NULL;
+  fseek(f, 0, SEEK_END);
+  n = ftell(f);
+  fseek(f, 0, SEEK_SET);
+  if ((n <= 0) || (n > 32 * 1024 * 1024))
+  {
+    fclose(f);
+    return NULL;
+  }
+  d = (unsigned char *)malloc(n);
+  *len = (int)fread(d, 1, n, f);
+  fclose(f);
+  return d;
+}
+
+// choose a MIDI file: 1 = full path in out
+static int midi_choosefile(char *out, int outsize)
+{
+  static char name[MAX_FILENAME] = "";
+  char cwd[MAX_PATHNAME], dir[MAX_PATHNAME], filter[MAX_FILENAME];
+  int ok;
+  if (!getcwd(cwd, sizeof cwd)) cwd[0] = 0;
+  if (!midipath[0]) snprintf(midipath, sizeof midipath, "%s", cwd);
+  snprintf(filter, sizeof filter, "*.mid;*.midi;*.rmi;*.kar");
+  ok = fileselector(name, midipath, filter, "IMPORT A MIDI FILE (.mid, .midi, .rmi, .kar)", 0);
+  if (ok)
+  {
+    if (!getcwd(dir, sizeof dir)) dir[0] = 0;
+    snprintf(midipath, sizeof midipath, "%s", dir);
+    snprintf(out, outsize, "%s/%s", dir, name);
+  }
+  if (cwd[0]) chdir(cwd);
+  return ok;
+}
+
+void midiimportdialog(void)
+{
+  static FULLSNAP snap;
+  int w = 108, h = 38;
+  int x0 = (MAX_COLUMNS - w) / 2;
+  int y0 = (MAX_ROWS - h) / 2 - 1;
+  int sel = 0, previewing = 0, ok = 0, dirty = 1, len = 0, sids_used = 1, armed = 0;
+  char msg[200] = "", err[200] = "", file[MAX_PATHNAME + MAX_FILENAME + 2], base[64];
+  unsigned char *data = NULL;
+  MIDIINFO info;
+  COMP *c = NULL;
+  enum { O_SIDS = 0, O_VOICES, O_CHIP, O_ACC, O_HARM, O_MEL, O_BASS, O_DRUMS, O_LEN, O_NUM };
+  enum { B_PLAY = O_NUM, B_AGAIN, B_FILE, B_CREATE, B_CANCEL, S_NUM };
+
+  sg_init();
+  if (m_chip < 0) m_chip = editorInfo.sidmodel ? 1 : 0;
+  memset(&info, 0, sizeof info);
+  if (!midi_choosefile(file, sizeof file))
+  {
+    key = rawkey = 0;
+    printmainscreen();
+    return;
+  }
+  data = midi_loadfile(file, &len);
+  stopwait();
+  fullsave(&snap);
+  key = rawkey = 0;
+  m_variant = 0;
+  m_melody = -1;
+  m_bass = -2;
+
+  for (;;)
+  {
+    char buf[300];
+    int k, hit = -1, y;
+    if (dirty)
+    {
+      const char *b = strrchr(file, '/'), *dot;
+#ifdef __WIN32__
+      const char *b2 = strrchr(file, '\\');
+      if ((b2) && ((!b) || (b2 > b))) b = b2;
+#endif
+      b = b ? b + 1 : file;
+      dot = strrchr(b, '.');
+      snprintf(base, sizeof base, "%.*s", dot && dot != b ? (int)(dot - b) : (int)strlen(b), b);
+      if (previewing) stopwait();
+      if (c) comp_free(c);
+      c = NULL;
+      if (!data) snprintf(err, sizeof err, "Cannot read the file %s", file);
+      else c = midi_convert(data, len, base, &info, &sids_used, err, sizeof err);
+      ok = c != NULL;
+      if (!ok)
+      {
+        snd_lock();
+        fullrestore(&snap);
+        snd_unlock();
+      }
+      if ((previewing) && (ok)) initsong(0, PLAY_BEGINNING);
+      if (!ok) previewing = 0;
+      dirty = 0;
+    }
+    printmainscreen();
+    dlg_drawframe(x0, y0, w, h, "Import MIDI file like SIDGen");
+    for (k = 0; k < O_NUM; k++)
+    {
+      int ry = y0 + 2 + k, isel = sel == k, bg = isel ? C_SELECT : C_PANEL;
+      switch (k)
+      {
+        case O_SIDS:
+        snprintf(buf, sizeof buf, "SIDs            " GS_PREV " %d " GS_NEXT "  (%d voices%s)", m_sids, m_sids * 3,
+                 (ok) && (sids_used != m_sids) ? ", too big: fewer SIDs used" : (m_sids == 6 ? ", saved as an 8-SID song" : ""));
+        break;
+        case O_VOICES: snprintf(buf, sizeof buf, "Voices          " GS_PREV " %s " GS_NEXT, m_voices == 3 ? "All voices" : "Voice 3 free for sound effects"); break;
+        case O_CHIP: snprintf(buf, sizeof buf, "SID chip        " GS_PREV " %s " GS_NEXT, m_chip ? "8580" : "6581"); break;
+        case O_ACC: snprintf(buf, sizeof buf, "Accompaniment   " GS_PREV " %s " GS_NEXT, acc_label[m_acc]); break;
+        case O_HARM: snprintf(buf, sizeof buf, "Harmony check   " GS_PREV " %s " GS_NEXT, harm_label[m_harm]); break;
+        case O_MEL:
+        if ((m_melody >= 0) && (m_melody < info.nparts))
+          snprintf(buf, sizeof buf, "Melody part     " GS_PREV " %d: %s " GS_NEXT, m_melody + 1, info.name[m_melody][0] ? info.name[m_melody] : "(no name)");
+        else snprintf(buf, sizeof buf, "Melody part     " GS_PREV " Auto " GS_NEXT);
+        break;
+        case O_BASS:
+        if ((m_bass >= 0) && (m_bass < info.nparts))
+          snprintf(buf, sizeof buf, "Bass part       " GS_PREV " %d: %s " GS_NEXT, m_bass + 1, info.name[m_bass][0] ? info.name[m_bass] : "(no name)");
+        else snprintf(buf, sizeof buf, "Bass part       " GS_PREV " %s " GS_NEXT, m_bass == -1 ? "None (low notes of the accompaniment)" : "Auto");
+        break;
+        case O_DRUMS: snprintf(buf, sizeof buf, "Drums           " GS_PREV " %s " GS_NEXT, m_drums ? "On" : "Off"); break;
+        case O_LEN:
+        if (m_len) snprintf(buf, sizeof buf, "Length          " GS_PREV " at most %d:%02d " GS_NEXT, m_len / 60, m_len % 60);
+        else snprintf(buf, sizeof buf, "Length          " GS_PREV " Whole file " GS_NEXT);
+        break;
+      }
+      printblankc(x0 + 2, ry, MKCOL(8, bg), 70);
+      printtext(x0 + 3, ry, MKCOL(isel ? 15 : 8, bg), buf);
+      if ((mousey == ry) && (mousex >= x0 + 2) && (mousex < x0 + 72)) hit = k;
+    }
+    y = y0 + 2 + O_NUM + 1;
+    if (ok)
+    {
+      static const char *grid[9] = {"", "", "eighths", "eighth triplets", "16ths", "", "16th triplets", "", "32nds"};
+      int sec = (int)(c->seconds + 0.5);
+      snprintf(buf, sizeof buf, "\"%s\"  -  %s", c->title, file);
+      buf[w - 6] = 0;
+      printtext(x0 + 3, y++, MKCOL(14, C_PANEL), buf);
+      snprintf(buf, sizeof buf, "%d/%d, grid %s, %.0f BPM (MIDI %.1f), %d bars, %d:%02d min, %d SID%s%s%s", info.timesig[0], info.timesig[1],
+               info.q <= 8 ? grid[info.q] : "?", c->bpm, info.midi_bpm, info.nbars, sec / 60, sec % 60, sids_used, sids_used > 1 ? "s" : "",
+               m_variant ? ", conversion #" : "", "");
+      if (m_variant) snprintf(buf + strlen(buf), sizeof buf - strlen(buf), "%d", m_variant + 1);
+      printtext(x0 + 3, y++, MKCOL(13, C_PANEL), buf);
+      printtext(x0 + 3, y++, MKCOL(7, C_PANEL), "Parts of the MIDI file:");
+      for (k = 0; (k < info.nparts) && (k < 12); k++)
+      {
+        static const char *rn[4] = {"Accompaniment", "Bass", "Melody", "Melody 2"};
+        snprintf(buf, sizeof buf, "%2d  %-24s ch %2d  %-17s %5d notes  -> %s", k + 1, info.name[k][0] ? info.name[k] : "(no name)",
+                 info.channel[k] + 1, gm_family[(info.program[k] / 8) & 15], info.notes[k], rn[info.role[k] & 3]);
+        printtext(x0 + 3, y++, MKCOL(info.role[k] == 2 ? 15 : 8, C_PANEL), buf);
+      }
+      if (info.nparts > 12)
+      {
+        snprintf(buf, sizeof buf, "    ... and %d more parts", info.nparts - 12);
+        printtext(x0 + 3, y++, MKCOL(8, C_PANEL), buf);
+      }
+      if (info.drum_notes)
+      {
+        snprintf(buf, sizeof buf, "    Drums (channel 10)                         %5d notes  -> Drums%s", info.drum_notes, info.dance ? " (dance kit)" : "");
+        printtext(x0 + 3, y++, MKCOL(8, C_PANEL), buf);
+      }
+      snprintf(buf, sizeof buf, "Chords: %d beats, %d checked against the melody, %d simplified, %d rests; %d volume commands",
+               info.harm_beats, info.harm_changed, info.harm_simplified, info.harm_rests, info.level_commands);
+      printtext(x0 + 3, y++, MKCOL(8, C_PANEL), buf);
+    }
+    else dlg_printwrapped(x0 + 3, y, w - 6, 3, MKCOL(10, C_PANEL), err);
+    if (msg[0]) printtext(x0 + 3, y0 + h - 5, MKCOL(10, C_PANEL), msg);
+    printtext(x0 + 3, y0 + h - 4, MKCOL(3, C_PANEL),
+              "F1/SPACE play, A convert again (other arrangement), O other file, ENTER create the song, ESC cancel");
+    {
+      const char *bt[5] = {previewing ? " " GS_STOP " Stop " : " " GS_PLAY " Play ", " " GS_DICE GS_DICER " Convert again ",
+                           " Other file ", "  Create song  ", "  Cancel  "};
+      int bx[5], xx = x0 + 3;
+      for (k = 0; k < 5; k++)
+      {
+        int isel = sel == B_PLAY + k;
+        bx[k] = k == 4 ? x0 + w - 13 : xx;
+        printtext(bx[k], y0 + h - 2, MKCOL(C_BUTTONTEXT, isel ? C_BUTTONHI : C_BUTTON), bt[k]);
+        if ((mousey == y0 + h - 2) && (mousex >= bx[k]) && (mousex < bx[k] + (int)strlen(bt[k]))) hit = B_PLAY + k;
+        xx += strlen(bt[k]) + 2;
+      }
+    }
+    fliptoscreen();
+    getkey();
+    if (win_quitted) break;
+    // the key that closed the file selector must not create the song at once
+    if (!armed)
+    {
+      if ((key) || (rawkey) || (mouseb)) { key = rawkey = 0; continue; }
+      armed = 1;
+    }
+    if ((mouseb & MOUSEB_LEFT) && (!prevmouseb) && (hit >= 0))
+    {
+      sel = hit;
+      if (hit < O_NUM) rawkey = (ui_arrowat(mousex, mousey) < 0) ? KEY_LEFT : KEY_RIGHT;
+      else rawkey = KEY_ENTER;
+      key = 0;
+    }
+    msg[0] = 0;
+    if ((rawkey == KEY_F1) || ((rawkey == KEY_SPACE) && (sel < B_AGAIN)) || ((rawkey == KEY_ENTER) && (sel == B_PLAY)))
+    {
+      if (previewing)
+      {
+        stopwait();
+        previewing = 0;
+      }
+      else if (ok)
+      {
+        initsong(0, PLAY_BEGINNING);
+        previewing = 1;
+      }
+      key = rawkey = 0;
+      continue;
+    }
+    if ((rawkey == KEY_A) || ((rawkey == KEY_ENTER) && (sel == B_AGAIN)))
+    {
+      m_variant++;
+      dirty = 1;
+    }
+    else if ((rawkey == KEY_O) || ((rawkey == KEY_ENTER) && (sel == B_FILE)))
+    {
+      char f2[sizeof file];
+      if (previewing)
+      {
+        stopwait();
+        previewing = 0;
+      }
+      if (midi_choosefile(f2, sizeof f2))
+      {
+        snprintf(file, sizeof file, "%s", f2);
+        free(data);
+        data = midi_loadfile(file, &len);
+        m_variant = 0;
+        m_melody = -1;
+        m_bass = -2;
+        memset(&info, 0, sizeof info);
+        dirty = 1;
+      }
+      armed = 0;
+    }
+    else if ((rawkey == KEY_ESC) || ((rawkey == KEY_ENTER) && (sel == B_CANCEL))) break;
+    else if (((rawkey == KEY_ENTER) && ((sel < O_NUM) || (sel == B_CREATE))) && (ok))
+    {
+      if ((snap.modified) && (!dlg_confirm("MIDI import", "Discard the changes of the current song?"))) continue;
+      stopwait();
+      undoInitAllAreas();
+      songmodified = 1;
+      loadedsongfilename[0] = 0;
+      {
+        char nm[200], *p;
+        snprintf(nm, sizeof nm, "midi_%s%s%s", base, m_variant ? "_v" : "", numsids > 2 ? ".ggt" : ".sng");
+        if (m_variant) snprintf(nm, sizeof nm, "midi_%s_v%d%s", base, m_variant, numsids > 2 ? ".ggt" : ".sng");
+        for (p = nm; *p; p++)
+          if ((*p == ' ') || (*p == '/') || (*p == '\\') || (*p == ':')) *p = '_';
+          else if ((*p >= 'A') && (*p <= 'Z')) *p += 32;
+        snprintf(songfilename, MAX_FILENAME, "%s", nm);
+      }
+      snprintf(buf, sizeof buf, "MIDI file imported: \"%s\", %d SID%s - click Save to keep it", c->title, numsids, numsids > 1 ? "s" : "");
+      setstatusmessage(buf);
+      comp_free(c);
+      free(data);
+      key = rawkey = 0;
+      printmainscreen();
+      return;
+    }
+    else
+    {
+      switch (rawkey)
+      {
+        case KEY_UP: if (sel > 0) sel--; break;
+        case KEY_DOWN: case KEY_TAB: if (sel < S_NUM - 1) sel++; break;
+        case KEY_LEFT:
+        case KEY_RIGHT:
+        {
+          int d = rawkey == KEY_LEFT ? -1 : 1;
+          if (sel >= O_NUM)
+          {
+            sel += d;
+            if (sel < O_NUM) sel = O_NUM;
+            if (sel >= S_NUM) sel = S_NUM - 1;
+            break;
+          }
+          dirty = 1;
+          switch (sel)
+          {
+            case O_SIDS:
+            {
+              static const int sv[5] = {1, 2, 4, 6, 8};
+              int i;
+              for (i = 0; i < 5; i++)
+                if (sv[i] == m_sids) break;
+              m_sids = sv[(i + d + 5) % 5];
+            }
+            break;
+            case O_VOICES: m_voices = m_voices == 3 ? 2 : 3; break;
+            case O_CHIP: m_chip ^= 1; break;
+            case O_ACC: m_acc = (m_acc + d + 6) % 6; break;
+            case O_HARM: m_harm = (m_harm + d + 3) % 3; break;
+            case O_MEL:
+            if (info.nparts) m_melody = ((m_melody + 1 + d) % (info.nparts + 1) + info.nparts + 1) % (info.nparts + 1) - 1;
+            else dirty = 0;
+            break;
+            case O_BASS: m_bass = ((m_bass + 2 + d) % (info.nparts + 2) + info.nparts + 2) % (info.nparts + 2) - 2; break;
+            case O_DRUMS: m_drums ^= 1; break;
+            case O_LEN:
+            m_len += d * 30;
+            if (m_len < 0) m_len = 600;
+            if (m_len > 600) m_len = 0;
+            break;
+          }
+        }
+        break;
+      }
+    }
+    key = rawkey = 0;
+  }
+  stopwait();
+  if (c) comp_free(c);
+  free(data);
   snd_lock();
   fullrestore(&snap);
   snd_unlock();

@@ -79,12 +79,6 @@ static int far_from(SGRNG *rng, const char **cands0, int n0, const char **agains
       if ((against[a]) && (!strcmp(against[a], v[k]))) in = 1;
     if (!in) cands[n++] = v[k];
   }
-  if (getenv("GG_SGDEBUG"))
-  {
-    fprintf(stderr, "far %d (rng at %d):", n, rng->mti);
-    for (k = 0; k < n; k++) fprintf(stderr, " '%s'", cands[k]);
-    fprintf(stderr, " against '%s'\n", na ? against[0] : "");
-  }
   if (!n) return 0;
   for (a = 0; (a < na) && (nag < 32); a++)
   {
@@ -177,7 +171,6 @@ static int gen(COMP *c, SGRNG *rl, const char *cat, int k, const char **out)
   if (!n) return 0;
   m = pysample(rl, n, k < n ? k : n, pick);
   for (i = 0; i < m; i++) out[i] = sg_gen(c->model, idx[pick[i]])->name;
-  if (getenv("GG_SGDEBUG")) fprintf(stderr, "gen %s %d of %d: %s ... (rng at %d)\n", cat, m, n, m ? out[0] : "", rl->mti);
   return m;
 }
 
@@ -332,10 +325,6 @@ void comp_pick_layer_instruments(COMP *c)
   }
   snprintf(c->i_clap, 48, "%s", c->kit[SK_CLAP][0] ? c->kit[SK_CLAP] : c->kit[SK_SNARE]);
   c->layer_bass_shift = rng_random(&rl) < 0.65;
-  if (getenv("GG_SGDEBUG"))
-    fprintf(stderr, "layers %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s shift %d\n", c->i_bass2, c->i_sub, c->i_lead2,
-            c->i_lead3, c->i_padv, c->i_pad2v, c->i_strings, c->i_counter2, c->i_harm2, c->i_broken2, c->t_arp3, c->i_kick2,
-            c->layer_bass_shift);
   if (c->model == 8580)
   {
     char *f[] = {c->i_bass2, c->i_sub, c->i_lead2, c->i_lead3, c->i_padv, c->i_pad2v, c->i_strings, c->i_counter2, c->i_harm2,

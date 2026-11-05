@@ -765,12 +765,30 @@ void comp_render(COMP *c)
         {
           int t, rows = nbars * c->spb, d = row - same[k].row0, n;
           for (t = 0; t < c->ntracks; t++)
+          {
+            // as Python: the rows are deleted, then the copy is inserted in its order
+            int *srt = (int *)malloc(sizeof(int) * (rows + 1)), ns = 0, a, b2;
+            for (r = 0; r < rows; r++)
+            {
+              c->tracks[t].hascmds[row + r] = c->tracks[t].hascmds[same[k].row0 + r];
+              c->tracks[t].cmds[row + r] = c->tracks[t].cmds[same[k].row0 + r];
+              if (c->tracks[t].ev[same[k].row0 + r].type != EV_NONE) srt[ns++] = r;
+            }
+            for (a = 1; a < ns; a++)
+            {
+              int v = srt[a];
+              b2 = a - 1;
+              while ((b2 >= 0) && (c->tracks[t].ev[same[k].row0 + srt[b2]].ord > c->tracks[t].ev[same[k].row0 + v].ord)) { srt[b2 + 1] = srt[b2]; b2--; }
+              srt[b2 + 1] = v;
+            }
             for (r = 0; r < rows; r++)
             {
               c->tracks[t].ev[row + r] = c->tracks[t].ev[same[k].row0 + r];
-              c->tracks[t].hascmds[row + r] = c->tracks[t].hascmds[same[k].row0 + r];
-              c->tracks[t].cmds[row + r] = c->tracks[t].cmds[same[k].row0 + r];
+              c->tracks[t].ev[row + r].type = c->tracks[t].ev[row + r].type;
             }
+            for (a = 0; a < ns; a++) c->tracks[t].ev[row + srt[a]].ord = ++sg_evord;
+            free(srt);
+          }
           for (r = 0; r < rows; r++) c->drum_rows[row + r] = c->drum_rows[same[k].row0 + r];
           n = c->lead_rows.n;
           for (r = 0; r < n; r++)

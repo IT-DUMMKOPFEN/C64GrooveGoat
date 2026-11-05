@@ -739,7 +739,8 @@ void sg_express(COMP *c)
   }
   x.fpr = (c->tempo[0] + c->tempo[1]) / 2.0;
   if (x.fpr < 2.0) x.fpr = 2.0;
-  snprintf(x.seed_s, sizeof x.seed_s, "%u-%d-expr", c->seed, c->mel_var);
+  if (c->exprseed[0]) snprintf(x.seed_s, sizeof x.seed_s, "%s-expr", c->exprseed);
+  else snprintf(x.seed_s, sizeof x.seed_s, "%u-%d-expr", c->seed, c->mel_var);
   rng_seeds(&x.rng, "%s", x.seed_s);
   for (s = 0; s < c->nsecs; s++)
   {

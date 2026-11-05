@@ -10,14 +10,14 @@
 
 TARGET ?= linux
 TOOLS ?= $(abspath ../tools)
-VERSION = 0.99b
+VERSION = 1.0
 
 BUILDDIR = build/$(TARGET)
 SRCDIR = src
 
 CSRC = goattrk2.c gsong.c gorder.c gpattern.c ginstr.c gtable.c gplay.c gdisplay.c \
        gfile.c greloc.c ghelp.c gsound.c gconsole.c gundo.c gplatform.c gaudio.c \
-       gfileio.c gdialog.c gres.c gsonglen.c gautotest.c gexport.c gvideo.c gadsr.c ginslib.c grandins.c gbackup.c gpiano.c gspeech.c gspeechdlg.c gbeat.c gbeatcat.c gjoin.c gimprove.c gproject.c gmidi.c gmidisys.c gsgcore.c gsgtimbre.c gsgcomp.c gsgrender.c gsgexpr.c gsglayers.c gsgbuild.c gsgdlg.c gsgdata.c
+       gfileio.c gdialog.c gres.c gsonglen.c gautotest.c gexport.c gvideo.c gadsr.c ginslib.c grandins.c gbackup.c gpiano.c gspeech.c gspeechdlg.c gbeat.c gbeatcat.c gjoin.c gimprove.c gproject.c gmidi.c gmidisys.c gsgcore.c gsgtimbre.c gsgcomp.c gsgrender.c gsgexpr.c gsglayers.c gsgbuild.c gsgmidi.c gsgenh.c gsgdlg.c gsgdata.c gbassline.c
 CXXSRC = gsid.cpp
 RESIDSRC = resid/envelope.cpp resid/extfilt.cpp resid/filter.cpp resid/pot.cpp resid/sid.cpp \
        resid/wave.cpp resid/wave6581__ST.cpp resid/wave6581_P_T.cpp resid/wave6581_PS_.cpp \
@@ -30,7 +30,7 @@ ASMSRC = asm/asmtab.c asm/chnkpool.c asm/expr.c asm/lexyy.c asm/log.c asm/membuf
 
 OPT = -O2
 COMMONFLAGS = $(OPT) -I$(SRCDIR) -I$(SRCDIR)/asm -DGG_VERSION=\"$(VERSION)\" \
-       -Wno-unused-result -Wno-format-truncation -Wno-deprecated-declarations
+       -Wno-unused-result -Wno-format-truncation -Wno-deprecated-declarations -ffp-contract=off
 CFLAGS_EXTRA =
 CXXFLAGS_EXTRA = -fno-exceptions -fno-rtti
 

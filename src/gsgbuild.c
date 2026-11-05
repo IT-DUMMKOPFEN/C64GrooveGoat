@@ -301,7 +301,7 @@ static int packedsize(const PROW *rows, int n)
 // ---------------------------------------------------------------------------
 
 typedef struct { int *t, n; } TOKS;
-typedef struct { int len; int b[8]; } GRP;
+typedef struct { int len; int b[128]; } GRP;      // up to 128 / bar bars
 
 static PROW **bars_rows;
 static int nbars_, capbars_;
@@ -451,7 +451,6 @@ static void relayout(int nseg, int *norders, int (*orders)[1024], int bar)
   int ncuts[MAXSEG], order[MAXSEG], rnd;
   GMAP have, ids;
   if (maxl < 1) maxl = 1;
-  if (maxl > 8) maxl = 8;
   barlen_ = bar;
   memset(&have, 0, sizeof have);
   memset(&ids, 0, sizeof ids);
@@ -685,7 +684,33 @@ int sg_buildsongs(COMP **subs, int nsubs, int writeto, char *err, int errsize)
     memcpy(subs[si]->arp_q, c->arp_q, sizeof c->arp_q);
     subs[si]->numins = c->numins;
   }
-  filterroles_multi(subs, nsubs);
+  if (c->kind == 1)
+  {
+    // MIDI import (enhanced calculation): the playing technique comes before the filter choice
+    for (si = 0; si < nsubs; si++)
+      if ((subs[si]->expressive) && (!subs[si]->expressed))
+      {
+        subs[si]->expressed = 1;
+        sg_express(subs[si]);
+      }
+  }
+  if (c->kind == 1)
+  {
+    // MIDI import: only one kind of instrument may steer the (single) filter
+    char owner[12] = "";
+    for (k = 0; k < c->numins; k++)
+    {
+      SGINS *i = &c->ins[k];
+      if ((i->filt[0]) && (strcmp(i->filt, "off")))
+      {
+        if ((!owner[0]) && ((!strcmp(i->cat, "bass")) || (!strcmp(i->cat, "lead")) || (!strcmp(i->cat, "kickbass"))))
+          snprintf(owner, sizeof owner, "%s", i->cat);
+        if (strcmp(i->cat, owner)) i->filt[0] = 0;
+      }
+    }
+    snprintf(c->filt_owner, sizeof c->filt_owner, "%s", owner);
+  }
+  else filterroles_multi(subs, nsubs);
   for (si = 1; si < nsubs; si++)
   {
     memcpy(subs[si]->ins, c->ins, sizeof c->ins);
@@ -721,18 +746,27 @@ int sg_buildsongs(COMP **subs, int nsubs, int writeto, char *err, int errsize)
   nspeed = 0;
   ncache = 0;
   memset(tabs, 0, sizeof tabs);
-  if (c->tempo[0] == c->tempo[1])
+  if (c->kind == 1)
   {
-    tcmd = CMD_SETTEMPO;
-    tdata = c->tempo[0];
+    for (k = 0; k < c->nspx; k++) spd(c->spx[k][0], c->spx[k][1]);
+    tcmd = tdata = 0;
+    mintempo = c->mintempo0;
   }
   else
   {
-    spd(c->tempo[0], c->tempo[1]);
-    tcmd = CMD_FUNKTEMPO;
-    tdata = 1;
+    if (c->tempo[0] == c->tempo[1])
+    {
+      tcmd = CMD_SETTEMPO;
+      tdata = c->tempo[0];
+    }
+    else
+    {
+      spd(c->tempo[0], c->tempo[1]);
+      tcmd = CMD_FUNKTEMPO;
+      tdata = 1;
+    }
+    mintempo = c->tempo[0] < c->tempo[1] ? c->tempo[0] : c->tempo[1];
   }
-  mintempo = c->tempo[0] < c->tempo[1] ? c->tempo[0] : c->tempo[1];
   {
     int u2[SG_MAXINS];
     for (k = 0; k < c->numins; k++) used[k] = 0;
@@ -792,7 +826,7 @@ int sg_buildsongs(COMP **subs, int nsubs, int writeto, char *err, int errsize)
   // patterns: cut the voices into patterns of 4 bars, the same ones only once
   // (rows keep symbolic command data until the final layout, as SIDGen)
   nsyms = 0;
-  plen = 4 * c->spb;
+  plen = c->kind == 1 ? c->plen0 : 4 * c->spb;
   for (;;)
   {
     int fits, maxo = 0;
@@ -814,7 +848,16 @@ int sg_buildsongs(COMP **subs, int nsubs, int writeto, char *err, int errsize)
             SGEV *e = r < t->rows ? &t->ev[r] : NULL;
             int cmd = 0, sym = plainsym(0);
             const SGCMD *cm = NULL;
-            if ((ch % 6 == 0) && (r == 0)) { cmd = tcmd; sym = plainsym(tdata); }
+            if (ch % 6 == 0)
+            {
+              if (c->kind == 1)
+              {
+                int q2;
+                for (q2 = 0; q2 < x->ntempo; q2++)
+                  if (x->temporow[q2] == r) { cmd = x->tempocmd[q2]; sym = plainsym(x->tempoval[q2]); break; }
+              }
+              else if (r == 0) { cmd = tcmd; sym = plainsym(tdata); }
+            }
             if ((!cmd) && (r < t->rows) && (t->hascmds[r]) && (!(e && e->type == EV_NOTE && e->hascmd))) cm = &t->cmds[r];
             if ((!cmd) && (e) && (e->type == EV_NOTE) && (e->hascmd)) cm = &e->cmd;
             if (cm)
@@ -1076,7 +1119,9 @@ int sg_buildsongs(COMP **subs, int nsubs, int writeto, char *err, int errsize)
     }
     snprintf(songname, sizeof songname, "%.31s", c->title);
     snprintf(authorname, sizeof authorname, "%.31s", "C64 GrooveGoat");
-    snprintf(copyrightname, sizeof copyrightname, "2026 SIDGen style (Seed %u)", c->seed);
+    if ((c->kind == 1) && (!c->expressive)) snprintf(copyrightname, sizeof copyrightname, "2026 MIDI import (SIDGen)");
+    else if (c->kind == 1) snprintf(copyrightname, sizeof copyrightname, "2026 SIDGen enhanced (Seed %u)", c->seed);
+    else snprintf(copyrightname, sizeof copyrightname, "2026 SIDGen style (Seed %u)", c->seed);
     for (ch = 0; ch < MAX_CHN; ch++)
     {
       editorUndoInfo.editorInfo[ch].epnum = songorder[0][ch][0] < MAX_PATT ? songorder[0][ch][0] : 0;
@@ -1095,4 +1140,112 @@ int sg_buildsong(COMP *c, int writeto, char *err, int errsize)
   COMP *subs[1];
   subs[0] = c;
   return sg_buildsongs(subs, 1, writeto, err, errsize);
+}
+
+// ---------------------------------------------------------------------------
+// One SIDGen instrument into the song in memory (Bass & Arps tool): a free
+// instrument slot, its table programs appended to the tables of the song.
+// chmask: voices that play it (filter routing); gt: gate timer (0 = keep).
+// Returns the instrument number (1-63) or 0 with err.
+// ---------------------------------------------------------------------------
+
+static int appendtable(int t, const int *l, const int *r, int n)
+{
+  int len = gettablelen(t), k, off;
+  if (n <= 0) return 0;
+  // the same program is already there: use it
+  for (off = 0; off + n <= len; off++)
+  {
+    for (k = 0; k < n; k++)
+    {
+      int rr = r[k];
+      if ((l[k] == 0xff) && (rr != 0)) rr += off;
+      if ((ltable[t][off + k] != (l[k] & 0xff)) || (rtable[t][off + k] != (rr & 0xff))) break;
+    }
+    if (k == n) return off + 1;
+  }
+  if (len + n > MAX_TABLELEN) return -1;
+  for (k = 0; k < n; k++)
+  {
+    int rr = r[k];
+    if ((l[k] == 0xff) && (rr != 0)) rr += len;
+    ltable[t][len + k] = l[k];
+    rtable[t][len + k] = rr;
+  }
+  return len + 1;
+}
+
+int sg_addinstrument(const SGINS *i, int chmask, int gt, char *err, int errsize)
+{
+  int k, slot = 0, w, p = 0, f = 0, s = 0, model = editorInfo.sidmodel ? 8580 : 6581;
+  const char *nm = i->en[0] ? i->en : i->name;
+  // already in the song (same name, same envelope)
+  for (k = 1; k < MAX_INSTR; k++)
+    if ((!strncmp(instr[k].name, nm, MAX_INSTRNAMELEN - 1)) && (instr[k].ad == i->ad) && (instr[k].sr == i->sr) && (instr[k].ptr[WTBL]))
+      return k;
+  for (k = 1; k < MAX_INSTR; k++)
+  {
+    INSTR *d = &instr[k];
+    if ((!d->ad) && (!d->sr) && (!d->ptr[WTBL]) && (!d->ptr[PTBL]) && (!d->ptr[FTBL]) && (!d->ptr[STBL]) && (!d->name[0]))
+    {
+      int c, dd, used = 0;
+      for (c = 0; (c < MAX_PATT) && (!used); c++)
+      {
+        int r;
+        for (r = 0; r < pattlen[c]; r++)
+          if (pattern[c][r * 4 + 1] == k) { used = 1; break; }
+      }
+      (void)dd;
+      if (!used) { slot = k; break; }
+    }
+  }
+  if (!slot)
+  {
+    snprintf(err, errsize, "No free instrument slot (all 63 are used)");
+    return 0;
+  }
+  w = appendtable(WTBL, i->wl, i->wr, i->nw);
+  if (i->np) p = appendtable(PTBL, i->pl, i->pr, i->np);
+  if (i->filt[0])
+  {
+    int l[64], r[64], n = filterprog(i->filt, chmask, model, i->model, l, r);
+    f = appendtable(FTBL, l, r, n);
+  }
+  if (i->hasvib)
+  {
+    int len = gettablelen(STBL);
+    for (k = 0; k < len; k++)
+      if ((ltable[STBL][k] == (i->vib[0] & 0xff)) && (rtable[STBL][k] == (i->vib[1] & 0xff))) break;
+    if (k >= len)
+    {
+      if (len >= MAX_TABLELEN) s = -1;
+      else
+      {
+        ltable[STBL][len] = i->vib[0];
+        rtable[STBL][len] = i->vib[1];
+        k = len;
+      }
+    }
+    if (s >= 0) s = k + 1;
+  }
+  if ((w < 0) || (p < 0) || (f < 0) || (s < 0))
+  {
+    snprintf(err, errsize, "The tables of the song are full");
+    return 0;
+  }
+  {
+    INSTR *d = &instr[slot];
+    memset(d, 0, sizeof *d);
+    d->ad = i->ad;
+    d->sr = i->sr;
+    d->ptr[WTBL] = w;
+    d->ptr[PTBL] = p;
+    d->ptr[FTBL] = f;
+    d->ptr[STBL] = s;
+    d->vibdelay = i->vibdelay & 0xff;
+    d->gatetimer = gt ? ((i->gt & 0xc0) | gt) : i->gt;
+    d->firstwave = i->fw;
+    snprintf(d->name, MAX_INSTRNAMELEN, "%.15s", nm);
+  }
+  return slot;
 }

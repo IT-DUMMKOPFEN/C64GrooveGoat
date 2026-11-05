@@ -1,4 +1,4 @@
-# C64 GrooveGoat 0.99b - Manual
+# C64 GrooveGoat 1.0 - Manual
 
 C64 GrooveGoat is a tracker-style music editor for the SID sound chip of the Commodore 64. It is
 based on GoatTracker 2 by Lasse Oorni (Cadaver) and the "Silver Fork" of Joel Ricci. It adds:
@@ -68,7 +68,7 @@ A song consists of:
 |  macOS        Unpack the ZIP file (AppleSilicon for Macs with M chips, Intel for Intel
 |               Macs) and move "C64 GrooveGoat.app" to Applications. On the first start
 |               use right click > Open (the app is not notarized by Apple).
-|  Linux        Make the AppImage executable (chmod +x C64_GrooveGoat-0.99b-x86_64.AppImage)
+|  Linux        Make the AppImage executable (chmod +x C64_GrooveGoat-1.0-x86_64.AppImage)
 |               and start it. The instrument library and the examples are inside the
 |               AppImage. If your system lacks FUSE, start it with --appimage-extract-and-run.
 |  Linux tar.gz Unpack the archive and start ./groovegoat in the unpacked folder (the
@@ -334,13 +334,17 @@ hardware.
 |  CTRL+Y       Redo (also CTRL+SHIFT+Z; CMD+Y / CMD+SHIFT+Z on a Mac)
 |  CTRL+R       Random instrument generator for the current instrument slot
 |  CTRL+L       Instrument library
+|  CTRL+G       New song like SIDGen (genre templates, random pieces)
+|  CTRL+F       MIDI import like SIDGen
+|  CTRL+P       Bass, Chords & Arps for the voice of the cursor
 |  SHIFT+ESC    Optimize music data, or clear music data and set the default pattern length
 |  ESC          Exit the program (asks to save changes)
 |  ALT+ENTER    Toggle fullscreen
 
 SHIFT and CTRL can be used in place of each other in the editor commands (SHIFT+X and CTRL+X
-both cut). [ ] or ( ) work in place of < >. On a Mac, CMD works like CTRL and FN+F1..F12 gives
-the function keys.
+both cut) - except for the windows on CTRL+B, D, F, G, I, K, L, P and R; use SHIFT there for
+the editor commands (SHIFT+P expands a pattern). [ ] or ( ) work in place of < >. On a Mac,
+CMD works like CTRL and FN+F1..F12 gives the function keys.
 
 ## Undo and redo
 
@@ -928,6 +932,99 @@ Notes:
 - Medley: all channels of the current subtune and of the joined song must have the same length
   in rows (otherwise the parts would not start together).
 
+## New song like SIDGen (CTRL+G)
+
+The Compose button in the pattern header (or CTRL+G, CMD+G on a Mac) writes a complete new
+song with the composer of SIDGen - the same piece SIDGen makes for the same choices, note for
+note: intro, verses, choruses, bridge and outro with melody, bass, drums, chords and the
+playing technique of the style (glides, bends, fall-offs, vibrato, bass slides, filter sweeps).
+Every genre is a template with its subgenres: 33 genres, from techno, house and trance over
+rock, metal, pop, schlager and jazz to film music, the decades (sixties to noughties) and C64
+game music.
+
+|  Genre / Subgenre   A genre and one of its subgenres, or Random (every dice roll another one)
+|  Length             1 to 10 minutes (SHIFT: steps of a minute)
+|  SIDs               1, 2, 4, 6 or 8 SIDs (4-8 SIDs: extra layers - second drums, pads with
+|                     real chords, second bass, melody octaves; 6 SIDs are saved as 8)
+|  Voices             All voices, or voice 3 free for sound effects
+|  SID chip           6581 or 8580 (the instruments of that chip)
+|  Subtunes           Off, or 3: title music, in-game music and a game over jingle with the
+|                     same instruments
+|  Enhanced           1-2 SIDs: the piece is composed for 8 SIDs (24 voices) and then
+|                     calculated down like a big MIDI file (see MIDI import) - fuller chords,
+|                     counter lines and drums packed into the free rows of the voices
+|  Key / Scale / Tempo  Random or from the style, or fixed
+|  Seed               The number of the piece: the same seed gives the same song
+
+D rolls the dice (a new piece), M a new melody with the same instruments, I new instruments
+for the same melody. F1 or SPACE plays the piece, ENTER creates the song (it replaces the
+current song - after a question if it has unsaved changes), ESC brings the old song back.
+
+## MIDI import (CTRL+F)
+
+The MIDI file button in the pattern header (or CTRL+F) turns a MIDI file (.mid, .midi, .rmi,
+.kar; format 0, 1 and 2) into a new song - with the MIDI importer of SIDGen, which gives the
+same result as SIDGen:
+
+- the grid (16ths, triplets, 32nds, eighths) and the tempo come from the tempo map; slow
+  pieces get a funk tempo, tempo changes become tempo commands
+- every track/channel becomes a part with a role: melody, bass, accompaniment or drums
+  (channel 10, General MIDI drum map) - from the instrument, the range, the track name
+- the melody is the top line of the best melody part in every bar, the bass the lowest line
+- the chords are recognised per beat from everything that sounds and checked row by row
+  against the melody; where a chord would clash, a simpler chord or a rest is used
+- the voices are decided per 2 bars: chords as arpeggios, stabs or pads, a counter melody,
+  or drums in the gaps of the bass (1 SID); 2 SIDs and more get real chords on several voices
+- velocity, channel volume (CC7) and expression (CC11) become sustain / decay commands, so
+  the voices are as loud as in the MIDI file
+
+|  SIDs               1, 2, 4, 6 or 8. A piece too big for one song on 4-8 SIDs is
+|                     converted with fewer SIDs (the window says so)
+|  Voices / SID chip  As for a new song
+|  Accompaniment      Auto, arpeggios, stabs, pads, broken chords or counter melody
+|  Harmony check      Normal, careful (fewer wrong notes) or loose (all chords)
+|  Melody part        Auto or a part of the file
+|  Bass part          Auto, none (low notes of the accompaniment) or a part of the file
+|  Drums              On or off
+|  Length             The whole file or at most 0:30 to 10:00 minutes
+
+The window lists the parts of the file with their roles. A (Convert again) makes another
+arrangement with other colours of the same instrument families, another arpeggio and drum kit.
+O chooses another file, F1/SPACE plays, ENTER creates the song, ESC keeps the old song.
+
+## Bass, Chords & Arps (CTRL+P)
+
+The Bass button in the pattern header (or CTRL+P) writes a bassline, chords or arpeggios into
+the voice of the cursor - from the start of the subtune (the old notes of that voice are
+replaced; its tempo commands stay):
+
+|  Part               Bassline, arpeggios / chords, or bass + arpeggios (the chords go to
+|                     a free voice, else the voice with the fewest notes on the same SID;
+|                     LEFT / RIGHT in the Voices line chooses another one)
+|  Chords             Recognised from the song: what the other voices play, bar by bar
+|                     (arpeggio instruments count with the notes of their wavetable, drums
+|                     do not count). When there is nothing (or too little) to recognise, or
+|                     with "Progression of the style", the chords of a SIDGen style are used
+|                     - a chord and arpeggio generator for a new song
+|  Style              The SIDGen style: its chord progression, key, bass figure and sounds
+|  Key (style)        The key of the style's progression
+|  Bass figure        From the style, or one of 32 SIDGen figures: root 8ths / 16ths,
+|                     offbeat, rolling, octave, rock, pop, syncopated, walking, boogie, reggae,
+|                     sustain, acid, drum & bass, halftime, drone, march, oompah, arpeggio
+|                     bass, Alberti, surf, Motown, disco, eighties, gallop, ostinato, pedal,
+|                     tresillo, R&B, electro, robot, sequencer
+|  Bass sound         From the style, or one of the bass instruments of the library
+|  Chord part         Arpeggio held per chord, arpeggio stabs, pad, broken chords or a
+|                     counter line of chord tones
+|  Arpeggio sound     From the style, or one of the SIDGen arpeggio templates (the chord is
+|                     played by the wavetable: one instrument per chord type)
+|  Rows per beat      2, 3, 4, 6 or 8 (4 = 16 rows per bar)
+
+Everything happens on a copy: the preview starts again after every change, D rolls the dice
+(other choices of the style), ENTER (Create) saves a backup next to the song
+(NAME_before-bass_DATE_TIME.sng) and keeps the new part, ESC brings the old song back. The
+new instruments get free instrument slots and their programs are added to the tables.
+
 ## Song name editor (F8)
 
 Use cursor up/down to move between the song name, author and released (copyright) fields. These
@@ -1431,6 +1528,14 @@ Export and rendering without opening a window:
 |  --join=FILE,FILE   Join Songs: the files as new subtunes (GG_JOINMODE=1: medley)
 |  --beat=G,S,B[,F]   Beat editor: genre G, subgenre S, beat B (numbers from 1, as in the
 |                     window), F = 1 with the fill; into the first pattern of channel 1
+|  --compose=STYLE[/SUB],SEED,SECONDS,SIDS[,MODEL,SUBTUNES,VOICES,ENHANCED]
+|                     New song like SIDGen (STYLE = techno, house, rock ...; then --save)
+|  --midi=FILE,SIDS[,VOICES,MODEL,VARIANT,ACCOMP,HARMONY]
+|                     MIDI import like SIDGen (ACCOMP auto, arp, stabs, pads, broken, counter;
+|                     HARMONY normal, careful, loose; then --save)
+|  --bassline=PART,STYLE,FIGURE,ARPMODE,SEED
+|                     Bass, Chords & Arps on the song given (PART 0 bass, 1 chords, 2 both;
+|                     voice GG_BASSCHN, default 0)
 
 ## Sound output
 
@@ -1442,7 +1547,7 @@ The default sample rate is 48000 Hz; -M44100 selects 44100 Hz.
 
 # Credits
 
-C64 GrooveGoat 0.99b by IT-Dummkopfen.
+C64 GrooveGoat 1.0 by IT-Dummkopfen.
 
 |  GoatTracker 2 editor & playroutine   Lasse Oorni (Cadaver), Covert Bitops
 |  GoatTracker 2 "Silver Fork"          Joel Ricci (github.com/joelricci/goattracker2)

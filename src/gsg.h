@@ -69,6 +69,22 @@ typedef struct
   int mti;
 } SGRNG;
 
+// Python's sum() of floats (3.12+: Neumaier's compensated summation)
+typedef struct { double s, c; } PYSUM;
+static inline void ps_init(PYSUM *p) { p->s = 0; p->c = 0; }
+static inline void ps_add(PYSUM *p, double x)
+{
+  double t = p->s + x;
+  if ((p->s >= 0 ? p->s : -p->s) >= (x >= 0 ? x : -x)) p->c += (p->s - t) + x;
+  else p->c += (x - t) + p->s;
+  p->s = t;
+}
+static inline double ps_get(const PYSUM *p)
+{
+  double c = p->c;
+  return ((c != 0) && (c - c == 0)) ? p->s + c : p->s;
+}
+
 void rng_seed(SGRNG *r, uint32_t seed);
 void rng_seeds(SGRNG *r, const char *fmt, ...);    // seed from a text ("%d-mel-%d")
 double rng_random(SGRNG *r);                       // [0, 1)
@@ -132,6 +148,7 @@ typedef struct
   char en[48];                // English name
   double level;
   int derived;                // made while composing (echo copy, octave bass, arpeggio)
+  char loudref[48];           // loudness measurement of another instrument (arpeggio template, counter copy)
 } SGINS;
 
 typedef struct
@@ -195,6 +212,7 @@ typedef struct
   short dur;                   // -1 = none
   unsigned char hascmd;
   SGCMD cmd;
+  unsigned ord;                // MIDI import: insertion order (as a Python dict)
 } SGEV;
 
 typedef struct
@@ -203,6 +221,8 @@ typedef struct
   SGEV *ev;
   unsigned char *hascmds;
   SGCMD *cmds;                 // commands on the rows after a note
+  double *lv;                  // MIDI import: level per row in dB
+  unsigned char *haslv;
 } SGTRACK;
 
 void tr_init(SGTRACK *t, int rows);
@@ -211,6 +231,11 @@ void tr_grow(SGTRACK *t, int rows);
 void tr_note(SGTRACK *t, int row, int note, int ins, int dur);
 void tr_notecmd(SGTRACK *t, int row, int note, int ins, int dur, const SGCMD *c);
 void tr_off(SGTRACK *t, int row);
+// MIDI importer tracks: notes are not folded, levels are kept
+extern unsigned sg_evord;
+void tr_note_lv(SGTRACK *t, int row, int note, int ins, int dur, int haslv, double lv);
+int tr_merge_low_imp(SGTRACK *t, const SGTRACK *low, int guard, int min_len, int drumlen, int r0, int r1);
+int tr_sounding(const SGTRACK *t, int row, int drumlen);
 void tr_merge_low(SGTRACK *t, const SGTRACK *low, int guard, int drumlen);
 void tr_finalize(SGTRACK *t, int total);
 int tr_busy(const SGTRACK *t, int row, int drumlen);

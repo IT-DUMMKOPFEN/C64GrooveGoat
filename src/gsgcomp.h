@@ -116,7 +116,15 @@ typedef struct COMPS
   int expr_stats[6];
   int expressed, placed, merged, track_order[SG_MAXTRACKS];
   struct COMPS *fixed;          // subtunes: the choices of the title music
-  int hasvar;                   // i_lead_v, i_harm, t_arp2 were chosen             // glide scoop fall vib bslide sweep
+  int hasvar;                   // i_lead_v, i_harm, t_arp2 were chosen
+  // MIDI import (kind 1): tempo commands per bar, speed table entries, pattern length
+  int kind;
+  int ntempo, temporow[4096], tempocmd[4096], tempoval[4096];
+  int spx[64][2], nspx;
+  int plen0, mintempo0;
+  int nlevels;                     // MIDI import: volume commands (5xy / 6xy) set from the MIDI levels
+  char exprseed[48];               // enhanced: seed of the playing technique ("seed-melvar-enh")
+  char filt_owner[12];             // glide scoop fall vib bslide sweep
   char err[160];
 } COMP;
 

@@ -204,6 +204,12 @@ static const char *newkeys[] = {
   "              SPACE preview, ENTER insert",
   "Speech        CTRL+K: English text as speech",
   "              on the cursor channel (F1 test)",
+  "Compose       CTRL+G: new song like SIDGen,",
+  "              33 genres with subgenres",
+  "MIDI file     CTRL+F: MIDI import like SIDGen,",
+  "              1-8 SIDs, A converts again",
+  "Bass          CTRL+P: bass, chords, arpeggios",
+  "              on the cursor voice",
   NULL
 };
 

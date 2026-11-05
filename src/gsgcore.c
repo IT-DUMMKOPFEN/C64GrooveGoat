@@ -349,9 +349,12 @@ double rng_uniform(SGRNG *r, double a, double b)
 
 int rng_wchoice(SGRNG *r, const double *w, int n)
 {
-  double tot = 0, x;
+  double tot, x;
   int c;
-  for (c = 0; c < n; c++) tot += w[c];
+  PYSUM ps;
+  ps_init(&ps);
+  for (c = 0; c < n; c++) ps_add(&ps, w[c]);
+  tot = ps_get(&ps);
   x = rng_uniform(r, 0, tot);
   for (c = 0; c < n; c++)
   {
@@ -994,6 +997,8 @@ void tr_init(SGTRACK *t, int rows)
   t->ev = (SGEV *)calloc(rows + 1, sizeof(SGEV));
   t->hascmds = (unsigned char *)calloc(rows + 1, 1);
   t->cmds = (SGCMD *)calloc(rows + 1, sizeof(SGCMD));
+  t->lv = (double *)calloc(rows + 1, sizeof(double));
+  t->haslv = (unsigned char *)calloc(rows + 1, 1);
 }
 
 void tr_free(SGTRACK *t)
@@ -1001,6 +1006,10 @@ void tr_free(SGTRACK *t)
   free(t->ev);
   free(t->hascmds);
   free(t->cmds);
+  free(t->lv);
+  free(t->haslv);
+  t->lv = NULL;
+  t->haslv = NULL;
   t->ev = NULL;
   t->hascmds = NULL;
   t->cmds = NULL;
@@ -1016,8 +1025,14 @@ void tr_grow(SGTRACK *t, int rows)
   memset(t->ev + t->rows, 0, sizeof(SGEV) * (rows + 1 - t->rows));
   memset(t->hascmds + t->rows, 0, rows + 1 - t->rows);
   memset(t->cmds + t->rows, 0, sizeof(SGCMD) * (rows + 1 - t->rows));
+  t->lv = (double *)realloc(t->lv, sizeof(double) * (rows + 1));
+  t->haslv = (unsigned char *)realloc(t->haslv, rows + 1);
+  memset(t->lv + t->rows, 0, sizeof(double) * (rows + 1 - t->rows));
+  memset(t->haslv + t->rows, 0, rows + 1 - t->rows);
   t->rows = rows;
 }
+
+unsigned sg_evord = 0;     // insertion order of events (Python dicts keep it)
 
 void tr_note(SGTRACK *t, int row, int note, int ins_, int dur)
 {
@@ -1027,7 +1042,11 @@ void tr_note(SGTRACK *t, int row, int note, int ins_, int dur)
   while (note > 92) note -= 12;
   while (note < 0) note += 12;
   e = &t->ev[row];
-  memset(e, 0, sizeof *e);
+  {
+    unsigned o = e->type != EV_NONE ? e->ord : ++sg_evord;
+    memset(e, 0, sizeof *e);
+    e->ord = o;
+  }
   e->type = EV_NOTE;
   e->note = note;
   e->ins = ins_;
@@ -1048,7 +1067,11 @@ void tr_off(SGTRACK *t, int row)
 {
   if (row < 0) return;
   if (row >= t->rows) tr_grow(t, row + 64);
-  if (t->ev[row].type == EV_NONE) t->ev[row].type = EV_OFF;
+  if (t->ev[row].type == EV_NONE)
+  {
+    t->ev[row].type = EV_OFF;
+    t->ev[row].ord = ++sg_evord;
+  }
 }
 
 static unsigned char *busymap(const SGTRACK *t, int drumlen, int extra)
@@ -1098,7 +1121,11 @@ void tr_merge_low(SGTRACK *t, const SGTRACK *low, int guard, int drumlen)
     d = e->dur > 0 ? e->dur : 1;
     k = r;
     while ((k < r + d) && (!busy[k])) k++;
-    t->ev[r] = *e;
+    {
+      unsigned o = t->ev[r].type != EV_NONE ? t->ev[r].ord : ++sg_evord;
+      t->ev[r] = *e;
+      t->ev[r].ord = o;
+    }
     t->ev[r].dur = k - r;
   }
   free(busy);
@@ -1117,7 +1144,11 @@ void tr_finalize(SGTRACK *t, int total)
     nxt = r + 1;
     while ((nxt < t->rows) && (t->ev[nxt].type == EV_NONE)) nxt++;
     if (nxt >= t->rows) nxt = total;
-    if ((end < nxt) && (end < total)) t->ev[end].type = EV_OFF;
+    if ((end < nxt) && (end < total))
+    {
+      if (t->ev[end].type == EV_NONE) t->ev[end].ord = ++sg_evord;
+      t->ev[end].type = EV_OFF;
+    }
   }
 }
 
@@ -1148,4 +1179,75 @@ void sg_addfilter(const char *name, const int *l, const int *r, int n)
   memcpy(f->l, l, sizeof(int) * n);
   memcpy(f->r, r, sizeof(int) * n);
   f->n = n;
+}
+
+void tr_note_lv(SGTRACK *t, int row, int note, int ins_, int dur, int haslv, double lv)
+{
+  SGEV *e;
+  if (row < 0) return;
+  if (row >= t->rows) tr_grow(t, row + 64);
+  e = &t->ev[row];
+  {
+    unsigned o = e->type != EV_NONE ? e->ord : ++sg_evord;
+    memset(e, 0, sizeof *e);
+    e->ord = o;
+  }
+  e->type = EV_NOTE;
+  e->note = note;
+  e->ins = ins_;
+  e->dur = dur;
+  t->haslv[row] = haslv;
+  t->lv[row] = haslv ? lv : 0;
+}
+
+int tr_sounding(const SGTRACK *t, int row, int drumlen)
+{
+  int r;
+  for (r = row; r > row - 200 && r >= 0; r--)
+  {
+    const SGEV *e;
+    if (r >= t->rows) continue;
+    e = &t->ev[r];
+    if (e->type == EV_NOTE) return r + (e->dur > 0 ? e->dur : drumlen) > row;
+    if (e->type != EV_NONE) return 0;
+  }
+  return 0;
+}
+
+// merge_low of the MIDI importer: busy grows with every placed note; only rows r0..r1-1 (r1 < 0: all)
+int tr_merge_low_imp(SGTRACK *t, const SGTRACK *low, int guard, int min_len, int drumlen, int r0, int r1)
+{
+  unsigned char *busy = busymap(t, drumlen, low->rows);
+  int r, placed = 0, cap = t->rows + low->rows + 256;
+  if (low->rows > t->rows) tr_grow(t, low->rows);
+  for (r = 0; r < low->rows; r++)
+  {
+    const SGEV *e = &low->ev[r];
+    int k, d, blocked = 0;
+    if ((r1 >= 0) && ((r < r0) || (r >= r1))) continue;
+    if (e->type != EV_NOTE) continue;
+    for (k = r; k < r + guard; k++)
+      if ((k < cap) && (busy[k])) blocked = 1;
+    if (blocked) continue;
+    d = e->dur > 0 ? e->dur : 1;
+    k = r;
+    while ((k < r + d) && (k < cap) && (!busy[k])) k++;
+    if (k - r >= min_len)
+    {
+      int j;
+      unsigned o = t->ev[r].type != EV_NONE ? t->ev[r].ord : ++sg_evord;
+      memset(&t->ev[r], 0, sizeof(SGEV));
+      t->ev[r].ord = o;
+      t->ev[r].type = EV_NOTE;
+      t->ev[r].note = e->note;
+      t->ev[r].ins = e->ins;
+      t->ev[r].dur = k - r;
+      t->haslv[r] = low->haslv[r];
+      t->lv[r] = low->lv[r];
+      for (j = r; j < k; j++) busy[j] = 1;
+      placed++;
+    }
+  }
+  free(busy);
+  return placed;
 }

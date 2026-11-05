@@ -37,6 +37,7 @@
 #include "gimprove.h"
 #include "gproject.h"
 #include "gsgbuild.h"
+#include "gbassline.h"
 
 int menu = 0;
 int recordmode = 1;
@@ -190,6 +191,8 @@ static char beatspec[64];
 static char joinspec[4096];
 static int improveopt = 0;
 static char composespec[200] = "";
+static char midispec[1100] = "";
+static char bassspec[200] = "";
 static char speechlist[MAX_PATHNAME];
 static int renderseconds = 0;
 static int renderstems = 0;
@@ -274,6 +277,16 @@ int main(int argc, char **argv)
         if (!strcmp(argv[c], "--improve"))
         {
           improveopt = 1;
+          break;
+        }
+        if (!strncmp(argv[c], "--bassline=", 11))
+        {
+          strncpy(bassspec, argv[c] + 11, sizeof bassspec - 1);
+          break;
+        }
+        if (!strncmp(argv[c], "--midi=", 7))
+        {
+          strncpy(midispec, argv[c] + 7, sizeof midispec - 1);
           break;
         }
         if (!strncmp(argv[c], "--compose=", 10))
@@ -563,6 +576,16 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
       }
     }
+    // --midi=FILE,SIDS[,VOICES,MODEL,VARIANT,ACCOMP,HARMONY]: MIDI import like SIDGen
+    if (midispec[0])
+    {
+      char err[200];
+      if (!sidgen_midi_cli(midispec, err, sizeof err))
+      {
+        fprintf(stderr, "error: %s\n", err);
+        return EXIT_FAILURE;
+      }
+    }
     // --compose=STYLE[/SUB],SEED,SECONDS,SIDS[,MODEL]: random song like SIDGen
     if (composespec[0])
     {
@@ -586,6 +609,17 @@ int main(int argc, char **argv)
     }
     // --improve: Improve the first subtune (GG_IMPROVEMODS bitmask, GG_IMPROVESTRENGTH 1-3,
     // GG_IMPROVEKIT 0 Chip 1 808 2 909 3 Rock, GG_IMPROVECHIP 0/1/2)
+    // --bassline=PART,STYLE,FIGURE,ARPMODE,SEED: Bass & Arps on voice GG_BASSCHN
+    if (bassspec[0])
+    {
+      char err[200];
+      editorInfo.epchn = getenv("GG_BASSCHN") ? atoi(getenv("GG_BASSCHN")) : 0;
+      if (!bassline_cli(bassspec, err, sizeof err))
+      {
+        fprintf(stderr, "error: %s\n", err);
+        return EXIT_FAILURE;
+      }
+    }
     if (improveopt)
     {
       char msg[200];
@@ -1312,6 +1346,22 @@ void docommand(void)
     key = 0;
     rawkey = 0;
   }
+  if (((ctrlpressed) || (metapressed)) && (!altpressed) && (rawkey == KEY_P))
+  {
+    key = 0;
+    rawkey = 0;
+    basslinedialog();
+    key = 0;
+    rawkey = 0;
+  }
+  if (((ctrlpressed) || (metapressed)) && (!altpressed) && (rawkey == KEY_F))
+  {
+    key = 0;
+    rawkey = 0;
+    midiimportdialog();
+    key = 0;
+    rawkey = 0;
+  }
   if (((ctrlpressed) || (metapressed)) && (!altpressed) && (rawkey == KEY_G))
   {
     key = 0;
@@ -1590,6 +1640,9 @@ static void buttoncommand(int id, int param)
     case BTN_BEAT: beatdialog(); break;
     case BTN_JOIN: joinsongsdialog(); break;
     case BTN_IMPROVE: improvedialog(); break;
+    case BTN_COMPOSE: composedialog(); break;
+    case BTN_MIDIFILE: midiimportdialog(); break;
+    case BTN_BASS: basslinedialog(); break;
   }
 }
 

@@ -332,7 +332,6 @@ static void gen_alt(COMP *c, char *name, double p)
   const SGINS *base;
   int ng = sg_numgen(c->model), i, n;
   static int cand[4096];
-  if (getenv("GG_SGDEBUG")) fprintf(stderr, "gen_alt %s %.2f %.4f %.4f\n", name, p, r, k);
   if ((theme) && (r < p + 0.25) && (ng))
   {
     base = sg_findins(name);
@@ -969,7 +968,14 @@ static int cell_weights(COMP *c, double dense, int sparse, double *out)
 {
   double dur[16], w[16], tot = 0, avg = 0, target;
   int n = lead_rhythm(c, dur, w), k, nc = c->bt == 4 ? 12 : 8;
-  for (k = 0; k < n; k++) { tot += w[k]; avg += dur[k] * w[k]; }
+  {
+    PYSUM a1, a2;
+    ps_init(&a1);
+    ps_init(&a2);
+    for (k = 0; k < n; k++) { ps_add(&a1, w[k]); ps_add(&a2, dur[k] * w[k]); }
+    tot = ps_get(&a1);
+    avg = ps_get(&a2);
+  }
   avg = tot > 0 ? avg / tot : 2;
   target = c->bt / avg;
   if (target < 0.6) target = 0.6;

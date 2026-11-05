@@ -324,8 +324,16 @@ static void drawpatterns(void)
       x += strlen(buf) + 1;
     }
   }
-  sprintf(buf, "%d SID%s  %d channels", numsids, numsids > 1 ? "s" : "", numchannels);
+  if (numsids > 2) sprintf(buf, "%d SIDs", numsids);
+  else sprintf(buf, "%d SID%s  %d channels", numsids, numsids > 1 ? "s" : "", numchannels);
   printtext(PATT_X + PATT_W - strlen(buf) - 1, PATT_Y, MKCOL(C_HEADERTEXT, editorInfo.editmode == EDIT_PATTERN ? C_BUTTONHI : C_HEADER), buf);
+  // generators: new song like SIDGen, MIDI import, bass / chords / arpeggios
+  {
+    int x = PATT_X + PATT_W - strlen(buf) - 2 - 28;
+    ui_drawbutton(x, PATT_Y, " Compose ", BTN_COMPOSE, 0, 0); x += 10;
+    ui_drawbutton(x, PATT_Y, " MIDI file ", BTN_MIDIFILE, 0, 0); x += 12;
+    ui_drawbutton(x, PATT_Y, " Bass ", BTN_BASS, 0, 0);
+  }
 
   // Tool row: transpose, mark, select pattern, cut / copy / paste
   {
@@ -1004,6 +1012,9 @@ static int tooltip(int id, const char **name, const char **keys)
     case BTN_COPY: *name = "Copy pattern"; *keys = "SHIFT+C"; break;
     case BTN_PASTE: *name = "Paste pattern"; *keys = "SHIFT+V"; break;
     case BTN_IMPROVE: *name = "Improve the current subtune (drums, bass, slides, vibrato, echo ...)"; *keys = "CTRL+I"; break;
+    case BTN_COMPOSE: *name = "New song like SIDGen: genre and subgenre templates, random pieces"; *keys = "CTRL+G"; break;
+    case BTN_MIDIFILE: *name = "Import a MIDI file like SIDGen (1-8 SIDs)"; *keys = "CTRL+F"; break;
+    case BTN_BASS: *name = "Bass, chords and arpeggios for the voice of the cursor"; *keys = "CTRL+P"; break;
     case BTN_BEAT: *name = "Beat editor: drum pattern for the channel of the cursor"; *keys = "CTRL+D"; break;
     case BTN_SPEECH: *name = "Speech generator: English text on the channel of the cursor"; *keys = "CTRL+K"; break;
     default: return 0;
