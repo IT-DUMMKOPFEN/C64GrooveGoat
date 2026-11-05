@@ -178,7 +178,7 @@ void comp_render_mode2(COMP *c, SGTRACK *t, int row0, int nbars, CHORD *chords_i
   }
   if (mode == MD_ECHO)
   {
-    const SGINS *src = sg_findins(sg_formodel(c->i_lead, c->model));
+    const SGINS *src = sg_findins(c->i_lead);          // I.by_name(self.i_lead)
     SGINS e;
     int name, d = c->echo_delay, total = nbars * spb;
     static signed char sound[MAXSECROWS + 64];

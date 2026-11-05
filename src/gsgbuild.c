@@ -129,13 +129,20 @@ static void usedchannels(COMP *c, int *mask)
       if (c->tracks[t].ev[r].type == EV_NOTE) mask[c->tracks[t].ev[r].ins] |= 1 << t;
 }
 
-// filter roles (composer.build_song)
-static void filterroles(COMP *c)
+// filter roles (composer.build_song), voices of all subtunes
+static void filterroles_multi(COMP **subs, int nsubs)
 {
-  int used[SG_MAXINS], k, filt_channels = 0, bassi = -1;
+  COMP *c = subs[0];
+  int used[SG_MAXINS], k, filt_channels = 0, bassi = -1, si;
   usedchannels(c, used);
+  for (si = 1; si < nsubs; si++)
+  {
+    int u2[SG_MAXINS];
+    usedchannels(subs[si], u2);
+    for (k = 0; k < c->numins; k++) used[k] |= u2[k];
+  }
   for (k = 0; k < c->numins; k++)
-    if (!strcmp(c->ins[k].name, sg_formodel(c->i_bass, c->model))) bassi = k;
+    if (!strcmp(c->ins[k].name, c->i_bass)) bassi = k;          // self.ins.get(self.i_bass)
   for (k = 0; k < c->numins; k++)
   {
     SGINS *i = &c->ins[k];
@@ -434,12 +441,14 @@ static int cutvoice(const TOKS *tk, GMAP *have, int maxl, GRP **outp)
   return nout;
 }
 
-static void relayout(int nch, int *norders, int (*orders)[1024], int bar)
+#define MAXSEG (3 * MAX_CHN * 2)
+
+static void relayout(int nseg, int *norders, int (*orders)[1024], int bar)
 {
-  int maxl = 128 / bar, ch, k, i, nseg = nch;
-  TOKS toks[MAX_CHN];
-  GRP *cuts[MAX_CHN];
-  int ncuts[MAX_CHN], order[MAX_CHN], rnd;
+  int maxl = 128 / bar, ch, k, i;
+  TOKS toks[MAXSEG];
+  GRP *cuts[MAXSEG];
+  int ncuts[MAXSEG], order[MAXSEG], rnd;
   GMAP have, ids;
   if (maxl < 1) maxl = 1;
   if (maxl > 8) maxl = 8;
@@ -536,8 +545,8 @@ static void relayout(int nch, int *norders, int (*orders)[1024], int bar)
     {
       int L = Ls[li] < maxl ? Ls[li] : maxl, ok = 1, j, nplain = 0, ncut = 0;
       GMAP up, uc;
-      GRP *plain[MAX_CHN];
-      int np[MAX_CHN];
+      GRP *plain[MAXSEG];
+      int np[MAXSEG];
       memset(&up, 0, sizeof up);
       memset(&uc, 0, sizeof uc);
       for (k = 0; k < nseg; k++)
@@ -627,35 +636,85 @@ static void relayout(int nch, int *norders, int (*orders)[1024], int bar)
   gfree(&fitcache);
 }
 
-int sg_buildsong(COMP *c, int writeto, char *err, int errsize)
+// merge the instruments of the subtunes into the first piece (by name)
+static void mergeinstruments(COMP *c, COMP *x)
 {
-  int used[SG_MAXINS], order[SG_MAXINS], idx[SG_MAXINS], nins = 0, k, ch, plen, gt, mintempo;
+  int map[SG_MAXINS], k, t, r;
+  for (k = 0; k < x->numins; k++)
+  {
+    int j;
+    for (j = 0; j < c->numins; j++)
+      if (!strcmp(c->ins[j].name, x->ins[k].name)) break;
+    if ((j >= c->numins) && (c->numins < SG_MAXINS))
+    {
+      c->ins[c->numins] = x->ins[k];
+      c->arp_tpl[c->numins] = x->arp_tpl[k];
+      c->arp_q[c->numins] = x->arp_q[k];
+      j = c->numins++;
+    }
+    map[k] = j < c->numins ? j : 0;
+  }
+  for (t = 0; t < x->ntracks; t++)
+    for (r = 0; r < x->tracks[t].rows; r++)
+      if (x->tracks[t].ev[r].type == EV_NOTE) x->tracks[t].ev[r].ins = map[x->tracks[t].ev[r].ins];
+}
+
+int sg_buildsongs(COMP **subs, int nsubs, int writeto, char *err, int errsize)
+{
+  COMP *c = subs[0];
+  int used[SG_MAXINS], order[SG_MAXINS], idx[SG_MAXINS], nins = 0, k, ch, plen, gt, mintempo, si;
   int spanlo[SG_MAXINS], spanhi[SG_MAXINS];
   int tcmd, tdata;
-  static int orders[MAX_CHN][1024];
-  int norders[MAX_CHN];
+  static int orders[MAXSEG][1024];
+  int norders[MAXSEG], restart[3][MAX_CHN];
   int ptr[SG_MAXINS][4];
   int nch = c->ntracks, model = c->model;
 
-  filterroles(c);
-  // playing technique: glides, slides, fall-offs, vibrato, filter sweeps, register arc
-  if ((c->expressive) && (!c->expressed))
-  {
-    c->expressed = 1;
-    sg_express(c);
-  }
-  // two SIDs: similar sounding voices on different chips
-  if (c->ntracks == 6)
-  {
-    int ord[6], k2;
-    double b, a;
-    SGTRACK tmp[6];
-    tb_place_tracks(c, c->tracks, c->total_rows, c->voices == 2 ? 2 : -1, ord, &b, &a);
-    for (k2 = 0; k2 < 6; k2++) tmp[k2] = c->tracks[ord[k2]];
-    for (k2 = 0; k2 < 6; k2++)
+  if (nsubs > 3) nsubs = 3;
+  for (si = 1; si < nsubs; si++)
+    if (!subs[si]->merged)
     {
-      c->tracks[k2] = tmp[k2];
-      c->track_order[k2] = ord[k2];
+      mergeinstruments(c, subs[si]);
+      subs[si]->merged = 1;
+    }
+  // all subtunes use the same instrument list
+  for (si = 1; si < nsubs; si++)
+  {
+    memcpy(subs[si]->ins, c->ins, sizeof c->ins);
+    memcpy(subs[si]->arp_tpl, c->arp_tpl, sizeof c->arp_tpl);
+    memcpy(subs[si]->arp_q, c->arp_q, sizeof c->arp_q);
+    subs[si]->numins = c->numins;
+  }
+  filterroles_multi(subs, nsubs);
+  for (si = 1; si < nsubs; si++)
+  {
+    memcpy(subs[si]->ins, c->ins, sizeof c->ins);
+    subs[si]->numins = c->numins;
+  }
+  // playing technique: glides, slides, fall-offs, vibrato, filter sweeps, register arc
+  for (si = 0; si < nsubs; si++)
+    if ((subs[si]->expressive) && (!subs[si]->expressed))
+    {
+      subs[si]->expressed = 1;
+      sg_express(subs[si]);
+    }
+  // two SIDs: similar sounding voices on different chips
+  for (si = 0; si < nsubs; si++)
+  {
+    COMP *x = subs[si];
+    if ((x->ntracks == 6) && (!x->placed))
+    {
+      int ord[6], k2;
+      double b, a;
+      SGTRACK tmp[6];
+      x->placed = 1;
+      tb_place_tracks(x, x->tracks, x->total_rows, x->voices == 2 ? 2 : -1, ord, &b, &a);
+      for (k2 = 0; k2 < 6; k2++) tmp[k2] = x->tracks[ord[k2]];
+      for (k2 = 0; k2 < 6; k2++)
+      {
+        x->tracks[k2] = tmp[k2];
+        x->track_order[k2] = ord[k2];
+      }
     }
   }
   // tempo: F command, or funktempo (E) through speed table entry 1
@@ -674,7 +733,15 @@ int sg_buildsong(COMP *c, int writeto, char *err, int errsize)
     tdata = 1;
   }
   mintempo = c->tempo[0] < c->tempo[1] ? c->tempo[0] : c->tempo[1];
-  usedchannels(c, used);
+  {
+    int u2[SG_MAXINS];
+    for (k = 0; k < c->numins; k++) used[k] = 0;
+    for (si = 0; si < nsubs; si++)
+    {
+      usedchannels(subs[si], u2);
+      for (k = 0; k < c->numins; k++) used[k] |= u2[k];
+    }
+  }
   gt = mintempo - 1;
   if (gt > 2) gt = 2;
   if (gt < 1) gt = 1;
@@ -730,47 +797,68 @@ int sg_buildsong(COMP *c, int writeto, char *err, int errsize)
   {
     int fits, maxo = 0;
     freepatterns();
-    for (ch = 0; ch < nch; ch++)
+    for (si = 0; si < nsubs; si++)
     {
-      SGTRACK *t = &c->tracks[ch];
-      int start;
-      norders[ch] = 0;
-      for (start = 0; start < c->total_rows; start += plen)
+      COMP *x = subs[si];
+      for (ch = 0; ch < nch; ch++)
       {
-        PROW rows[MAX_PATTROWS];
-        int r, n = 0, p;
-        for (r = start; (r < start + plen) && (r < c->total_rows); r++)
+        SGTRACK *t = &x->tracks[ch];
+        int start, seg = si * nch + ch;
+        norders[seg] = 0;
+        for (start = 0; start < x->total_rows; start += plen)
         {
-          SGEV *e = r < t->rows ? &t->ev[r] : NULL;
-          int cmd = 0, sym = plainsym(0);
-          const SGCMD *cm = NULL;
-          if ((ch % 6 == 0) && (r == 0)) { cmd = tcmd; sym = plainsym(tdata); }
-          if ((!cmd) && (r < t->rows) && (t->hascmds[r]) && (!(e && e->type == EV_NOTE && e->hascmd))) cm = &t->cmds[r];
-          if ((!cmd) && (e) && (e->type == EV_NOTE) && (e->hascmd)) cm = &e->cmd;
-          if (cm)
+          PROW rows[MAX_PATTROWS];
+          int r, n = 0, p;
+          for (r = start; (r < start + plen) && (r < x->total_rows); r++)
           {
-            cmd = cm->cmd;
-            sym = cmdsym(cm, ch);
+            SGEV *e = r < t->rows ? &t->ev[r] : NULL;
+            int cmd = 0, sym = plainsym(0);
+            const SGCMD *cm = NULL;
+            if ((ch % 6 == 0) && (r == 0)) { cmd = tcmd; sym = plainsym(tdata); }
+            if ((!cmd) && (r < t->rows) && (t->hascmds[r]) && (!(e && e->type == EV_NOTE && e->hascmd))) cm = &t->cmds[r];
+            if ((!cmd) && (e) && (e->type == EV_NOTE) && (e->hascmd)) cm = &e->cmd;
+            if (cm)
+            {
+              cmd = cm->cmd;
+              sym = cmdsym(cm, ch);
+            }
+            if ((!e) || (e->type == EV_NONE)) { rows[n].note = REST; rows[n].ins = 0; }
+            else if (e->type == EV_OFF) { rows[n].note = KEYOFF; rows[n].ins = 0; }
+            else
+            {
+              int note = e->note;
+              while ((note + spanhi[e->ins] > 95) || (note > 92)) note -= 12;
+              while (note + spanlo[e->ins] < 1) note += 12;
+              rows[n].note = FIRSTNOTE + note;
+              rows[n].ins = idx[e->ins] ? idx[e->ins] : 1;
+            }
+            rows[n].cmd = cmd;
+            rows[n].sym = sym;
+            n++;
           }
-          if ((!e) || (e->type == EV_NONE)) { rows[n].note = REST; rows[n].ins = 0; }
-          else if (e->type == EV_OFF) { rows[n].note = KEYOFF; rows[n].ins = 0; }
-          else
-          {
-            int note = e->note;
-            while ((note + spanhi[e->ins] > 95) || (note > 92)) note -= 12;
-            while (note + spanlo[e->ins] < 1) note += 12;
-            rows[n].note = FIRSTNOTE + note;
-            rows[n].ins = idx[e->ins] ? idx[e->ins] : 1;
-          }
-          rows[n].cmd = cmd;
-          rows[n].sym = sym;
-          n++;
+          p = addpattern(rows, n);
+          if (p < 0) break;
+          if (norders[seg] < 1024) orders[seg][norders[seg]++] = p;
         }
-        p = addpattern(rows, n);
-        if (p < 0) break;
-        if (norders[ch] < 1024) orders[ch][norders[ch]++] = p;
+        restart[si][ch] = 0;
       }
-      if (norders[ch] > maxo) maxo = norders[ch];
+      if (x->jingle)
+      {
+        // jingle: then an empty pattern forever (silence instead of a repeat)
+        PROW rows[16];
+        int r, p;
+        for (r = 0; r < 16; r++) { rows[r].note = REST; rows[r].ins = 0; rows[r].cmd = 0; rows[r].sym = plainsym(0); }
+        rows[0].note = KEYOFF;
+        p = addpattern(rows, 16);
+        for (ch = 0; ch < nch; ch++)
+        {
+          int seg = si * nch + ch;
+          if (norders[seg] < 1024) orders[seg][norders[seg]++] = p;
+          restart[si][ch] = norders[seg] - 1;
+        }
+      }
+      for (ch = 0; ch < nch; ch++)
+        if (norders[si * nch + ch] > maxo) maxo = norders[si * nch + ch];
     }
     if (nch > 6)
     {
@@ -778,12 +866,13 @@ int sg_buildsong(COMP *c, int writeto, char *err, int errsize)
       int pp, worst = 0;
       for (pp = 0; pp < nch; pp += 6)
       {
-        static unsigned char u[1024];
+        static unsigned char u[4096];
         int q, d, cnt = 0;
         memset(u, 0, sizeof u);
-        for (q = pp; (q < pp + 6) && (q < nch); q++)
-          for (d = 0; d < norders[q]; d++)
-            if (!u[orders[q][d]]) { u[orders[q][d]] = 1; cnt++; }
+        for (si = 0; si < nsubs; si++)
+          for (q = pp; (q < pp + 6) && (q < nch); q++)
+            for (d = 0; d < norders[si * nch + q]; d++)
+              if (!u[orders[si * nch + q][d]]) { u[orders[si * nch + q][d]] = 1; cnt++; }
         if (cnt > worst) worst = cnt;
       }
       fits = worst <= MAX_PATT;
@@ -804,7 +893,49 @@ int sg_buildsong(COMP *c, int writeto, char *err, int errsize)
     int big = 0, k3;
     for (k3 = 0; k3 < npatts; k3++)
       if (packedsize(patts[k3], pattrows[k3]) > MAX_PACKED) big = 1;
-    if (((nch > 6) && (npatts > MAX_PATT)) || (big)) relayout(nch, norders, orders, c->spb);
+    if (((nch > 6) && (npatts > MAX_PATT)) || (big))
+    {
+      // segments: per subtune and channel, split at the restart position
+      static int sorders[MAXSEG][1024];
+      int snorders[MAXSEG], nseg = 0, two[3][MAX_CHN], ok = 1;
+      for (si = 0; si < nsubs; si++)
+        for (ch = 0; ch < nch; ch++)
+        {
+          int seg = si * nch + ch, rs = restart[si][ch];
+          two[si][ch] = (rs > 0) && (rs < norders[seg]);
+          if (two[si][ch])
+          {
+            memcpy(sorders[nseg], orders[seg], sizeof(int) * rs);
+            snorders[nseg++] = rs;
+            memcpy(sorders[nseg], orders[seg] + rs, sizeof(int) * (norders[seg] - rs));
+            snorders[nseg++] = norders[seg] - rs;
+          }
+          else
+          {
+            memcpy(sorders[nseg], orders[seg], sizeof(int) * norders[seg]);
+            snorders[nseg++] = norders[seg];
+          }
+        }
+      relayout(nseg, snorders, sorders, c->spb);
+      nseg = 0;
+      for (si = 0; si < nsubs; si++)
+        for (ch = 0; ch < nch; ch++)
+        {
+          int seg = si * nch + ch, n = 0;
+          memcpy(orders[seg], sorders[nseg], sizeof(int) * snorders[nseg]);
+          n = snorders[nseg++];
+          if (two[si][ch])
+          {
+            restart[si][ch] = n;
+            memcpy(orders[seg] + n, sorders[nseg], sizeof(int) * snorders[nseg]);
+            n += snorders[nseg++];
+          }
+          else restart[si][ch] = 0;
+          if (n > MAX_SONGLEN) ok = 0;
+          norders[seg] = n;
+        }
+      (void)ok;
+    }
   }
   {
     int k3, big = 0;
@@ -915,9 +1046,10 @@ int sg_buildsong(COMP *c, int writeto, char *err, int errsize)
         songorder[s][ch][0] = LOOPSONG;
         songlen[s][ch] = 0;
       }
+    for (si = 0; si < nsubs; si++)
     for (ch = 0; ch < nsids * 3; ch++)
     {
-      int n = ch < nch ? norders[ch] : 0, d;
+      int n = ch < nch ? norders[si * nch + ch] : 0, d;
       if (ch >= nch)
       {
         // 6 SIDs as an 8-SID song: SID 7 and 8 stay silent (one empty pattern)
@@ -931,16 +1063,16 @@ int sg_buildsong(COMP *c, int writeto, char *err, int errsize)
           pattern[p][d * 4 + 1] = pattern[p][d * 4 + 2] = pattern[p][d * 4 + 3] = 0;
         }
         pattern[p][64] = ENDPATT;
-        songorder[0][ch][0] = p;
-        songorder[0][ch][1] = LOOPSONG;
-        songorder[0][ch][2] = 0;
-        songlen[0][ch] = 1;
+        songorder[si][ch][0] = p;
+        songorder[si][ch][1] = LOOPSONG;
+        songorder[si][ch][2] = 0;
+        songlen[si][ch] = 1;
         continue;
       }
-      for (d = 0; d < n; d++) songorder[0][ch][d] = orders[ch][d];
-      songorder[0][ch][n] = LOOPSONG;
-      songorder[0][ch][n + 1] = 0;
-      songlen[0][ch] = n;
+      for (d = 0; d < n; d++) songorder[si][ch][d] = orders[si * nch + ch][d];
+      songorder[si][ch][n] = LOOPSONG;
+      songorder[si][ch][n + 1] = restart[si][ch];
+      songlen[si][ch] = n;
     }
     snprintf(songname, sizeof songname, "%.31s", c->title);
     snprintf(authorname, sizeof authorname, "%.31s", "C64 GrooveGoat");
@@ -956,4 +1088,11 @@ int sg_buildsong(COMP *c, int writeto, char *err, int errsize)
   }
   freepatterns();
   return 1;
+}
+
+int sg_buildsong(COMP *c, int writeto, char *err, int errsize)
+{
+  COMP *subs[1];
+  subs[0] = c;
+  return sg_buildsongs(subs, 1, writeto, err, errsize);
 }

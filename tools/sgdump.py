@@ -4,7 +4,7 @@ import sys
 sys.path.insert(0, sys.argv[1])
 from sidgen.composer import Composer, base
 st, seed, secs, sids = sys.argv[2], int(sys.argv[3]), float(sys.argv[4]), int(sys.argv[5])
-c = Composer(st, seconds=secs, seed=seed, sids=sids, expressive=(len(sys.argv) < 7 or sys.argv[6] != "0"))
+c = Composer(st, seconds=secs, seed=seed, sids=sids, expressive=(len(sys.argv) < 7 or sys.argv[6] != "0"), model=int(sys.argv[7]) if len(sys.argv) > 7 else 6581)
 c.compose_tracks()
 print('title', c.title)
 print('sub', c.st.get('sub_name') or '')

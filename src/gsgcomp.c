@@ -112,7 +112,7 @@ int comp_use(COMP *c, const char *name)
 {
   const SGINS *s;
   int k;
-  name = sg_formodel(name, c->model);
+  name = sg_formodel(sg_removed_name(name), c->model);
   k = findused(c, name);
   if (k >= 0) return k;
   s = sg_findins(name);
@@ -158,7 +158,9 @@ static int wchoice_jv(SGRNG *r, const JV *list) { return jv_wchoice(r, list); }
 
 static void cpyname(char *dst, const char *src)
 {
-  snprintf(dst, 48, "%s", src ? src : "");
+  char tmp[48];
+  snprintf(tmp, 48, "%s", src ? src : "");     // src may be dst itself
+  memcpy(dst, tmp, 48);
 }
 
 static const char *TITLE_A[] = {"Neon", "Cyber", "Silicon", "Pixel", "Chrome", "Laser", "Midnight", "Turbo", "Galaxy",
@@ -402,7 +404,7 @@ static void gen_alt(COMP *c, char *name, double p)
 
 static double punchscore(COMP *c, const char *n, int *found)
 {
-  return sg_punch(c->model, sg_formodel(n, c->model), found);
+  return sg_punch(c->model, sg_formodel(sg_removed_name(n), c->model), found);
 }
 
 static void better(COMP *c, SGRNG *pr, char *cur, const JV *list, double margin)
@@ -664,9 +666,10 @@ static void pick_instruments(COMP *c)
   cpyname(c->i_lead_v, c->i_lead);
   cpyname(c->i_harm, c->i_lead);
   cpyname(c->t_arp2, c->t_arp);
-  if ((c->islong) || (c->sids >= 2))
+  if ((c->islong) || (c->sids >= 2) || (c->fixed))
   {
     SGRNG vr;
+    c->hasvar = 1;
     rng_seeds(&vr, "%u-v-%d", c->seed, c->ins_var);
     for (k = SEC_A2; k <= SEC_C2; k++)
       if (rng_random(&vr) < 0.5) snprintf(c->bass_pat[k], 16, "%s", jv_wstr(&vr, S(c, "bass")));
@@ -708,6 +711,27 @@ static void pick_instruments(COMP *c)
       if (c->kit[k][0]) cpyname(c->kit[k], sg_formodel(c->kit[k], 8580));
   }
   if (c->sids >= 4) comp_pick_layer_instruments(c);
+  if (c->fixed)
+  {
+    // subtunes: the instruments of the title music
+    COMP *f = c->fixed;
+    cpyname(c->i_bass, f->i_bass); cpyname(c->i_kickbass, f->i_kickbass); cpyname(c->i_lead, f->i_lead);
+    cpyname(c->i_lead_b, f->i_lead_b); cpyname(c->t_arp, f->t_arp); cpyname(c->t_stab, f->t_stab); cpyname(c->t_pad, f->t_pad);
+    cpyname(c->i_counter, f->i_counter); cpyname(c->i_broken, f->i_broken);
+    memcpy(c->kit, f->kit, sizeof c->kit);
+    if (f->hasvar)
+    {
+      cpyname(c->i_lead_v, f->i_lead_v); cpyname(c->i_harm, f->i_harm); cpyname(c->t_arp2, f->t_arp2);
+    }
+    if (f->sids >= 4)
+    {
+      cpyname(c->i_bass2, f->i_bass2); cpyname(c->i_sub, f->i_sub); cpyname(c->i_lead2, f->i_lead2); cpyname(c->i_lead3, f->i_lead3);
+      cpyname(c->i_padv, f->i_padv); cpyname(c->i_pad2v, f->i_pad2v); cpyname(c->i_strings, f->i_strings);
+      cpyname(c->i_counter2, f->i_counter2); cpyname(c->i_harm2, f->i_harm2); cpyname(c->i_broken2, f->i_broken2);
+      cpyname(c->t_arp3, f->t_arp3); cpyname(c->i_kick2, f->i_kick2); cpyname(c->i_clap, f->i_clap);
+      c->layer_bass_shift = f->layer_bass_shift;
+    }
+  }
   {
     const JV *ed = S(c, "echo_delay");
     c->echo_delay = jv_len(ed) ? (int)jv_num(jv_at(ed, rng_below(rng, jv_len(ed))), 2) : 2;
@@ -1817,6 +1841,7 @@ int comp_compose(COMP *c)
     c->tempo[0] = (int)jv_num(jv_at(x, 0), 6);
     c->tempo[1] = (int)jv_num(jv_at(x, 1), c->tempo[0]);
     if (c->want_bpm > 0) tempo_for_bpm(c, c->want_bpm);
+    if (c->fixed) { c->tempo[0] = c->fixed->tempo[0]; c->tempo[1] = c->fixed->tempo[1]; }
   }
   {
     double avg = (c->tempo[0] + c->tempo[1]) / 2.0;
@@ -1827,6 +1852,7 @@ int comp_compose(COMP *c)
   c->mode = sg_modeindex(jv_wstr(rng, S(c, "scales")));
   if (c->want_key >= 0) c->key = c->want_key % 12;
   if (c->want_mode >= 0) c->mode = c->want_mode;
+  if (c->fixed) { c->key = c->fixed->key; c->mode = c->fixed->mode; }
   scale_init(&c->scale, c->key, c->mode);
   fam_min = !((c->mode == M_MAJOR) || (c->mode == M_LYDIAN) || (c->mode == M_MIXOLYDIAN) || (c->mode == M_PENTMAJ));
   if (!strcmp(c->stylekey, "blues")) fam_any = 1;

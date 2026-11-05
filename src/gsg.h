@@ -155,7 +155,8 @@ const SGINS *sg_findins(const char *name);           // REMOVED applied
 const SGARP *sg_findarp(const char *name);
 const SGFILTER *sg_findfilter(const char *name);
 void sg_addfilter(const char *name, const int *l, const int *r, int n);
-const char *sg_formodel(const char *name, int model); // 8580: replacement
+const char *sg_formodel(const char *name, int model); // 8580: replacement (genlib.for_model)
+const char *sg_removed_name(const char *name);       // instruments.REMOVED
 double sg_punch(int model, const char *name, int *found);
 int sg_mainwave(const SGINS *i);                      // like genlib.main_wave
 int sg_timbrewave(const SGINS *i);                    // like timbre.main_wave

@@ -36,7 +36,7 @@ enum { MD_ARP_HOLD = 0, MD_ARP_RHYTHM, MD_PAD, MD_ECHO, MD_COUNTER, MD_BROKEN, M
 extern const char *sg_modes2[MD_NUM];
 int md_index(const char *s);
 
-typedef struct
+typedef struct COMPS
 {
   // the style (merged sub-style)
   JV *st;
@@ -114,7 +114,9 @@ typedef struct
   int arp_tpl[SG_MAXINS], arp_q[SG_MAXINS];   // arpeggio source (template index or -1)
   int key_change_row, key_change_by, nstops, stops[4];
   int expr_stats[6];
-  int expressed, track_order[SG_MAXTRACKS];             // glide scoop fall vib bslide sweep
+  int expressed, placed, merged, track_order[SG_MAXTRACKS];
+  struct COMPS *fixed;          // subtunes: the choices of the title music
+  int hasvar;                   // i_lead_v, i_harm, t_arp2 were chosen             // glide scoop fall vib bslide sweep
   char err[160];
 } COMP;
 

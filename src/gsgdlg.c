@@ -37,25 +37,54 @@ static int findvariant(const char *spec, unsigned seed)
 // compose and build into the song memory; 4-8 SIDs: if the piece does not
 // fit into one song, again without the variant sections, then also without
 // the register arc (as SIDGen's app)
-COMP *sidgen_make(int v, unsigned seed, double seconds, int sids, int voices, int model, char *err, int errsize, int dumpfirst)
+static COMP *subcomp(int v, unsigned seed, double seconds, int sids, int voices, int model, int variants, int compact,
+                     COMP *fixed, int jingle)
+{
+  COMP *c = comp_new(v, seed, seconds, sids, voices, model);
+  c->variants = variants;
+  c->compact = compact;
+  c->fixed = fixed;
+  if (fixed) snprintf(c->title, sizeof c->title, "%s", fixed->title);
+  if (jingle)
+  {
+    c->jingle = 1;
+    c->target = 60;
+  }
+  if (!comp_compose(c))
+  {
+    comp_free(c);
+    return NULL;
+  }
+  return c;
+}
+
+// compose and build into the song memory; 4-8 SIDs: if the piece does not
+// fit into one song, again without the variant sections, then also without
+// the register arc (as SIDGen's app). subtunes: title music, in-game music
+// and a game over jingle with the same instruments.
+COMP *sidgen_make(int v, unsigned seed, double seconds, int sids, int voices, int model, char *err, int errsize, int subtunes)
 {
   int attempt;
-  (void)dumpfirst;
   for (attempt = 0; attempt < 3; attempt++)
   {
-    COMP *c = comp_new(v, seed, seconds, sids, voices, model);
-    int r;
-    if (attempt >= 1) c->variants = 0;
-    if (attempt >= 2) c->compact = 1;
-    if (!comp_compose(c))
+    COMP *subs[3] = {NULL, NULL, NULL};
+    int r, n = 1, k, variants = attempt == 0, compact = attempt >= 2;
+    subs[0] = subcomp(v, seed, seconds, sids, voices, model, variants, compact, NULL, 0);
+    if (!subs[0])
     {
-      snprintf(err, errsize, "%s", c->err);
-      comp_free(c);
+      snprintf(err, errsize, "The style data could not be read");
       return NULL;
     }
-    r = sg_buildsong(c, 1, err, errsize);
-    if (r > 0) return c;
-    comp_free(c);
+    if (subtunes)
+    {
+      subs[1] = subcomp(v, subs[0]->seed + 1, seconds > 0 ? seconds : subs[0]->target, sids, voices, model, variants, compact, subs[0], 0);
+      subs[2] = subcomp(v, subs[0]->seed + 2, 0, sids, voices, model, variants, compact, subs[0], 1);
+      n = 3;
+    }
+    r = sg_buildsongs(subs, n, 1, err, errsize);
+    for (k = 1; k < n; k++) comp_free(subs[k]);
+    if (r > 0) return subs[0];
+    comp_free(subs[0]);
     if ((r == 0) || (sids < 4)) return NULL;
   }
   return NULL;
@@ -70,14 +99,15 @@ int sidgen_compose_cli(const char *spec, char *err, int errsize)
   COMP *c;
   const char *p = strchr(spec, ',');
   snprintf(st, sizeof st, "%.*s", p ? (int)(p - spec) : (int)strlen(spec), spec);
-  if (p) sscanf(p + 1, "%u,%lf,%d,%d", &seed, &seconds, &sids, &model);
+  int subtunes = 0, voices = 3;
+  if (p) sscanf(p + 1, "%u,%lf,%d,%d,%d,%d", &seed, &seconds, &sids, &model, &subtunes, &voices);
   v = findvariant(st, seed);
   if (v < 0)
   {
     snprintf(err, errsize, "Unknown style %s", st);
     return 0;
   }
-  c = sidgen_make(v, seed, seconds, sids, 3, model, err, errsize, 0);
+  c = sidgen_make(v, seed, seconds, sids, voices, model, err, errsize, subtunes);
   if (!c)
   {
     if (getenv("GG_SGDUMPSONG"))
@@ -153,11 +183,21 @@ int sidgen_compose_cli(const char *spec, char *err, int errsize)
         for (r = 0; r < len; r++) fprintf(f, "%s%02x:%02x", r ? " " : "", ltable[t][r], rtable[t][r]);
         fprintf(f, "\n");
       }
-      for (k = 0; k < numchannels; k++)
       {
-        fprintf(f, "order %d", k);
-        for (r = 0; r < songlen[0][k]; r++) fprintf(f, " %d", songorder[0][k][r]);
-        fprintf(f, "\n");
+        int s2;
+        for (s2 = 0; s2 < 3; s2++)
+        {
+          if (!songlen[s2][0]) break;
+          for (k = 0; k < numchannels; k++)
+          {
+            int rs = songorder[s2][k][songlen[s2][k] + 1];
+            if (s2) fprintf(f, "order %d.%d", s2, k);
+            else fprintf(f, "order %d", k);
+            for (r = 0; r < songlen[s2][k]; r++) fprintf(f, " %d", songorder[s2][k][r]);
+            if (rs) fprintf(f, " / %d", rs);
+            fprintf(f, "\n");
+          }
+        }
       }
       for (k = 0; k <= highestusedpattern; k++)
       {

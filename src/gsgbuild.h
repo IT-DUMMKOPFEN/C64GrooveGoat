@@ -5,6 +5,8 @@
 
 // write the composed piece into the song in memory (writeto = 0: only check)
 int sg_buildsong(COMP *c, int writeto, char *err, int errsize);
+// several subtunes (title, in-game, game over) sharing instruments and patterns
+int sg_buildsongs(COMP **subs, int nsubs, int writeto, char *err, int errsize);
 
 // command line: --compose=STYLE[/SUB],SEED,SECONDS,SIDS[,MODEL]
 COMP *sidgen_make(int styleidx, unsigned seed, double seconds, int sids, int voices, int model, char *err, int errsize, int dumpfirst);

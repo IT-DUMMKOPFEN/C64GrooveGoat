@@ -769,11 +769,12 @@ const SGFILTER *sg_findfilter(const char *name)
   return NULL;
 }
 
+const char *sg_removed_name(const char *name) { sg_init(); return removed(name); }
+
 const char *sg_formodel(const char *name, int model)
 {
   int c;
   sg_init();
-  name = removed(name);
   if (model != 8580) return name;
   for (c = 0; c < nummap; c++)
     if (!strcmp(mapfrom[c], name)) return mapto[c];
