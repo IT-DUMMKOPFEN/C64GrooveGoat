@@ -17,12 +17,12 @@ BEGIN
     BEGIN
       VALUE "CompanyName", "IT-Dummkopfen"
       VALUE "FileDescription", "C64 GrooveGoat - multi-SID music editor"
-      VALUE "FileVersion", "0.95b"
+      VALUE "FileVersion", "0.96b"
       VALUE "InternalName", "GrooveGoat"
       VALUE "LegalCopyright", "GNU GPL v2 - based on GoatTracker 2 by Lasse Oorni"
       VALUE "OriginalFilename", "GrooveGoat.exe"
       VALUE "ProductName", "C64 GrooveGoat"
-      VALUE "ProductVersion", "0.95b"
+      VALUE "ProductVersion", "0.96b"
     END
   END
   BLOCK "VarFileInfo"
