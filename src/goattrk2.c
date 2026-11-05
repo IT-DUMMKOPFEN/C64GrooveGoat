@@ -1312,6 +1312,14 @@ void docommand(void)
     key = 0;
     rawkey = 0;
   }
+  if (((ctrlpressed) || (metapressed)) && (!altpressed) && (rawkey == KEY_G))
+  {
+    key = 0;
+    rawkey = 0;
+    composedialog();
+    key = 0;
+    rawkey = 0;
+  }
   if (((ctrlpressed) || (metapressed)) && (!altpressed) && (rawkey == KEY_K))
   {
     key = 0;

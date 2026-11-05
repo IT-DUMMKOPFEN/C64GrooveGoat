@@ -120,6 +120,7 @@ typedef struct COMPS
   char err[160];
 } COMP;
 
+void comp_setvariations(COMP *c, int mel_var, int ins_var);
 COMP *comp_new(int styleidx, unsigned seed, double seconds, int sids, int voices, int model);
 void comp_free(COMP *c);
 int comp_compose(COMP *c);          // compose the tracks (1 = ok)
