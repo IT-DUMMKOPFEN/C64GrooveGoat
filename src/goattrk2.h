@@ -160,7 +160,7 @@ void showinfo(void);
 void showmanual(void);
 void showhistory(void);
 void showwelcomewindow(void);
-void showversioninfo(void);           // first start of a new version
+int showversioninfo(int frominfo);    // first start of a new version, Info button
 extern unsigned versioninfoalways;
 extern char versioninfoseen[32];
 void configpath(char *dest, const char *file);

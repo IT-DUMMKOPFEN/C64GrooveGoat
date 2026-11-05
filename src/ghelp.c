@@ -1007,8 +1007,11 @@ static void fxframe(int side, int cw, int ch)
   nsparks[side] = n;
 }
 
-void showversioninfo(void)
+// frominfo: opened by the Info button - "Let's groove!" (ENTER) then shows the
+// program info. Returns 1 for "Let's groove!", 0 for ESC / a click outside.
+int showversioninfo(int frominfo)
 {
+  int result = 0;
   int w = 98, h = 47;
   int x = (MAX_COLUMNS - w) / 2;
   int y = (MAX_ROWS - h) / 2;
@@ -1058,18 +1061,28 @@ void showversioninfo(void)
     printtext(x + 3, ly++, MKCOL(15, C_PANEL), "Thanks to the many comments from so many of you last week, GrooveGoat has grown into a");
     printtext(x + 3, ly, MKCOL(14, C_PANEL), "real monster. Thank you!");
     printglyph(x + 28, ly, MKCOL(C_RB1, C_PANEL), GL_HEART);
-    printtext(x + 3, by - 2, MKCOL(3, C_PANEL), "ENTER / ESC / click: start   (shown once for every new version)");
+    if (frominfo) printtext(x + 3, by - 2, MKCOL(3, C_PANEL), "ENTER / Let's groove!: the program info   ESC: close");
+    else printtext(x + 3, by - 2, MKCOL(3, C_PANEL), "ENTER / ESC / click: start   (shown once for every new version)");
     printtext(bx, by, MKCOL(C_BUTTONTEXT, C_BUTTONHI), "  Let's groove!  ");
     printtext(cbx, by, MKCOL(versioninfoalways ? 15 : 8, C_PANEL), versioninfoalways ? "[x] Show again at the start" : "[ ] Show again at the start");
     fliptoscreen();
     getkey();
     if (win_quitted) break;
-    if ((rawkey == KEY_ESC) || (rawkey == KEY_ENTER) || (rawkey == KEY_SPACE)) break;
+    if (rawkey == KEY_ESC) break;
+    if ((rawkey == KEY_ENTER) || (rawkey == KEY_SPACE))
+    {
+      result = 1;
+      break;
+    }
     if ((rawkey == KEY_S) || (rawkey == KEY_X)) versioninfoalways ^= 1;
     if ((mouseb) && (!prevmouseb))
     {
       if ((mousey == by) && (mousex >= cbx) && (mousex < cbx + 27)) versioninfoalways ^= 1;
-      else break;
+      else
+      {
+        result = (mousey == by) && (mousex >= bx) && (mousex < bx + 17);
+        if ((result) || (!frominfo) || (mousex < x) || (mousex >= x + w) || (mousey < y) || (mousey >= y + h)) break;
+      }
     }
   }
   snprintf(versioninfoseen, sizeof versioninfoseen, "%s", PROGRAMVERSION);
@@ -1077,6 +1090,7 @@ void showversioninfo(void)
   printmainscreen();
   key = 0;
   rawkey = 0;
+  return result;
 }
 
 // ---------------------------------------------------------------------------

@@ -212,7 +212,9 @@ button, ENTER, SPACE or ESC. Uncheck "Show at startup" (click it or press S) if 
 to see it again.
 
 The first start of a new version shows the version info instead: what the version brings, with
-fireworks. "Show again at the start" (click it or press S) shows it at every start.
+fireworks. "Show again at the start" (click it or press S) shows it at every start. The Info
+button shows it as well; "Let's groove!" (ENTER) then opens the program info with the credits,
+ESC closes it.
 
 ## Keyboard layout (Kbd: EN / DE)
 

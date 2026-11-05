@@ -962,7 +962,7 @@ static int tooltip(int id, const char **name, const char **keys)
     case BTN_EXPORTVIDEO: *name = "Export MP4 video"; *keys = "CTRL+SHIFT+F9"; break;
     case BTN_THEME: *name = "Night / day theme"; break;
     case BTN_HELP: *name = "Keyboard reference and manual"; *keys = "F12"; break;
-    case BTN_INFO: *name = "Version, credits and licenses"; break;
+    case BTN_INFO: *name = "What's new in this version, then credits and licenses"; break;
     case BTN_PLAY: *name = "Play from the beginning"; *keys = "F1 (SHIFT+F1: follow)"; break;
     case BTN_PLAYPOS: *name = "Play from the orderlist position"; *keys = "F2 (SHIFT+F2: follow)"; break;
     case BTN_PLAYPATT: *name = "Play the current pattern"; *keys = "F3 (SHIFT+F3: follow)"; break;

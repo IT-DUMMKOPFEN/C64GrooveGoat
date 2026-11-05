@@ -38,6 +38,7 @@ extern unsigned char win_keystate[MAX_KEYS];
 extern int win_asciikey;
 extern int win_symkey;
 extern unsigned win_mousebuttons;
+extern unsigned win_mousepressed;
 extern int win_mousewheel;
 extern int win_mousex;
 extern int win_mousey;

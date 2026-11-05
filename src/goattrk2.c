@@ -723,7 +723,7 @@ int main(int argc, char **argv)
   backup_init();
   midi_init();
   if (getenv("GG_SCRIPT")) ;
-  else if ((versioninfoalways) || (strcmp(versioninfoseen, PROGRAMVERSION))) showversioninfo();
+  else if ((versioninfoalways) || (strcmp(versioninfoseen, PROGRAMVERSION))) showversioninfo(0);
   else if (showwelcome) showwelcomewindow();
   while (!exitprogram)
   {
@@ -1120,7 +1120,7 @@ static void runautotest(void)
     if (!strcmp(scr, "history")) showhistory();
     if (!strcmp(scr, "info")) showinfo();
     if (!strcmp(scr, "welcome")) showwelcomewindow();
-    if (!strcmp(scr, "version")) showversioninfo();
+    if (!strcmp(scr, "version")) showversioninfo(0);
     if (!strcmp(scr, "sidinfo")) showsidinfo();
     if (!strcmp(scr, "exportsid")) exportsid();
     if (!strcmp(scr, "exportprg")) exportprg();
@@ -1518,7 +1518,7 @@ static void buttoncommand(int id, int param)
     case BTN_HELP: onlinehelp(0, 0); break;
     case BTN_MANUAL: showmanual(); break;
     case BTN_HISTORY: showhistory(); break;
-    case BTN_INFO: showinfo(); break;
+    case BTN_INFO: if (showversioninfo(1)) showinfo(); break;
     case BTN_PLAY: initsong(editorInfo.esnum, PLAY_BEGINNING); followplay = shiftpressed; break;
     case BTN_PLAYPOS: initsong(editorInfo.esnum, PLAY_POS); followplay = shiftpressed; break;
     case BTN_PLAYPATT: initsong(editorInfo.esnum, PLAY_PATTERN); followplay = shiftpressed; break;

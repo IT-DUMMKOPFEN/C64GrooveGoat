@@ -1006,7 +1006,8 @@ void getkey(void)
   cursorflashdelay += win_getspeed(50);
 
   prevmouseb = mouseb;
-  mouseb = win_mousebuttons;
+  mouseb = win_mousebuttons | win_mousepressed;     // a tap within one frame counts as well
+  win_mousepressed = 0;
   mousex = win_mousex / (CELLW * (scale ? scale : 1));
   mousey = win_mousey / (CELLH * (scale ? scale : 1));
   mousepx = win_mousex * 16 / (CELLW * (scale ? scale : 1));
@@ -1045,19 +1046,25 @@ void getkey(void)
   metapressed = 0;
   shiftonlypressed = 0;
 
-  if ((win_keystate[KEY_LEFTSHIFT]) || (win_keystate[KEY_RIGHTSHIFT]) ||
-      (win_keystate[KEY_CTRL]) || (win_keystate[KEY_RIGHTCTRL]))
-    shiftpressed = 1;
-  if (((win_keystate[KEY_LEFTSHIFT]) || (win_keystate[KEY_RIGHTSHIFT])) &&
-      (!win_keystate[KEY_CTRL]) && (!win_keystate[KEY_RIGHTCTRL]) &&
-      (!win_keystate[KEY_LEFTMETA]) && (!win_keystate[KEY_RIGHTMETA]))
-    shiftonlypressed = 1;
-  if ((win_keystate[KEY_CTRL]) || (win_keystate[KEY_RIGHTCTRL]))
-    ctrlpressed = 1;
-  if ((win_keystate[KEY_ALT]) || (win_keystate[KEY_RIGHTALT]))
-    altpressed = 1;
-  if ((win_keystate[KEY_LEFTMETA]) || (win_keystate[KEY_RIGHTMETA]))
-    metapressed = 1;
+  // the modifiers as the system has them now: a key-up that never arrived
+  // (screenshot keys, switching apps on a Mac) must not leave CMD / CTRL held,
+  // which turned LEFT / RIGHT into start / end jumps and clicks into right clicks
+  {
+    static int scripted = -1;      // test scripts push key events: SDL does not track those
+    SDL_Keymod m;
+    int sh, ct, al, me;
+    if (scripted < 0) scripted = getenv("GG_SCRIPT") ? 1 : 0;
+    m = scripted ? KMOD_NONE : SDL_GetModState();
+    sh = (m & KMOD_SHIFT) || ((scripted) && ((win_keystate[KEY_LEFTSHIFT]) || (win_keystate[KEY_RIGHTSHIFT])));
+    ct = (m & KMOD_CTRL) || ((scripted) && ((win_keystate[KEY_CTRL]) || (win_keystate[KEY_RIGHTCTRL])));
+    al = (m & KMOD_ALT) || ((scripted) && ((win_keystate[KEY_ALT]) || (win_keystate[KEY_RIGHTALT])));
+    me = (m & KMOD_GUI) || ((scripted) && ((win_keystate[KEY_LEFTMETA]) || (win_keystate[KEY_RIGHTMETA])));
+    shiftpressed = sh || ct;
+    shiftonlypressed = sh && !ct && !me;
+    ctrlpressed = ct;
+    altpressed = al;
+    metapressed = me;
+  }
 
   // Keyboard layout DE (QWERTZ): commands with SHIFT / CTRL / CMD use the
   // key labels, so the Y and Z keys are swapped for them (CTRL+Z = undo on

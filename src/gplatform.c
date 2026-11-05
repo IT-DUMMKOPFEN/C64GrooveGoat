@@ -23,6 +23,8 @@ unsigned char win_keystate[MAX_KEYS];
 int win_asciikey = 0;
 int win_symkey = 0;
 unsigned win_mousebuttons = 0;
+unsigned win_mousepressed = 0;    // pressed since the last frame (a quick tap on a trackpad
+                                  // is pressed and released within one frame)
 int win_mousewheel = 0;
 int win_mousex = 0;
 int win_mousey = 0;
@@ -291,13 +293,19 @@ void win_checkmessages(void)
       {
         case SDL_BUTTON_LEFT:
         // Mac users without a right button: CTRL+click acts as right click
-        if (win_keystate[KEY_CTRL] || win_keystate[KEY_RIGHTCTRL])
+        if (SDL_GetModState() & KMOD_CTRL)
+        {
           win_mousebuttons |= MOUSEB_RIGHT;
+          win_mousepressed |= MOUSEB_RIGHT;
+        }
         else
+        {
           win_mousebuttons |= MOUSEB_LEFT;
+          win_mousepressed |= MOUSEB_LEFT;
+        }
         break;
-        case SDL_BUTTON_MIDDLE: win_mousebuttons |= MOUSEB_MIDDLE; break;
-        case SDL_BUTTON_RIGHT: win_mousebuttons |= MOUSEB_RIGHT; break;
+        case SDL_BUTTON_MIDDLE: win_mousebuttons |= MOUSEB_MIDDLE; win_mousepressed |= MOUSEB_MIDDLE; break;
+        case SDL_BUTTON_RIGHT: win_mousebuttons |= MOUSEB_RIGHT; win_mousepressed |= MOUSEB_RIGHT; break;
       }
       break;
 
