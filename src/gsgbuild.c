@@ -9,6 +9,8 @@
 #include "goattrk2.h"
 #include "gsgcomp.h"
 #include "gsgbuild.h"
+#include "gsgexpr.h"
+#include "gsgtimbre.h"
 
 #define MAXSPEED 255
 
@@ -172,18 +174,66 @@ static int cmddata(const SGCMD *cm, int ch, int model)
 
 // ---------------------------------------------------------------------------
 
-typedef struct { unsigned char note, ins, cmd, data; } PROW;
+typedef struct { unsigned char note, ins, cmd; int sym; unsigned char rcmd, data; } PROW;
 
-static PROW *patts[1024];
-static int pattrows[1024];
+#define MAX_PACKED 248
+
+// command data as in SIDGen: plain bytes, ('spd', left, right), ('fprog', name, mask)
+typedef struct { int kind, a, b; char fname[24]; } SYM;
+static SYM *syms = NULL;
+static int nsyms = 0, capsyms = 0;
+
+static int addsym(int kind, int a, int b, const char *fname)
+{
+  int k;
+  for (k = 0; k < nsyms; k++)
+    if ((syms[k].kind == kind) && (syms[k].a == a) && (syms[k].b == b) && ((kind != CD_FPROG) || (!strcmp(syms[k].fname, fname))))
+      return k;
+  if (nsyms >= capsyms) syms = (SYM *)realloc(syms, sizeof(SYM) * (capsyms = capsyms * 2 + 256));
+  syms[nsyms].kind = kind;
+  syms[nsyms].a = a;
+  syms[nsyms].b = b;
+  snprintf(syms[nsyms].fname, sizeof syms[nsyms].fname, "%s", fname ? fname : "");
+  return nsyms++;
+}
+
+static int plainsym(int v) { return addsym(CD_PLAIN, v & 0xff, 0, NULL); }
+
+static int cmdsym(const SGCMD *cm, int ch)
+{
+  if (cm->kind == CD_SPD) return addsym(CD_SPD, cm->a & 0xff, cm->b & 0xff, NULL);
+  if (cm->kind == CD_FPROG) return addsym(CD_FPROG, 0, cm->b >= 0 ? cm->b : (1 << ch), cm->fname);
+  return plainsym(cm->a);
+}
+
+static int symdata(const SYM *y, int model)
+{
+  if (y->kind == CD_PLAIN) return y->a;
+  if (y->kind == CD_SPD) return spd(y->a, y->b);
+  {
+    int l[64], r[64], n = filterprog(y->fname, y->b, model, 0, l, r);
+    return place(2, l, r, n);
+  }
+}
+
+static PROW *patts[4096];
+static int pattrows[4096];
 static int npatts;
+
+static int samerows(const PROW *a, const PROW *b, int n)
+{
+  int k;
+  for (k = 0; k < n; k++)
+    if ((a[k].note != b[k].note) || (a[k].ins != b[k].ins) || (a[k].cmd != b[k].cmd) || (a[k].sym != b[k].sym)) return 0;
+  return 1;
+}
 
 static int addpattern(PROW *rows, int n)
 {
   int k;
   for (k = 0; k < npatts; k++)
-    if ((pattrows[k] == n) && (!memcmp(patts[k], rows, sizeof(PROW) * n))) return k;
-  if (npatts >= 1024) return -1;
+    if ((pattrows[k] == n) && (samerows(patts[k], rows, n))) return k;
+  if (npatts >= 4096) return -1;
   patts[npatts] = (PROW *)malloc(sizeof(PROW) * n);
   memcpy(patts[npatts], rows, sizeof(PROW) * n);
   pattrows[npatts] = n;
@@ -197,6 +247,386 @@ static void freepatterns(void)
   npatts = 0;
 }
 
+// size of a pattern packed by the relocator (greloc.c packpattern), as SIDGen's gt_packed_size
+static int packedsize(const PROW *rows, int n)
+{
+  static char out[MAX_PATTROWS * 4 * 8 + 16];
+  int no = 0, instr = 0, command = -1, data = -1, k, size = 0, cc = 0;
+  for (k = 0; k < n; k++)
+  {
+    const PROW *w = &rows[k];
+    if ((w->ins) && (!((k) && (w->ins == instr)))) { out[no++] = 'i'; instr = w->ins; }
+    if ((w->cmd != command) || (w->sym != data))
+    {
+      command = w->cmd;
+      data = w->sym;
+      out[no++] = 'f';
+      if (w->cmd) out[no++] = 'd';
+    }
+    else if (w->note == REST)
+    {
+      out[no++] = 'r';
+      continue;
+    }
+    if (w->note != REST) out[no++] = 'n';
+  }
+  while (cc < no)
+  {
+    if ((out[cc] == 'r') && (cc))
+    {
+      int d = cc;
+      while ((d < no) && (out[d] == 'r') && (d - cc < 64)) d++;
+      size++;
+      cc = d;
+    }
+    else
+    {
+      size++;
+      cc++;
+    }
+  }
+  return size;
+}
+
+// ---------------------------------------------------------------------------
+// Song.relayout: cut all voices again into patterns of 1 to 8 bars (dynamic
+// programming per voice) so that as many patterns as possible are shared
+// ---------------------------------------------------------------------------
+
+typedef struct { int *t, n; } TOKS;
+typedef struct { int len; int b[8]; } GRP;
+
+static PROW **bars_rows;
+static int nbars_, capbars_;
+static int barlen_;
+
+static int grpkey_eq(const GRP *a, const GRP *b) { return (a->len == b->len) && (!memcmp(a->b, b->b, sizeof(int) * a->len)); }
+
+// group -> counter (hash table)
+typedef struct { GRP g; int v, used; } GENT;
+typedef struct { GENT *e; int cap, n; } GMAP;
+
+static unsigned ghash(const GRP *g)
+{
+  unsigned h = 2166136261u;
+  int k;
+  for (k = 0; k < g->len; k++) h = (h ^ (unsigned)g->b[k]) * 16777619u;
+  return (h ^ g->len) * 2654435761u;
+}
+
+static GENT *gfind(GMAP *m, const GRP *g, int create)
+{
+  unsigned h;
+  if (!m->cap)
+  {
+    if (!create) return NULL;
+    m->cap = 4096;
+    m->e = (GENT *)calloc(m->cap, sizeof(GENT));
+  }
+  if ((create) && (m->n * 2 >= m->cap))
+  {
+    GENT *old = m->e;
+    int oc = m->cap, k;
+    m->cap *= 2;
+    m->e = (GENT *)calloc(m->cap, sizeof(GENT));
+    m->n = 0;
+    for (k = 0; k < oc; k++)
+      if (old[k].used)
+      {
+        GENT *x = gfind(m, &old[k].g, 1);
+        x->v = old[k].v;
+      }
+    free(old);
+  }
+  h = ghash(g) & (m->cap - 1);
+  while (m->e[h].used)
+  {
+    if (grpkey_eq(&m->e[h].g, g)) return &m->e[h];
+    h = (h + 1) & (m->cap - 1);
+  }
+  if (!create) return NULL;
+  m->e[h].used = 1;
+  m->e[h].g = *g;
+  m->e[h].v = 0;
+  m->n++;
+  return &m->e[h];
+}
+
+static void gfree(GMAP *m)
+{
+  free(m->e);
+  m->e = NULL;
+  m->cap = m->n = 0;
+}
+
+static GMAP fitcache;
+
+static int grp_fits(const GRP *g)
+{
+  GENT *e = gfind(&fitcache, g, 0);
+  if (!e)
+  {
+    static PROW rows[MAX_PATTROWS * 8];
+    int n = 0, k, r;
+    for (k = 0; k < g->len; k++)
+      for (r = 0; r < barlen_; r++) rows[n++] = bars_rows[g->b[k]][r];
+    e = gfind(&fitcache, g, 1);
+    e->v = (n <= MAX_PATTROWS) && (packedsize(rows, n) <= MAX_PACKED) ? 1 : 2;
+  }
+  return e->v == 1;
+}
+
+static int cutvoice(const TOKS *tk, GMAP *have, int maxl, GRP **outp)
+{
+  int n = tk->n, i, l, nout = 0;
+  GMAP own;
+  double *cost = (double *)calloc(n + 1, sizeof(double));
+  int *ent = (int *)calloc(n + 1, sizeof(int)), *nxt = (int *)calloc(n + 1, sizeof(int));
+  GRP *out = (GRP *)malloc(sizeof(GRP) * (n + 1));
+  memset(&own, 0, sizeof own);
+  for (i = 0; i < n; i++)
+    for (l = 1; (l <= maxl) && (l <= n - i); l++)
+    {
+      GRP g;
+      g.len = l;
+      memcpy(g.b, tk->t + i, sizeof(int) * l);
+      gfind(&own, &g, 1)->v++;
+    }
+  for (i = n - 1; i >= 0; i--)
+  {
+    double bc = 0;
+    int be = 0, bl = 0, have_ = 0;
+    for (l = 1; (l <= maxl) && (l <= n - i); l++)
+    {
+      GRP g;
+      double cc;
+      GENT *h;
+      g.len = l;
+      memcpy(g.b, tk->t + i, sizeof(int) * l);
+      if ((l > 1) && (!grp_fits(&g))) break;
+      h = gfind(have, &g, 0);
+      cc = cost[i + l] + ((h && h->v > 0) ? 0 : 1.0 / gfind(&own, &g, 0)->v);
+      if ((!have_) || (cc < bc) || ((cc == bc) && (ent[i + l] + 1 < be)))
+      {
+        have_ = 1;
+        bc = cc;
+        be = ent[i + l] + 1;
+        bl = l;
+      }
+    }
+    cost[i] = bc;
+    ent[i] = be;
+    nxt[i] = bl;
+  }
+  i = 0;
+  while (i < n)
+  {
+    out[nout].len = nxt[i];
+    memcpy(out[nout].b, tk->t + i, sizeof(int) * nxt[i]);
+    nout++;
+    i += nxt[i];
+  }
+  free(cost);
+  free(ent);
+  free(nxt);
+  gfree(&own);
+  *outp = out;
+  return nout;
+}
+
+static void relayout(int nch, int *norders, int (*orders)[1024], int bar)
+{
+  int maxl = 128 / bar, ch, k, i, nseg = nch;
+  TOKS toks[MAX_CHN];
+  GRP *cuts[MAX_CHN];
+  int ncuts[MAX_CHN], order[MAX_CHN], rnd;
+  GMAP have, ids;
+  if (maxl < 1) maxl = 1;
+  if (maxl > 8) maxl = 8;
+  barlen_ = bar;
+  memset(&have, 0, sizeof have);
+  memset(&ids, 0, sizeof ids);
+  memset(&fitcache, 0, sizeof fitcache);
+  nbars_ = 0;
+  // bars of every voice (the orderlists restart at 0: one segment per voice)
+  {
+    // bar ids: rows compared in full
+    for (ch = 0; ch < nseg; ch++)
+    {
+      int total = 0, d;
+      static PROW rows[65536];
+      for (d = 0; d < norders[ch]; d++)
+      {
+        int p = orders[ch][d], r;
+        for (r = 0; (r < pattrows[p]) && (total < 65536); r++) rows[total++] = patts[p][r];
+      }
+      toks[ch].n = 0;
+      toks[ch].t = (int *)malloc(sizeof(int) * (total / bar + 2));
+      for (i = 0; i < total; i += bar)
+      {
+        int len = total - i < bar ? total - i : bar, b, found = -1;
+        for (b = 0; b < nbars_; b++)
+          if (samerows(bars_rows[b], rows + i, len) && ((len == bar) || (b >= 0 && 0)))
+          {
+            found = b;
+            break;
+          }
+        if (found < 0)
+        {
+          if (nbars_ >= capbars_) bars_rows = (PROW **)realloc(bars_rows, sizeof(PROW *) * (capbars_ = capbars_ * 2 + 256));
+          bars_rows[nbars_] = (PROW *)malloc(sizeof(PROW) * bar);
+          memcpy(bars_rows[nbars_], rows + i, sizeof(PROW) * len);
+          found = nbars_++;
+        }
+        toks[ch].t[toks[ch].n++] = found;
+      }
+    }
+  }
+  // voices with the most different bars first
+  for (k = 0; k < nseg; k++) order[k] = k;
+  for (k = 0; k < nseg; k++)
+  {
+    int a;
+    for (a = k + 1; a < nseg; a++)
+    {
+      int da = 0, dk = 0, x, y;
+      for (x = 0; x < toks[order[a]].n; x++)
+      {
+        int dup = 0;
+        for (y = 0; y < x; y++)
+          if (toks[order[a]].t[y] == toks[order[a]].t[x]) { dup = 1; break; }
+        if (!dup) da++;
+      }
+      for (x = 0; x < toks[order[k]].n; x++)
+      {
+        int dup = 0;
+        for (y = 0; y < x; y++)
+          if (toks[order[k]].t[y] == toks[order[k]].t[x]) { dup = 1; break; }
+        if (!dup) dk++;
+      }
+      if ((da > dk) || ((da == dk) && (order[a] < order[k])))
+      {
+        int t = order[k];
+        order[k] = order[a];
+        order[a] = t;
+      }
+    }
+  }
+  for (k = 0; k < nseg; k++) { cuts[k] = NULL; ncuts[k] = 0; }
+  for (rnd = 0; rnd < 4; rnd++)
+    for (k = 0; k < nseg; k++)
+    {
+      int v = order[k], j;
+      if (cuts[v])
+      {
+        for (j = 0; j < ncuts[v]; j++)
+        {
+          GENT *h = gfind(&have, &cuts[v][j], 0);
+          if (h) h->v--;
+        }
+        free(cuts[v]);
+      }
+      ncuts[v] = cutvoice(&toks[v], &have, maxl, &cuts[v]);
+      for (j = 0; j < ncuts[v]; j++) gfind(&have, &cuts[v][j], 1)->v++;
+    }
+  // the plain cut into equal pieces is sometimes better
+  {
+    int Ls[2] = {4, maxl}, li;
+    for (li = 0; li < 2; li++)
+    {
+      int L = Ls[li] < maxl ? Ls[li] : maxl, ok = 1, j, nplain = 0, ncut = 0;
+      GMAP up, uc;
+      GRP *plain[MAX_CHN];
+      int np[MAX_CHN];
+      memset(&up, 0, sizeof up);
+      memset(&uc, 0, sizeof uc);
+      for (k = 0; k < nseg; k++)
+      {
+        plain[k] = (GRP *)malloc(sizeof(GRP) * (toks[k].n / L + 2));
+        np[k] = 0;
+        for (i = 0; i < toks[k].n; i += L)
+        {
+          GRP g;
+          g.len = toks[k].n - i < L ? toks[k].n - i : L;
+          memcpy(g.b, toks[k].t + i, sizeof(int) * g.len);
+          if (!grp_fits(&g)) ok = 0;
+          plain[k][np[k]++] = g;
+          if (!gfind(&up, &g, 0)) { gfind(&up, &g, 1); nplain++; }
+        }
+        for (j = 0; j < ncuts[k]; j++)
+          if (!gfind(&uc, &cuts[k][j], 0)) { gfind(&uc, &cuts[k][j], 1); ncut++; }
+      }
+      if ((ok) && (nplain < ncut))
+        for (k = 0; k < nseg; k++)
+        {
+          free(cuts[k]);
+          cuts[k] = plain[k];
+          ncuts[k] = np[k];
+          plain[k] = NULL;
+        }
+      for (k = 0; k < nseg; k++) free(plain[k]);
+      gfree(&up);
+      gfree(&uc);
+    }
+  }
+  // the new patterns and orderlists
+  {
+    int newn = 0;
+    static PROW *np_[4096];
+    static int nr_[4096];
+    GMAP index;
+    memset(&index, 0, sizeof index);
+    for (ch = 0; ch < nseg; ch++)
+    {
+      int j;
+      norders[ch] = 0;
+      for (j = 0; j < ncuts[ch]; j++)
+      {
+        GENT *e = gfind(&index, &cuts[ch][j], 0);
+        if (!e)
+        {
+          int r = 0, b2, rr;
+          e = gfind(&index, &cuts[ch][j], 1);
+          e->v = newn;
+          np_[newn] = (PROW *)malloc(sizeof(PROW) * cuts[ch][j].len * bar);
+          for (b2 = 0; b2 < cuts[ch][j].len; b2++)
+          {
+            int bl = bar;
+            // the last bar of a voice may be shorter
+            for (rr = 0; rr < bl; rr++) np_[newn][r++] = bars_rows[cuts[ch][j].b[b2]][rr];
+          }
+          nr_[newn] = r;
+          newn++;
+        }
+        if (norders[ch] < 1024) orders[ch][norders[ch]++] = e->v;
+      }
+    }
+    if (newn <= MAX_PATT)
+    {
+      freepatterns();
+      for (k = 0; k < newn; k++)
+      {
+        patts[k] = np_[k];
+        pattrows[k] = nr_[k];
+      }
+      npatts = newn;
+    }
+    else
+      for (k = 0; k < newn; k++) free(np_[k]);
+    gfree(&index);
+  }
+  for (k = 0; k < nseg; k++)
+  {
+    free(cuts[k]);
+    free(toks[k].t);
+  }
+  for (k = 0; k < nbars_; k++) free(bars_rows[k]);
+  nbars_ = 0;
+  gfree(&have);
+  gfree(&ids);
+  gfree(&fitcache);
+}
+
 int sg_buildsong(COMP *c, int writeto, char *err, int errsize)
 {
   int used[SG_MAXINS], order[SG_MAXINS], idx[SG_MAXINS], nins = 0, k, ch, plen, gt, mintempo;
@@ -208,6 +638,26 @@ int sg_buildsong(COMP *c, int writeto, char *err, int errsize)
   int nch = c->ntracks, model = c->model;
 
   filterroles(c);
+  // playing technique: glides, slides, fall-offs, vibrato, filter sweeps, register arc
+  if ((c->expressive) && (!c->expressed))
+  {
+    c->expressed = 1;
+    sg_express(c);
+  }
+  // two SIDs: similar sounding voices on different chips
+  if (c->ntracks == 6)
+  {
+    int ord[6], k2;
+    double b, a;
+    SGTRACK tmp[6];
+    tb_place_tracks(c, c->tracks, c->total_rows, c->voices == 2 ? 2 : -1, ord, &b, &a);
+    for (k2 = 0; k2 < 6; k2++) tmp[k2] = c->tracks[ord[k2]];
+    for (k2 = 0; k2 < 6; k2++)
+    {
+      c->tracks[k2] = tmp[k2];
+      c->track_order[k2] = ord[k2];
+    }
+  }
   // tempo: F command, or funktempo (E) through speed table entry 1
   nspeed = 0;
   ncache = 0;
@@ -273,6 +723,8 @@ int sg_buildsong(COMP *c, int writeto, char *err, int errsize)
     ptr[k][3] = s;
   }
   // patterns: cut the voices into patterns of 4 bars, the same ones only once
+  // (rows keep symbolic command data until the final layout, as SIDGen)
+  nsyms = 0;
   plen = 4 * c->spb;
   for (;;)
   {
@@ -290,15 +742,15 @@ int sg_buildsong(COMP *c, int writeto, char *err, int errsize)
         for (r = start; (r < start + plen) && (r < c->total_rows); r++)
         {
           SGEV *e = r < t->rows ? &t->ev[r] : NULL;
-          int cmd = 0, data = 0;
+          int cmd = 0, sym = plainsym(0);
           const SGCMD *cm = NULL;
-          if ((ch % 6 == 0) && (r == 0)) { cmd = tcmd; data = tdata; }
+          if ((ch % 6 == 0) && (r == 0)) { cmd = tcmd; sym = plainsym(tdata); }
           if ((!cmd) && (r < t->rows) && (t->hascmds[r]) && (!(e && e->type == EV_NOTE && e->hascmd))) cm = &t->cmds[r];
           if ((!cmd) && (e) && (e->type == EV_NOTE) && (e->hascmd)) cm = &e->cmd;
           if (cm)
           {
             cmd = cm->cmd;
-            data = cmddata(cm, ch, model);
+            sym = cmdsym(cm, ch);
           }
           if ((!e) || (e->type == EV_NONE)) { rows[n].note = REST; rows[n].ins = 0; }
           else if (e->type == EV_OFF) { rows[n].note = KEYOFF; rows[n].ins = 0; }
@@ -311,7 +763,7 @@ int sg_buildsong(COMP *c, int writeto, char *err, int errsize)
             rows[n].ins = idx[e->ins] ? idx[e->ins] : 1;
           }
           rows[n].cmd = cmd;
-          rows[n].data = data;
+          rows[n].sym = sym;
           n++;
         }
         p = addpattern(rows, n);
@@ -320,35 +772,92 @@ int sg_buildsong(COMP *c, int writeto, char *err, int errsize)
       }
       if (norders[ch] > maxo) maxo = norders[ch];
     }
-    fits = (npatts <= MAX_PATT) && (maxo <= MAX_SONGLEN - 2);
-    if (fits) break;
-    if (plen * 2 > MAX_PATTROWS)
+    if (nch > 6)
     {
+      // 4-8 SIDs: SIDGen checks per SID pair here; the whole song is cut again below
+      int pp, worst = 0;
+      for (pp = 0; pp < nch; pp += 6)
+      {
+        static unsigned char u[1024];
+        int q, d, cnt = 0;
+        memset(u, 0, sizeof u);
+        for (q = pp; (q < pp + 6) && (q < nch); q++)
+          for (d = 0; d < norders[q]; d++)
+            if (!u[orders[q][d]]) { u[orders[q][d]] = 1; cnt++; }
+        if (cnt > worst) worst = cnt;
+      }
+      fits = worst <= MAX_PATT;
+    }
+    else fits = npatts <= MAX_PATT;
+    if ((fits) && (maxo <= MAX_SONGLEN)) break;
+    if (plen * 2 > 128)
+    {
+      if (nch > 6) break;
       snprintf(err, errsize, "The piece is too long or too varied (%d patterns, at most %d)", npatts, MAX_PATT);
       freepatterns();
       return 0;
     }
     plen *= 2;
   }
-  for (k = 0; k < 3; k++)
-    if (tabs[k].n > MAX_TABLELEN)
+  // too many patterns for one song, or a pattern too big for the packer: cut the voices again
+  {
+    int big = 0, k3;
+    for (k3 = 0; k3 < npatts; k3++)
+      if (packedsize(patts[k3], pattrows[k3]) > MAX_PACKED) big = 1;
+    if (((nch > 6) && (npatts > MAX_PATT)) || (big)) relayout(nch, norders, orders, c->spb);
+  }
+  {
+    int k3, big = 0;
+    for (k3 = 0; k3 < npatts; k3++)
+      if (packedsize(patts[k3], pattrows[k3]) > MAX_PACKED) big = 1;
+    if (big)
     {
-      snprintf(err, errsize, "%s table too long (%d > 255)", k == 0 ? "Wave" : k == 1 ? "Pulse" : "Filter", tabs[k].n);
+      snprintf(err, errsize, "A pattern is too complex for GoatTracker (over 256 bytes packed)");
       freepatterns();
-      return 0;
+      return -1;
     }
-  if (nspeed > MAX_TABLELEN)
-  {
-    snprintf(err, errsize, "Speed table too long");
-    freepatterns();
-    return 0;
   }
-  if (!writeto)
+  if (npatts + ((nch < 3 * (c->sids == 6 ? 8 : c->sids)) ? 1 : 0) > MAX_PATT)
   {
+    snprintf(err, errsize, "The piece is too long or too varied for one song (%d patterns, at most %d)", npatts, MAX_PATT);
     freepatterns();
-    return 1;
+    return -1;
   }
-
+  // command data: speed table entries and filter programs, in the order of the patterns
+  {
+    int drop1 = 0, dropA = 0, tries;
+    int savespeed = nspeed, savetab[3], savecache = ncache;
+    for (k = 0; k < 3; k++) savetab[k] = tabs[k].n;
+    for (tries = 0; tries < 3; tries++)
+    {
+      int p, r, usesA = 0, uses1 = 0;
+      nspeed = savespeed;
+      ncache = savecache;
+      for (k = 0; k < 3; k++) tabs[k].n = savetab[k];
+      for (p = 0; p < npatts; p++)
+        for (r = 0; r < pattrows[p]; r++)
+        {
+          PROW *w = &patts[p][r];
+          SYM *y = &syms[w->sym];
+          if (y->kind != CD_PLAIN)
+          {
+            if (w->cmd == 0xa) usesA = 1;
+            if ((w->cmd >= 1) && (w->cmd <= 4)) uses1 = 1;
+          }
+          if ((y->kind != CD_PLAIN) && (((dropA) && (w->cmd == 0xa)) || ((drop1) && (w->cmd >= 1) && (w->cmd <= 4))))
+          {
+            w->rcmd = 0;
+            w->data = 0;
+            continue;
+          }
+          w->rcmd = w->cmd;
+          w->data = symdata(y, model);
+        }
+      if ((tabs[2].n > MAX_TABLELEN) && (!dropA) && (usesA)) { dropA = 1; continue; }
+      if ((nspeed > MAX_TABLELEN) && (!drop1) && (uses1)) { drop1 = 1; continue; }
+      break;
+    }
+  }
   // ---- write the song into memory
   {
     int s, nsids = c->sids == 6 ? 8 : c->sids;
@@ -391,7 +900,7 @@ int sg_buildsong(COMP *c, int writeto, char *err, int errsize)
       {
         pattern[k][r * 4] = patts[k][r].note;
         pattern[k][r * 4 + 1] = patts[k][r].ins;
-        pattern[k][r * 4 + 2] = patts[k][r].cmd;
+        pattern[k][r * 4 + 2] = patts[k][r].rcmd;
         pattern[k][r * 4 + 3] = patts[k][r].data;
       }
       pattern[k][pattrows[k] * 4] = ENDPATT;
@@ -415,7 +924,6 @@ int sg_buildsong(COMP *c, int writeto, char *err, int errsize)
         static PROW silent[16];
         int p;
         for (d = 0; d < 16; d++) { silent[d].note = REST; silent[d].ins = 0; silent[d].cmd = 0; silent[d].data = 0; }
-        silent[0].note = KEYOFF;
         p = npatts < MAX_PATT ? npatts : MAX_PATT - 1;
         for (d = 0; d < 16; d++)
         {

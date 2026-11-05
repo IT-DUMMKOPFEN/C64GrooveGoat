@@ -829,6 +829,20 @@ void sg_makearp(const SGARP *t, int q, SGINS *o)
            q == Q_AUG ? "Aug" : q == Q_SUS4 ? "Sus4" : q == Q_SUS2 ? "Sus2" : q == Q_MAJ7 ? "Maj7" : q == Q_MIN7 ? "m7" :
            q == Q_DOM7 ? "7" : q == Q_POW ? "5" : q == Q_MIN6 ? "m6" : "6");
   snprintf(o->en, sizeof o->en, "%s %s", t->en + 4, sg_qfile[q]);
+  {
+    // the English name from SIDGen (i18n.en)
+    static char *at = NULL;
+    char key[64], *p;
+    if (!at) at = jointext(sg_arpentext);
+    snprintf(key, sizeof key, "\n%s\t", o->name);
+    p = strstr(at, key + 1) == at ? at - 1 : strstr(at, key);
+    if (p)
+    {
+      char *e = p + strlen(key), *nl = strchr(e, '\n');
+      int l = nl ? (int)(nl - e) : (int)strlen(e);
+      snprintf(o->en, sizeof o->en, "%.*s", l < 47 ? l : 47, e);
+    }
+  }
   snprintf(o->cat, sizeof o->cat, "arp");
   snprintf(o->fam, sizeof o->fam, "Akkord");
   o->ad = t->ad;
@@ -852,6 +866,83 @@ void sg_makearp(const SGARP *t, int q, SGINS *o)
   o->derived = 1;
 }
 
+static char (*wfrom)[40], (*wto)[40];
+static int numwords = -1;
+
+void sg_translate(const char *name, char *out, int size)
+{
+  char part[64];
+  int n = 0, o = 0, k;
+  const char *p = name;
+  if (numwords < 0)
+  {
+    char *t = jointext(sg_wordtext), *line, *next;
+    int cap = 0;
+    numwords = 0;
+    for (line = t; *line; line = next)
+    {
+      char *f[3];
+      next = strchr(line, '\n');
+      if (next) *next++ = 0;
+      else next = line + strlen(line);
+      if (splittabs(line, f, 3) < 2) continue;
+      if (numwords >= cap)
+      {
+        cap = cap * 2 + 256;
+        wfrom = realloc(wfrom, (size_t)cap * 40);
+        wto = realloc(wto, (size_t)cap * 40);
+      }
+      snprintf(wfrom[numwords], 40, "%s", f[0]);
+      snprintf(wto[numwords], 40, "%s", f[1]);
+      numwords++;
+    }
+    free(t);
+  }
+  out[0] = 0;
+  for (;;)
+  {
+    if ((*p == ' ') || (*p == '-') || (!*p))
+    {
+      const char *rep = NULL;
+      part[n] = 0;
+      for (k = 0; k < numwords; k++)
+        if (!strcmp(wfrom[k], part)) { rep = wto[k]; break; }
+      o += snprintf(out + o, o < size ? size - o : 0, "%s", rep ? rep : part);
+      n = 0;
+      if (!*p) break;
+      o += snprintf(out + o, o < size ? size - o : 0, "%c", *p);
+      p++;
+      continue;
+    }
+    if (n < 63) part[n++] = *p;
+    p++;
+  }
+  {
+    char *x = strstr(out, "Kick Deep 909");
+    if (x) memcpy(x, "Kick 909 Deep", 13);
+  }
+}
+
+void sg_en(const char *name, char *out, int size)
+{
+  int c;
+  sg_init();
+  if (!strncmp(name, "Echo ", 5))
+  {
+    char rest[64];
+    sg_en(name + 5, rest, sizeof rest);
+    snprintf(out, size, "Echo %s", rest);
+    return;
+  }
+  for (c = 0; c < numins; c++)
+    if (!strcmp(ins[c].name, name))
+    {
+      snprintf(out, size, "%s", ins[c].en);
+      return;
+    }
+  sg_translate(name, out, size);
+}
+
 void sg_echoof(const SGINS *src, SGINS *o)
 {
   int s = (src->sr >> 4) - 6;
@@ -861,7 +952,7 @@ void sg_echoof(const SGINS *src, SGINS *o)
   snprintf(nm, sizeof nm, "Echo %s", src->name);
   nm[15] = 0;
   snprintf(o->name, sizeof o->name, "%.47s", nm);
-  snprintf(nm, sizeof nm, "Echo %s", src->en);
+  sg_en(o->name, nm, sizeof nm);
   snprintf(o->en, sizeof o->en, "%.47s", nm);
   o->sr = (s << 4) | (src->sr & 0x0f);
   o->ad = src->ad | 0x01;
@@ -873,10 +964,18 @@ void sg_echoof(const SGINS *src, SGINS *o)
 void sg_octavebass(const SGINS *src, SGINS *o)
 {
   char nm[64];
+  int l;
   *o = *src;
   snprintf(nm, sizeof nm, "%.11s +8", src->name);
-  snprintf(o->name, sizeof o->name, "%.47s", nm);
-  snprintf(nm, sizeof nm, "%.11s +8", src->en);
+  // .strip()
+  l = strlen(nm);
+  while ((l > 0) && (nm[l - 1] == ' ')) nm[--l] = 0;
+  {
+    char *p = nm;
+    while (*p == ' ') p++;
+    snprintf(o->name, sizeof o->name, "%.47s", p);
+  }
+  sg_translate(o->name, nm, sizeof nm);
   snprintf(o->en, sizeof o->en, "%.47s", nm);
   snprintf(o->cat, sizeof o->cat, "lead");
   snprintf(o->fam, sizeof o->fam, "Synth");
@@ -1034,3 +1133,18 @@ const SGINS *sg_hand(int k) { return &ins[k]; }     // the hand-made ones come f
 int sg_arpcount(void) { sg_init(); return numarps; }
 const SGARP *sg_arpat(int k) { return &arps[k]; }
 int sg_arpindex(const SGARP *a) { return (int)(a - arps); }
+
+void sg_addfilter(const char *name, const int *l, const int *r, int n)
+{
+  SGFILTER *f;
+  sg_init();
+  if (sg_findfilter(name)) return;
+  filters = (SGFILTER *)realloc(filters, sizeof(SGFILTER) * (numfilters + 1));
+  f = &filters[numfilters++];
+  memset(f, 0, sizeof *f);
+  snprintf(f->name, sizeof f->name, "%s", name);
+  if (n > 64) n = 64;
+  memcpy(f->l, l, sizeof(int) * n);
+  memcpy(f->r, r, sizeof(int) * n);
+  f->n = n;
+}

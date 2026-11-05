@@ -7,6 +7,7 @@
 #include <math.h>
 #include "gsgcomp.h"
 #include "gsgtimbre.h"
+#include "gsgexpr.h"
 
 const char *sg_secname[SEC_NUM] = {"intro", "A", "B", "C", "outro", "A2", "B2", "C2"};
 const char *sg_kitcat[SK_NUM] = {"kick", "snare", "hat", "ohat", "clap", "crash", "tom", "ride", "perc"};
@@ -1947,6 +1948,7 @@ int comp_compose(COMP *c)
   plan_structure(c);
   make_material(c);
   comp_render(c);
+  if (c->expressive) sg_song_ideas(c);
   return 1;
 }
 

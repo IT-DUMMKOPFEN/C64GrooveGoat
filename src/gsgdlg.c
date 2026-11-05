@@ -34,6 +34,33 @@ static int findvariant(const char *spec, unsigned seed)
   }
 }
 
+// compose and build into the song memory; 4-8 SIDs: if the piece does not
+// fit into one song, again without the variant sections, then also without
+// the register arc (as SIDGen's app)
+COMP *sidgen_make(int v, unsigned seed, double seconds, int sids, int voices, int model, char *err, int errsize, int dumpfirst)
+{
+  int attempt;
+  (void)dumpfirst;
+  for (attempt = 0; attempt < 3; attempt++)
+  {
+    COMP *c = comp_new(v, seed, seconds, sids, voices, model);
+    int r;
+    if (attempt >= 1) c->variants = 0;
+    if (attempt >= 2) c->compact = 1;
+    if (!comp_compose(c))
+    {
+      snprintf(err, errsize, "%s", c->err);
+      comp_free(c);
+      return NULL;
+    }
+    r = sg_buildsong(c, 1, err, errsize);
+    if (r > 0) return c;
+    comp_free(c);
+    if ((r == 0) || (sids < 4)) return NULL;
+  }
+  return NULL;
+}
+
 int sidgen_compose_cli(const char *spec, char *err, int errsize)
 {
   char st[64] = "techno";
@@ -50,11 +77,14 @@ int sidgen_compose_cli(const char *spec, char *err, int errsize)
     snprintf(err, errsize, "Unknown style %s", st);
     return 0;
   }
-  c = comp_new(v, seed, seconds, sids, 3, model);
-  if (!comp_compose(c))
+  c = sidgen_make(v, seed, seconds, sids, 3, model, err, errsize, 0);
+  if (!c)
   {
-    snprintf(err, errsize, "%s", c->err);
-    comp_free(c);
+    if (getenv("GG_SGDUMPSONG"))
+    {
+      FILE *f = fopen(getenv("GG_SGDUMPSONG"), "w");
+      if (f) { fprintf(f, "nofit\n"); fclose(f); }
+    }
     return 0;
   }
   if (getenv("GG_SGDUMP"))
@@ -102,10 +132,42 @@ int sidgen_compose_cli(const char *spec, char *err, int errsize)
       fclose(f);
     }
   }
-  if (!sg_buildsong(c, 1, err, errsize))
+  if (getenv("GG_SGDUMPSONG"))
   {
-    comp_free(c);
-    return 0;
+    FILE *f = fopen(getenv("GG_SGDUMPSONG"), "w");
+    int k, r, t;
+    if (f)
+    {
+      for (k = 1; k < MAX_INSTR; k++)
+      {
+        INSTR *i = &instr[k];
+        if ((!i->ad) && (!i->sr) && (!i->ptr[0]) && (!i->name[0])) break;
+        fprintf(f, "ins %d %02x %02x %d %d %d %d %d %02x %02x %s\n", k, i->ad, i->sr, i->ptr[0], i->ptr[1], i->ptr[2], i->ptr[3],
+                i->vibdelay, i->gatetimer, i->firstwave, i->name);
+      }
+      for (t = 0; t < 4; t++)
+      {
+        static const char *tn[4] = {"wave", "pulse", "filt", "speed"};
+        int len = gettablelen(t);
+        fprintf(f, "tab %s ", tn[t]);
+        for (r = 0; r < len; r++) fprintf(f, "%s%02x:%02x", r ? " " : "", ltable[t][r], rtable[t][r]);
+        fprintf(f, "\n");
+      }
+      for (k = 0; k < numchannels; k++)
+      {
+        fprintf(f, "order %d", k);
+        for (r = 0; r < songlen[0][k]; r++) fprintf(f, " %d", songorder[0][k][r]);
+        fprintf(f, "\n");
+      }
+      for (k = 0; k <= highestusedpattern; k++)
+      {
+        fprintf(f, "patt %d", k);
+        for (r = 0; r < pattlen[k]; r++)
+          fprintf(f, " %02x%02x%x%02x", pattern[k][r * 4], pattern[k][r * 4 + 1], pattern[k][r * 4 + 2], pattern[k][r * 4 + 3]);
+        fprintf(f, "\n");
+      }
+      fclose(f);
+    }
   }
   fprintf(stderr, "%s - %s%s%s, %s %s, %.0f BPM, %d bars, %.0f s, layout %s\n", c->title, sg_styles[v].name,
           sg_styles[v].sub[0] ? " / " : "", sg_styles[v].sub, sg_keyname[c->key], sg_modelabel[c->mode], c->bpm, c->total_bars,

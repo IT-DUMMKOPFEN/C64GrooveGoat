@@ -112,6 +112,9 @@ typedef struct
   SGINS ins[SG_MAXINS];
   int numins;
   int arp_tpl[SG_MAXINS], arp_q[SG_MAXINS];   // arpeggio source (template index or -1)
+  int key_change_row, key_change_by, nstops, stops[4];
+  int expr_stats[6];
+  int expressed, track_order[SG_MAXTRACKS];             // glide scoop fall vib bslide sweep
   char err[160];
 } COMP;
 
@@ -134,6 +137,8 @@ void comp_pick_layer_instruments(COMP *c);
 void comp_layer_roles(COMP *c);
 void comp_render_layers(COMP *c, int sec, int nbars, CHORD *chords, int row0, int first, int last, RND *lead, int nlead,
                         int *bassev_note, int *bassev_dur, int *drums);
+
+const JV *comp_style(COMP *c, const char *key);
 
 // SIDGen style helpers
 JV *style_parse(int styleidx);

@@ -128,11 +128,28 @@ for c in chunks(text, 3000):
     lines.append('  %s,' % cstr(c))
 lines.append('  0};')
 
+# word list of SIDGen's English names (i18n._translate)
+from sidgen import i18n as I18N
+lines.append('const char *sg_wordtext[] = {')
+for c in chunks('\n'.join('%s\t%s' % kv for kv in I18N.WORDS.items()) + '\n', 3000):
+    lines.append('  %s,' % cstr(c))
+lines.append('  0};')
+
 # arpeggio templates: name, ad, sr, wavebyte, speed, octave, pulse, filt, english name
 arows = []
 for t in I.ARPS:
     arows.append('\t'.join([t.name, '%d' % t.ad, '%d' % t.sr, '%d' % t.wavebyte, '%d' % t.speed,
                             '1' if t.octave else '0', hexprog(t.pulse), t.filt or '', en(t.name)]))
+# English names of the arpeggio instruments (template x chord type)
+aen = []
+for t in I.ARPS:
+    for q in I.CHORD_TYPES:
+        ins = t.make(q)
+        aen.append('%s\t%s' % (ins.name, en(ins.name)))
+lines.append('const char *sg_arpentext[] = {')
+for c in chunks('\n'.join(aen) + '\n', 3000):
+    lines.append('  %s,' % cstr(c))
+lines.append('  0};')
 lines.append('const char *sg_arptext = %s;' % ' '.join(cstr(c) for c in chunks('\n'.join(arows) + '\n')))
 
 # chord types (order of the arpeggio library files: maj min dim aug sus4 sus2 maj7 min7 dom7 pow min6 maj6)

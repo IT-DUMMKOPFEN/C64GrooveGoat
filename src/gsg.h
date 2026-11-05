@@ -25,6 +25,8 @@ extern const SGSTYLEREF sg_styles[];
 extern const int sg_numinstr;
 extern const char *sg_instrtext[];
 extern const char *sg_arptext;
+extern const char *sg_arpentext[];
+extern const char *sg_wordtext[];
 extern const char *sg_chordtypes;
 extern const char *sg_filtertext[];
 extern const char *sg_removed;
@@ -152,6 +154,7 @@ void sg_init(void);
 const SGINS *sg_findins(const char *name);           // REMOVED applied
 const SGARP *sg_findarp(const char *name);
 const SGFILTER *sg_findfilter(const char *name);
+void sg_addfilter(const char *name, const int *l, const int *r, int n);
 const char *sg_formodel(const char *name, int model); // 8580: replacement
 double sg_punch(int model, const char *name, int *found);
 int sg_mainwave(const SGINS *i);                      // like genlib.main_wave
@@ -166,6 +169,8 @@ const SGARP *sg_arpat(int k);
 int sg_arpindex(const SGARP *a);
 void sg_make_title(SGRNG *rng, const struct JV *st, char *out, int size);
 void sg_makearp(const SGARP *t, int q, SGINS *out);
+void sg_translate(const char *name, char *out, int size);   // i18n._translate
+void sg_en(const char *name, char *out, int size);          // i18n.en
 void sg_echoof(const SGINS *src, SGINS *out);
 void sg_octavebass(const SGINS *src, SGINS *out);
 
