@@ -88,7 +88,7 @@ by Lasse Öörni (Cadaver) and the
   info dialog with all credits
 - Output volume slider (0-100%, default 80%) with a soft limiter against clipping; the SID
   emulation runs in its own audio thread (no crackling when other programs are busy)
-- Example song "Solar Voyage" (2 SIDs) in `examples/`
+- Example songs in `examples/`: "Solar Voyage" (2 SIDs) and "The Monster Awakens" (1 SID, house / techno with a speech intro)
 
 ## Downloads
 

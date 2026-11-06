@@ -67,7 +67,9 @@ A song consists of:
 |               "examples" folders must stay next to the program.
 |  macOS        Unpack the ZIP file (AppleSilicon for Macs with M chips, Intel for Intel
 |               Macs) and move "C64 GrooveGoat.app" to Applications. On the first start
-|               use right click > Open (the app is not notarized by Apple).
+|               use right click > Open (the app is not notarized by Apple). At the first
+|               start of a new version the instrument library is unpacked once into
+|               ~/Library/Application Support/C64 GrooveGoat (a few seconds).
 |  Linux        Make the AppImage executable (chmod +x C64_GrooveGoat-1.0-x86_64.AppImage)
 |               and start it. The instrument library and the examples are inside the
 |               AppImage. If your system lacks FUSE, start it with --appimage-extract-and-run.
@@ -78,6 +80,10 @@ A song consists of:
 
 No installation of other software is needed; everything (SDL 2, the codecs for MP3/MP4 and the
 instrument library) is included.
+
+If the start takes long, look at startup.log in the settings folder (macOS ~/Library/Application
+Support/C64 GrooveGoat, Linux ~/.groovegoat, Windows next to the configuration): it lists how long
+each step of the start took.
 
 ## The screen
 
@@ -238,7 +244,8 @@ is saved with the other settings.
 ## A first song in five minutes
 
 0. To hear what two SIDs sound like, open examples/solar_voyage_2sid.sng (Open or F10) and press
-   F1. F4 stops.
+   F1. F4 stops. examples/the_monster_awakens.sng is a house / techno piece on one SID that
+   starts with the words "GrooveGoat. The monster awakens".
 1. Click New and choose the number of SIDs. Press F7 to go to the instrument editor. Click the
    Library button and choose a ready-made instrument (type a word to search, SPACE plays a
    preview, ENTER loads it), or click the dice button (CTRL+R) to create a random instrument.
