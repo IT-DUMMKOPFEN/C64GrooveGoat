@@ -9,6 +9,7 @@
 //   PERIOD SLASH        keys, prefix S+ (shift), C+ (ctrl) or A+ (alt)
 //   click:X,Y           left click on text cell X,Y (rclick: right click)
 //   move:X,Y            move the mouse pointer to text cell X,Y
+//   glide:X,Y,N         move the pointer there smoothly in N frames
 //   down:X,Y / up:X,Y   press / release the left mouse button at cell X,Y
 //   dclick:X,Y          double click
 //   wheel:X,Y,N         mouse wheel N steps over cell X,Y
@@ -29,6 +30,20 @@ static int pendingup = 0;
 static SDL_Scancode upcode;
 static int upmods;
 static const char *typing = NULL;
+static int glidex, glidey, glidefrom_x, glidefrom_y, glidesteps = 0, glidestep = 0;
+static int lastwx = 0, lastwy = 0;     // last pointer position (window)
+
+static void pushmotion(int wx, int wy)
+{
+  SDL_Event ev;
+  memset(&ev, 0, sizeof ev);
+  ev.type = SDL_MOUSEMOTION;
+  ev.motion.x = wx;
+  ev.motion.y = wy;
+  SDL_PushEvent(&ev);
+  lastwx = wx;
+  lastwy = wy;
+}
 
 static const struct
 {
@@ -112,11 +127,7 @@ static void pushmouse(int cx, int cy, int button, int down)
   SDL_Event ev;
   int wx, wy;
   cellpos(cx, cy, &wx, &wy);
-  memset(&ev, 0, sizeof ev);
-  ev.type = SDL_MOUSEMOTION;
-  ev.motion.x = wx;
-  ev.motion.y = wy;
-  SDL_PushEvent(&ev);
+  pushmotion(wx, wy);
   memset(&ev, 0, sizeof ev);
   ev.type = down ? SDL_MOUSEBUTTONDOWN : SDL_MOUSEBUTTONUP;
   ev.button.button = button;
@@ -198,15 +209,21 @@ static int dotoken(const char *tok)
   }
   if (!strncmp(tok, "move:", 5))
   {
-    SDL_Event ev;
     int x = 0, y = 0, wx, wy;
     sscanf(tok + 5, "%d,%d", &x, &y);
     cellpos(x, y, &wx, &wy);
-    memset(&ev, 0, sizeof ev);
-    ev.type = SDL_MOUSEMOTION;
-    ev.motion.x = wx;
-    ev.motion.y = wy;
-    SDL_PushEvent(&ev);
+    pushmotion(wx, wy);
+    return 1;
+  }
+  if (!strncmp(tok, "glide:", 6))
+  {
+    int x = 0, y = 0, n = 25;
+    sscanf(tok + 6, "%d,%d,%d", &x, &y, &n);
+    cellpos(x, y, &glidex, &glidey);
+    glidefrom_x = lastwx;
+    glidefrom_y = lastwy;
+    glidesteps = n > 1 ? n : 1;
+    glidestep = 0;
     return 1;
   }
   if (!strncmp(tok, "wheel:", 6))
@@ -305,6 +322,14 @@ void autoscript_tick(void)
     pushmouse(upcode >> 8, upcode & 0xff, pendingup - 2, 0);
     pendingup = 0;
     waitframes = 3;
+    return;
+  }
+  if (glidestep < glidesteps)
+  {
+    double t = (double)++glidestep / glidesteps;
+    t = t * t * (3 - 2 * t);
+    pushmotion(glidefrom_x + (int)((glidex - glidefrom_x) * t), glidefrom_y + (int)((glidey - glidefrom_y) * t));
+    if (glidestep >= glidesteps) glidesteps = glidestep = 0;
     return;
   }
   if (waitframes > 0)

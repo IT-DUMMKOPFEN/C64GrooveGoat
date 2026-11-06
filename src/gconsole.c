@@ -1007,12 +1007,47 @@ void record_frames(int frames)
     recpipe = popen(cmd, "w");
     record_startticks = SDL_GetTicks();
     if (recpipe) atexit(record_close);
+    {
+      extern FILE *writehandle;      // -W: where the sound file was at the first frame
+      if (writehandle) fprintf(stderr, "RECAUDIO %ld\n", ftell(writehandle));
+    }
   }
   if ((!recpipe) || (!fb)) return;
-  while (frames-- > 0)
   {
-    fwrite(fb, 4, fbw * fbh, recpipe);
-    recframes++;
+    // the frame with a mouse pointer drawn in (the window has none of its own)
+    static const char *arrow[] =
+    {
+      "X", "XX", "X.X", "X..X", "X...X", "X....X", "X.....X", "X......X",
+      "X.......X", "X........X", "X.........X", "X......XXXXX", "X...X..X",
+      "X..XX..X", "X.X  X..X", "XX   X..X", "X     X..X", "      X..X", "       XX", NULL
+    };
+    static Uint32 *frame = NULL;
+    int px = win_mousex, py = win_mousey, r, c, sc = scale ? scale : 1;
+    if (!frame) frame = (Uint32 *)malloc((size_t)fbw * fbh * 4);
+    if (!frame) return;
+    memcpy(frame, fb, (size_t)fbw * fbh * 4);
+    for (r = 0; arrow[r]; r++)
+      for (c = 0; arrow[r][c]; c++)
+      {
+        int dx, dy;
+        Uint32 col;
+        if (arrow[r][c] == ' ') continue;
+        col = (arrow[r][c] == 'X') ? 0xff000000 : 0xffffffff;
+        for (dy = 0; dy < sc; dy++)
+          for (dx = 0; dx < sc; dx++)
+          {
+            int x = px + c * sc + dx, y = py + r * sc + dy;
+            if ((x >= 0) && (y >= 0) && (x < fbw) && (y < fbh)) frame[y * fbw + x] = col;
+          }
+      }
+    // as many frames as the wall clock says (50 per second), so that the
+    // video keeps in step with the sound even when the program was busy
+    frames = (int)((SDL_GetTicks() - record_startticks) / 20) - (int)recframes;
+    while (frames-- > 0)
+    {
+      fwrite(frame, 4, fbw * fbh, recpipe);
+      recframes++;
+    }
   }
 }
 

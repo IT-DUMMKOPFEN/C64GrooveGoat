@@ -807,6 +807,7 @@ void randominstrument(void)
   int done = 0;
   int previewtimer = 0;
   int previewing = 0;
+  int clickedsel = -1;
   int applied = 0;
   int nospace = 0;
   int c;
@@ -968,6 +969,9 @@ void randominstrument(void)
       }
       else if (hitbtn >= 0)
       {
+        // a clicked button does its job, the keyboard focus stays where it was
+        // (so that ENTER afterwards still means "Use it")
+        clickedsel = sel;
         sel = 6 + hitbtn;
         rawkey = KEY_ENTER;
       }
@@ -1029,6 +1033,11 @@ void randominstrument(void)
       break;
     }
 
+    if (clickedsel >= 0)
+    {
+      sel = clickedsel;
+      clickedsel = -1;
+    }
     if (regenerate)
     {
       generate(&cur);
