@@ -46,7 +46,11 @@ mkdir -p $DIST/common/examples/goattracker2
 cp examples/together_we_hunt.sng $DIST/common/examples/
 ./build/linux/groovegoat -E1 --export=$DIST/common/examples/together_we_hunt.sid $DIST/common/examples/together_we_hunt.sng > /dev/null
 ./build/linux/groovegoat -E1 --format=prg --export=$DIST/common/examples/together_we_hunt.prg $DIST/common/examples/together_we_hunt.sng > /dev/null
-for f in examples/*.sng examples/*.ins; do case "$(basename $f)" in $DEMO.sng|together_we_hunt.sng) ;; *) cp $f $DIST/common/examples/goattracker2/;; esac; done 2>/dev/null || true
+# house / techno with the speech intro (1 SID)
+cp examples/the_monster_awakens.sng $DIST/common/examples/
+./build/linux/groovegoat --export=$DIST/common/examples/the_monster_awakens.sid $DIST/common/examples/the_monster_awakens.sng > /dev/null
+./build/linux/groovegoat --format=prg --export=$DIST/common/examples/the_monster_awakens.prg $DIST/common/examples/the_monster_awakens.sng > /dev/null
+for f in examples/*.sng examples/*.ins; do case "$(basename $f)" in $DEMO.sng|together_we_hunt.sng|the_monster_awakens.sng) ;; *) cp $f $DIST/common/examples/goattracker2/;; esac; done 2>/dev/null || true
 cp examples/goatcompo.txt $DIST/common/examples/goattracker2/ 2>/dev/null || true
 
 # Instrument library (without macOS metadata)
@@ -201,7 +205,10 @@ $MINGWBIN/llvm-strip -o "$APP/Contents/MacOS/GrooveGoat" build/$2/groovegoat
 cp -a "$SDLFW" "$APP/Contents/Frameworks/"
 rm -rf "$APP/Contents/Frameworks/SDL2.framework/Versions/A/Headers" "$APP/Contents/Frameworks/SDL2.framework/Headers"
 cp res/groovegoat.icns "$APP/Contents/Resources/"
-cp -r $DIST/common/instruments $DIST/common/examples "$APP/Contents/Resources/"
+cp -r $DIST/common/examples "$APP/Contents/Resources/"
+# the instrument library as one file: macOS checks every file of an app at the
+# start, 5000+ single files made it slow (unpacked at the first start)
+(cd $DIST/common/instruments && tar --format=ustar --owner=0 --group=0 -cf "$APP/Contents/Resources/instruments.tar" .)
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 cat > "$APP/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>

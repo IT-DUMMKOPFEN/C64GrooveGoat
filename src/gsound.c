@@ -22,6 +22,7 @@ int firsttimeinit = 1;
 unsigned framerate = PALFRAMERATE;
 Sint16 *buffer = NULL;
 FILE *writehandle = NULL;
+unsigned sound_startticks = 0;    // -W: when sidaudio.raw started
 int stereooutput = 1;
 
 void sound_playrout(void);
@@ -152,8 +153,27 @@ int sound_init(unsigned b, unsigned mr, unsigned writer, unsigned hardsid, unsig
   if (!buffer) buffer = (Sint16*)malloc(MIXBUFFERSIZE * 2 * sizeof(Sint16));
   if (!buffer) return 0;
 
-  if (writer)
-    writehandle = fopen("sidaudio.raw", "wb");
+  if ((writer) && (!writehandle))
+  {
+    static int opened = 0;
+    static char path[1024] = "";
+    extern unsigned sound_startticks;
+    // the same file for the whole run (loading a song changes the folder;
+    // a new SID count continues the file); GG_AUDIOFILE names it
+    if (!path[0])
+    {
+      if (getenv("GG_AUDIOFILE")) snprintf(path, sizeof path, "%s", getenv("GG_AUDIOFILE"));
+      else
+      {
+        char cwd[900];
+        if (!getcwd(cwd, sizeof cwd)) cwd[0] = 0;
+        snprintf(path, sizeof path, "%s%ssidaudio.raw", cwd, cwd[0] ? "/" : "");
+      }
+    }
+    writehandle = fopen(path, opened ? "ab" : "wb");
+    if (!opened) sound_startticks = SDL_GetTicks();
+    opened = 1;
+  }
 
   playspeed = mr;
   if (playspeed < MINMIXRATE) playspeed = MINMIXRATE;

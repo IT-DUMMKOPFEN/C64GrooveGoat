@@ -978,6 +978,44 @@ void fliptoscreen(void)
   }
 }
 
+// GG_RECORD=FILE.mp4: every frame (50 per second, in real time) into a
+// video through ffmpeg - for the presentation video (with -W the sound of the
+// program goes to sidaudio.raw at the same time)
+static FILE *recpipe = NULL;
+static unsigned recframes = 0;
+unsigned record_startticks = 0;
+
+static void record_close(void)
+{
+  if (recpipe) pclose(recpipe);
+  recpipe = NULL;
+}
+
+unsigned record_frame(void) { return recframes; }
+
+void record_frames(int frames)
+{
+  static int tried = 0;
+  if (!tried)
+  {
+    const char *f = getenv("GG_RECORD");
+    char cmd[2048];
+    tried = 1;
+    if ((!f) || (!fb)) return;
+    snprintf(cmd, sizeof cmd, "ffmpeg -loglevel error -y -f rawvideo -pix_fmt bgra -s %dx%d -r 50 -i - "
+             "-c:v libx264 -preset ultrafast -crf 14 -pix_fmt yuv420p \"%s\"", fbw, fbh, f);
+    recpipe = popen(cmd, "w");
+    record_startticks = SDL_GetTicks();
+    if (recpipe) atexit(record_close);
+  }
+  if ((!recpipe) || (!fb)) return;
+  while (frames-- > 0)
+  {
+    fwrite(fb, 4, fbw * fbh, recpipe);
+    recframes++;
+  }
+}
+
 int savescreenshot(const char *filename)
 {
   SDL_Surface *s;
@@ -1003,7 +1041,11 @@ void getkey(void)
   midi_service();
   win_asciikey = 0;
   win_symkey = 0;
-  cursorflashdelay += win_getspeed(50);
+  {
+    int frames = win_getspeed(50);
+    cursorflashdelay += frames;
+    record_frames(frames);
+  }
 
   prevmouseb = mouseb;
   mouseb = win_mousebuttons | win_mousepressed;     // a tap within one frame counts as well

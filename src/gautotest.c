@@ -151,6 +151,11 @@ static int dotoken(const char *tok)
     waitframes = 2;
     return 1;
   }
+  if (!strncmp(tok, "mark:", 5))
+  {
+    fprintf(stderr, "MARK %u %s\n", record_frame(), tok + 5);   // caption times of a recording
+    return 1;
+  }
   if (!strcmp(tok, "exit"))
   {
     extern int exitprogram;

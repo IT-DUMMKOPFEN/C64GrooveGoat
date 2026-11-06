@@ -38,6 +38,7 @@
 #include "gproject.h"
 #include "gsgbuild.h"
 #include "gbassline.h"
+#include "glibpack.h"
 
 int menu = 0;
 int recordmode = 1;
@@ -204,6 +205,30 @@ static int renderbitrate = 0;
 static int rendersubtune = 0;
 
 // Offline rendering of a subtune to a 44.1kHz 16-bit stereo WAV file
+// times of the start (GG_STARTTIME=1 prints them; startup.log in the
+// configuration folder always has the last start)
+static char startlog[1024];
+static void starttime(const char *what)
+{
+  static int on = -1;
+  static Uint32 t0;
+  int l = strlen(startlog);
+  if (on < 0) { on = getenv("GG_STARTTIME") ? 1 : 0; t0 = SDL_GetTicks(); }
+  snprintf(startlog + l, sizeof startlog - l, "%6u ms  %s\n", SDL_GetTicks() - t0, what);
+  if (on) fprintf(stderr, "%6u ms  %s\n", SDL_GetTicks() - t0, what);
+}
+
+static void writestartlog(void)
+{
+  char path[MAX_PATHNAME];
+  FILE *f;
+  configpath(path, "startup.log");
+  f = fopen(path, "w");
+  if (!f) return;
+  fputs(startlog, f);
+  fclose(f);
+}
+
 int main(int argc, char **argv)
 {
   int c, d;
@@ -227,11 +252,15 @@ int main(int argc, char **argv)
   scalatuningfilepath[0] = 0;
   if (!getcwd(startcwd, MAX_PATHNAME)) startcwd[0] = 0;
 
+  starttime("start");
   initdirectories();
+  starttime("directories");
   loadconfig();
+  starttime("config");
 
   // Init pathnames
   initpaths();
+  starttime("paths");
 
   // Scan command line
   for (c = 1; c < argc; c++)
@@ -543,6 +572,56 @@ int main(int argc, char **argv)
       if (getenv("GG_SPEECHMELODY")) sp.melody = atoi(getenv("GG_SPEECHMELODY"));
       // pattern to write into (default: the pattern at the start of the channel's orderlist)
       if (getenv("GG_SPEECHPATT")) editorUndoInfo.editorInfo[chn].epnum = atoi(getenv("GG_SPEECHPATT"));
+      // GG_SPEECHINTRO=ROWS: a new intro of ROWS rows before the song (subtune 0, all
+      // voices, the loop of the song stays behind it) for the speech
+      if (getenv("GG_SPEECHINTRO"))
+      {
+        int rows = atoi(getenv("GG_SPEECHINTRO")), ch, used[MAX_PATT];
+        if (rows < 1) rows = 1;
+        if (rows > MAX_PATTROWS) rows = MAX_PATTROWS;
+        memset(used, 0, sizeof used);
+        for (ch = 0; ch < numchannels; ch++)
+        {
+          int p, r, len = songlen[0][ch];
+          for (p = 0; p < MAX_PATT; p++)
+          {
+            int empty = 1;
+            if (used[p]) continue;
+            for (r = 0; r < pattlen[p]; r++)
+              if ((pattern[p][r * 4] != REST) || (pattern[p][r * 4 + 1]) || (pattern[p][r * 4 + 2]) || (pattern[p][r * 4 + 3])) empty = 0;
+            if (empty)
+            {
+              int s2, c2, d2, ref = 0;
+              for (s2 = 0; (s2 < MAX_SONGS) && (!ref); s2++)
+                for (c2 = 0; (c2 < MAX_CHN) && (!ref); c2++)
+                  for (d2 = 0; d2 < songlen[s2][c2]; d2++)
+                    if (songorder[s2][c2][d2] == p) { ref = 1; break; }
+              if (!ref) break;
+            }
+          }
+          if ((p >= MAX_PATT) || (len >= MAX_SONGLEN - 2))
+          {
+            fprintf(stderr, "error: no room for the intro\n");
+            return EXIT_FAILURE;
+          }
+          used[p] = 1;
+          for (r = 0; r < rows; r++)
+          {
+            pattern[p][r * 4] = REST;
+            pattern[p][r * 4 + 1] = pattern[p][r * 4 + 2] = pattern[p][r * 4 + 3] = 0;
+          }
+          pattern[p][rows * 4] = ENDPATT;
+          pattern[p][rows * 4 + 1] = pattern[p][rows * 4 + 2] = pattern[p][rows * 4 + 3] = 0;
+          pattlen[p] = rows;
+          // orderlist: the intro first, the restart position one further
+          memmove(&songorder[0][ch][1], &songorder[0][ch][0], len + 2);
+          songorder[0][ch][0] = p;
+          songlen[0][ch] = len + 1;
+          songorder[0][ch][len + 2]++;
+          if (ch == chn) editorUndoInfo.editorInfo[chn].epnum = p;
+        }
+        countpatternlengths();
+      }
       // song speed (frames per row), default: from the song; GG_SPEECHSETTEMPO=1
       // also writes the tempo command
       sp.tempo = getenv("GG_SPEECHTEMPO") ? atoi(getenv("GG_SPEECHTEMPO")) : speech_songtempo(chn);
@@ -661,6 +740,8 @@ int main(int argc, char **argv)
       return randominstrument_replacetest() ? EXIT_SUCCESS : EXIT_FAILURE;
     if (savename[0])
     {
+      if (getenv("GG_SONGNAME")) snprintf((char *)songname, sizeof songname, "%s", getenv("GG_SONGNAME"));
+      if (getenv("GG_SONGAUTHOR")) snprintf((char *)authorname, sizeof authorname, "%s", getenv("GG_SONGAUTHOR"));
       strncpy(songfilename, savename, MAX_FILENAME - 1);
       ok = savesong();
       printf("%s\n", statusmessage);
@@ -674,6 +755,7 @@ int main(int argc, char **argv)
 
   // Set screenmode
   theme = themesetting;
+  starttime("before screen");
   if (!initscreen())
   {
     fprintf(stderr, "Could not open the program window.\n");
@@ -686,6 +768,7 @@ int main(int argc, char **argv)
   else
     kbdlayout = kbdlayoutsetting;
 
+  starttime("screen");
   // Reset channels/song
   initchannels();
   clearsong(1, 1, 1, 1, 1);
@@ -699,6 +782,7 @@ int main(int argc, char **argv)
     dlg_message("Sound", lines, 2);
   }
 
+  starttime("sound");
   // Project folder and automatic backup (asked at the start)
   projectstart(((!getenv("GG_SCRIPT")) || (getenv("GG_PROJECTDIALOG"))) && (!getenv("GG_AUTOTEST")) && (!getenv("GG_NOPROJECT")));
 
@@ -719,9 +803,15 @@ int main(int argc, char **argv)
   }
 
   // Start editor mainloop
+  starttime("project, song");
   printmainscreen();
+  starttime("main screen");
   backup_init();
+  // MIDI (CoreMIDI on a Mac can take a moment) after the first frame is shown
+  fliptoscreen();
   midi_init();
+  starttime("backup, midi");
+  writestartlog();
   if (getenv("GG_SCRIPT")) ;
   else if ((versioninfoalways) || (strcmp(versioninfoseen, PROGRAMVERSION))) showversioninfo(0);
   else if (showwelcome) showwelcomewindow();
@@ -793,6 +883,23 @@ static void initdirectories(void)
   else
     strcpy(configfilename, "groovegoat.cfg");
 #endif
+
+  // The macOS app carries the instrument library as one file (a quicker
+  // start): unpacked once per version into Application Support
+  {
+    char tarfile[MAX_PATHNAME], basedir[MAX_PATHNAME], lib[MAX_PATHNAME];
+    struct stat st;
+    snprintf(tarfile, MAX_PATHNAME, "%sinstruments.tar", appdir);
+    if ((!stat(tarfile, &st)) && (home))
+    {
+#if defined(__APPLE__) || defined(__MACOSX__)
+      snprintf(basedir, MAX_PATHNAME, "%s/Library/Application Support/C64 GrooveGoat", home);
+#else
+      snprintf(basedir, MAX_PATHNAME, "%s/.groovegoat", home);
+#endif
+      if (libpack_unpack(tarfile, basedir, PROGRAMVERSION, lib, sizeof lib)) snprintf(instrlibpath, MAX_PATHNAME, "%s", lib);
+    }
+  }
 
   // When started from a desktop launcher the working directory is often
   // "/" or the program folder; start in the user's home folder instead.
