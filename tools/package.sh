@@ -208,7 +208,7 @@ cp res/groovegoat.icns "$APP/Contents/Resources/"
 cp -r $DIST/common/examples "$APP/Contents/Resources/"
 # the instrument library as one file: macOS checks every file of an app at the
 # start, 5000+ single files made it slow (unpacked at the first start)
-(cd $DIST/common/instruments && tar --format=ustar --owner=0 --group=0 -cf "$APP/Contents/Resources/instruments.tar" .)
+(cd $DIST/common/instruments && tar --format=ustar --owner=0 --group=0 -cf "$OLDPWD/$APP/Contents/Resources/instruments.tar" .)
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 cat > "$APP/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
