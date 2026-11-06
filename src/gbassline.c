@@ -665,6 +665,7 @@ void basslinedialog(void)
   int x0 = (MAX_COLUMNS - w) / 2;
   int y0 = (MAX_ROWS - h) / 2 - 1;
   int sel = 0, ok, dirty = 0;
+  int restoresel = -1;
   char err[200] = "", msg[200] = "", buf[300];
   enum { O_PART = 0, O_SOURCE, O_STYLE, O_KEY, O_FIGURE, O_BASSINS, O_ARPMODE, O_ARPTPL, O_ARPCHN, O_BT, O_NUM };
   enum { B_PLAY = O_NUM, B_DICE, B_CREATE, B_CANCEL, S_NUM };
@@ -744,14 +745,24 @@ void basslinedialog(void)
         xx += strlen(bt[k]) + 2;
       }
     }
+    if (restoresel >= 0)
+    {
+      // a clicked button (or F1) did its job; the keyboard focus stays where it was
+      sel = restoresel;
+      restoresel = -1;
+    }
     fliptoscreen();
     getkey();
     if (win_quitted) break;
     if ((mouseb & MOUSEB_LEFT) && (!prevmouseb) && (hit >= 0))
     {
+      if ((hit >= O_NUM) && (sel < O_NUM)) restoresel = sel;
       sel = hit;
       if (hit < O_NUM) rawkey = (ui_arrowat(mousex, mousey) < 0) ? KEY_LEFT : KEY_RIGHT;
-      else rawkey = KEY_ENTER;
+      else
+      {
+        rawkey = KEY_ENTER;
+      }
       key = 0;
     }
     msg[0] = 0;

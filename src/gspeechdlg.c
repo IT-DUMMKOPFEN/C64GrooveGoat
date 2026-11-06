@@ -83,6 +83,7 @@ void speechdialog(void)
   int x0 = (MAX_COLUMNS - w) / 2;
   int y0 = (MAX_ROWS - h) / 2 - 1;
   int sel = 0;
+  int restoresel = -1;
   int chn = editorInfo.epchn;
   int row = editorInfo.eppos;
   char msg[160] = "";
@@ -197,6 +198,12 @@ void speechdialog(void)
     }
     printtext(x0 + 3, y0 + h - 4, MKCOL(3, C_PANEL), "UP/DOWN select, LEFT/RIGHT change, F1 preview, ENTER insert, F2 save listing, ESC close");
 
+    if (restoresel >= 0)
+    {
+      // a clicked button (or F1) did its job; the keyboard focus stays where it was
+      sel = restoresel;
+      restoresel = -1;
+    }
     fliptoscreen();
     getkey();
     if (win_quitted)
@@ -209,6 +216,7 @@ void speechdialog(void)
     {
       if (hitbtn >= 0)
       {
+        restoresel = sel;
         sel = 7 + hitbtn;
         rawkey = KEY_ENTER;
         key = 0;
@@ -243,8 +251,8 @@ void speechdialog(void)
       continue;
     }
 
-    if (rawkey == KEY_F1) { sel = 7; rawkey = KEY_ENTER; }
-    if (rawkey == KEY_F2) { sel = 9; rawkey = KEY_ENTER; }
+    if (rawkey == KEY_F1) { if (restoresel < 0) restoresel = sel; sel = 7; rawkey = KEY_ENTER; }
+    if (rawkey == KEY_F2) { if (restoresel < 0) restoresel = sel; sel = 9; rawkey = KEY_ENTER; }
 
     switch (rawkey)
     {

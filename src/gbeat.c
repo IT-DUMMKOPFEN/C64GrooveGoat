@@ -1308,6 +1308,7 @@ void beatdialog(void)
   int x0 = (MAX_COLUMNS - w) / 2;
   int y0 = (MAX_ROWS - h) / 2 - 1;
   int sel = 2;
+  int restoresel = -1;
   int ch = editorInfo.epchn;
   char msg[160] = "";
   int msgcol = 7;
@@ -1420,6 +1421,12 @@ void beatdialog(void)
     printtext(x0 + 3, y0 + h - 4, MKCOL(3, C_PANEL),
               "UP/DOWN select, LEFT/RIGHT change, SPACE/F1 preview, D dice (new beat), R variation, ENTER insert, ESC");
 
+    if (restoresel >= 0)
+    {
+      // a clicked button (or F1) did its job; the keyboard focus stays where it was
+      sel = restoresel;
+      restoresel = -1;
+    }
     fliptoscreen();
     getkey();
     if (win_quitted)
@@ -1437,6 +1444,7 @@ void beatdialog(void)
       }
       else if (hitbtn >= 0)
       {
+        restoresel = sel;
         sel = S_PREVIEW + hitbtn;
         rawkey = KEY_ENTER;
       }
