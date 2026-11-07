@@ -756,6 +756,7 @@ void comp_render(COMP *c)
     int sec = c->secs[si], nbars = c->secbars[si], last = si == c->nsecs - 1, first = !seen[sec], b, r, done = 0;
     CHORD chords[64];
     if (nbars > 64) nbars = 64;
+    c->cur_si = si;
     c->ecur = c->engine ? c->energy[si] : 0.9;
     c->enext = (c->engine) && (c->sids < 4) && (si + 1 < c->nsecs) ? c->energy[si + 1] : 0.0;
     comp_chords_for(c, sec, nbars, sec == SEC_OUTRO, chords);

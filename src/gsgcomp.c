@@ -6,6 +6,7 @@
 #include <string.h>
 #include <math.h>
 #include "gsgcomp.h"
+#include "gsgplan.h"
 #include "gsgtimbre.h"
 #include "gsgexpr.h"
 
@@ -999,7 +1000,8 @@ static void chords_for(COMP *c, int sec, int nbars, int last, CHORD *out)
   if (cb < 1) cb = 1;
   if ((n * cb > nbars) && (n > nbars)) cb = 1;
   for (b = 0; b < nbars; b++) out[b] = c->progs[sec][(b / cb) % n];
-  if (c->engine) cadence_chords(c, sec, nbars, out);
+  if ((c->plan) && (plan_hook_chords(c, c->cur_si, nbars, out))) { /* the chords of the plan */ }
+  else if (c->engine) cadence_chords(c, sec, nbars, out);
   if ((last) && (nbars)) out[nbars - 1] = c->tonic;
 }
 
@@ -1153,6 +1155,7 @@ static void make_motif(COMP *c, const RCELL *rh, int nr, int up, MOTIF *m)
   for (i = 0; i < nr; i++)
     if (rh[i].isnote) notes[nn++] = i;
   m->n = 0;
+  m->degs = 0;
   for (i = 0; (i < nn) && (m->n < 96); i++)
   {
     int pos = rh[notes[i]].pos, d = rh[notes[i]].d, k;
@@ -1202,9 +1205,61 @@ static CHORD chord_at(COMP *c, int row)
 }
 
 // motif on the chords from row0 (each note fits the chord of its row)
+// the note of scale degree d above (d >= 1) or below the keynote 'base'
+static int degnote(COMP *c, int base, int d)
+{
+  int n = base, k;
+  if (d >= 1)
+  {
+    for (k = 1; k < d; k++)
+      do n++; while (!scale_contains(&c->scale, n));
+  }
+  else
+  {
+    for (k = d; k < 1; k++)
+      do n--; while (!scale_contains(&c->scale, n));
+  }
+  return n;
+}
+
+// a motif with scale degrees (from a song plan): the degrees as written,
+// only notes that clash with the chord are moved to the next fitting tone
+static int realize_degs(COMP *c, const MOTIF *m, int row0, int *prev, int lo, int hi, int cadence, RND *out)
+{
+  int i, n = 0, base = -1, best = 1 << 30, b, ref = *prev >= 0 ? *prev : (lo + hi) / 2, sh = c->degshift;
+  for (b = c->key; b < 110; b += 12)
+  {
+    int f = degnote(c, b, m->v[0].deg + sh), dd = abs(f - ref);
+    if ((f >= lo - 5) && (f <= hi + 5) && (dd < best)) { best = dd; base = b; }
+  }
+  if (base < 0) base = c->key + 60;
+  for (i = 0; i < m->n; i++)
+  {
+    const MNOTE *x = &m->v[i];
+    CHORD ch = chord_at(c, row0 + x->pos);
+    int note = degnote(c, base, x->deg + sh), mask = x->strong ? comp_chord_scale(c, ch) : c->scale.pcs, k;
+    if ((cadence) && (i == m->n - 1)) mask = 1 << ch.root;
+    if (!((mask >> (((note % 12) + 12) % 12)) & 1))
+      for (k = 1; k < 7; k++)
+      {
+        if ((mask >> ((((note - k) % 12) + 12) % 12)) & 1) { note -= k; break; }
+        if ((mask >> ((((note + k) % 12) + 12) % 12)) & 1) { note += k; break; }
+      }
+    while (note > hi + 3) note -= 12;
+    while (note < lo - 3) note += 12;
+    out[n].row = x->pos;
+    out[n].note = note;
+    out[n].dur = x->d;
+    n++;
+    *prev = note;
+  }
+  return n;
+}
+
 static int realize(COMP *c, const MOTIF *m, int row0, int *prev, int lo, int hi, int cadence, RND *out)
 {
   int i, n = 0;
+  if ((m->degs) && (m->n)) return realize_degs(c, m, row0, prev, lo, hi, cadence, out);
   for (i = 0; i < m->n; i++)
   {
     const MNOTE *x = &m->v[i];
@@ -1332,6 +1387,7 @@ static void motif_cut(const MOTIF *src, int rows, MOTIF *out)
 {
   int i;
   out->n = 0;
+  out->degs = src->degs;
   for (i = 0; i < src->n; i++)
     if (src->v[i].pos < rows) out->v[out->n++] = src->v[i];
 }
@@ -1342,14 +1398,23 @@ static void motif_contour(const MOTIF *from, const MOTIF *rh, MOTIF *out)
   int i;
   *out = *rh;
   if (!from->n) return;
-  for (i = 0; i < out->n; i++) out->v[i].dlt = from->v[i % from->n].dlt;
+  for (i = 0; i < out->n; i++)
+  {
+    out->v[i].dlt = from->v[i % from->n].dlt;
+    out->v[i].deg = from->v[i % from->n].deg;
+  }
+  out->degs = from->degs;
 }
 
 static void motif_invert(const MOTIF *src, MOTIF *out)
 {
   int i;
   *out = *src;
-  for (i = 0; i < out->n; i++) out->v[i].dlt = -out->v[i].dlt;
+  for (i = 0; i < out->n; i++)
+  {
+    out->v[i].dlt = -out->v[i].dlt;
+    if (out->n) out->v[i].deg = 2 * src->v[0].deg - src->v[i].deg;
+  }
 }
 
 static void motif_vary(const MOTIF *src, MOTIF *out)
@@ -1357,7 +1422,10 @@ static void motif_vary(const MOTIF *src, MOTIF *out)
   int i;
   *out = *src;
   for (i = (out->n - 2 > 0 ? out->n - 2 : 0); i < out->n; i++)
+  {
     out->v[i].dlt = out->v[i].dlt ? -out->v[i].dlt : 1;
+    if ((i) && (out->degs)) out->v[i].deg = src->v[i].deg + (src->v[i].deg >= src->v[i - 1].deg ? -2 : 2);
+  }
 }
 
 // twice as slow, the first half of the theme fills the motif
@@ -1365,6 +1433,7 @@ static void motif_augment(COMP *c, const MOTIF *src, int rows, MOTIF *out)
 {
   int i;
   out->n = 0;
+  out->degs = src->degs;
   for (i = 0; (i < src->n) && (out->n < 96); i++)
   {
     MNOTE x = src->v[i];
@@ -1481,8 +1550,10 @@ static int lead_section11(COMP *c, int sec, int nbars, int row0, RND *out, int m
       default: mm = &m[0]; break;
     }
     // a sequence: the hook again, a third higher
-    if ((plan[i] == 6) && (pv >= 0)) pv += 4;
+    if ((plan[i] == 6) && (pv >= 0) && (!mm->degs)) pv += 4;
+    c->degshift = (plan[i] == 6) ? 2 : 0;
     nn = realize(c, mm, row0 + off, &pv, lo, hi, (plan[i] == 1) || (plan[i] == 3), tmp);
+    c->degshift = 0;
     fix_lead(c, tmp, nn, row0 + off);
     for (k = 0; (k < nn) && (n < max); k++)
     {
@@ -2446,7 +2517,8 @@ int comp_compose(COMP *c)
   // to another mode than the one drawn (A#m - G# - F# is C# major, not C#
   // minor); the melody then sounds out of tune against the chords. The mode
   // of the same key with the fewest foreign chord tones is taken.
-  if ((c->engine) && (c->want_mode < 0) && (!fam_any) && (!c->fixed))
+  if (c->plan) plan_hook_progs(c);
+  if ((c->engine) && (c->want_mode < 0) && (!fam_any) && (!c->fixed) && (!c->plan))
   {
     int m, best = c->mode, bestmiss = 1 << 30;
     for (m = 0; m < M_NUM; m++)
@@ -2487,9 +2559,18 @@ int comp_compose(COMP *c)
   }
   pick_instruments(c);
   if (c->sids >= 4) comp_layer_roles(c);
-  plan_structure(c);
-  plan_energy(c);
+  if (c->plan)
+  {
+    plan_hook_structure(c);
+    c->ecur = 0.9;
+  }
+  else
+  {
+    plan_structure(c);
+    plan_energy(c);
+  }
   make_material(c);
+  if (c->plan) plan_hook_theme(c);
   comp_render(c);
   pw_arc(c);
   if (c->expressive) sg_song_ideas(c);

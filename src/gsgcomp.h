@@ -23,8 +23,8 @@ extern const char *sg_kitcat[SK_NUM];
 typedef struct { int row, note, dur; } RND;          // (row, note, duration)
 typedef struct { RND *v; int n, cap; } RNDLIST;
 typedef struct { int pos, d, isnote; } RCELL;         // rhythm: (pos, len, 'n'/'r')
-typedef struct { int pos, d, strong, dlt; } MNOTE;    // motif note
-typedef struct { MNOTE v[96]; int n; } MOTIF;
+typedef struct { int pos, d, strong, dlt, deg; } MNOTE;    // motif note (deg: scale degree, only if MOTIF.degs)
+typedef struct { MNOTE v[96]; int n, degs; } MOTIF;
 typedef struct { int on, offs, acc; } RIFFSTEP;
 
 typedef struct
@@ -133,6 +133,9 @@ typedef struct COMPS
   double energy[SG_MAXSECS];       // 1.1: the energy of every section (0..1), the arc of the song
   double ecur, enext;              // while rendering: the energy of the current and the next section
   int ghost_ins;                   // 1.1: the ghost snare (index + 1, 0 = not made yet)
+  const void *plan;                // 1.1: a song plan (SONGPLAN, gsgplan.h) or NULL
+  int cur_si;                      // while rendering: the index of the current section
+  int degshift;                    // 1.1: a motif with degrees played this many steps higher
 } COMP;
 
 extern int sg_engine;               // the composer for new pieces (1 = 1.1, 0 = Classic)
