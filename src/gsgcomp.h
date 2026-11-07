@@ -10,7 +10,7 @@ extern const char *sg_secname[SEC_NUM];
 int sec_base(int s);
 
 // drum letters per row (bit mask)
-enum { DL_K = 1, DL_S = 2, DL_C = 4, DL_O = 8, DL_H = 16, DL_R = 32, DL_T = 64, DL_P = 128, DL_X = 256 };
+enum { DL_K = 1, DL_S = 2, DL_C = 4, DL_O = 8, DL_H = 16, DL_R = 32, DL_T = 64, DL_P = 128, DL_X = 256, DL_G = 512 };   // G: ghost snare (1.1)
 int dl_bit(char c);
 
 enum { SK_KICK = 0, SK_SNARE, SK_HAT, SK_OHAT, SK_CLAP, SK_CRASH, SK_TOM, SK_RIDE, SK_PERC, SK_NUM };
@@ -131,7 +131,8 @@ typedef struct COMPS
   int theme_have, theme_mb;
   MOTIF theme;
   double energy[SG_MAXSECS];       // 1.1: the energy of every section (0..1), the arc of the song
-  double ecur;                     // while rendering: the energy of the current section
+  double ecur, enext;              // while rendering: the energy of the current and the next section
+  int ghost_ins;                   // 1.1: the ghost snare (index + 1, 0 = not made yet)
 } COMP;
 
 extern int sg_engine;               // the composer for new pieces (1 = 1.1, 0 = Classic)
@@ -141,6 +142,7 @@ COMP *comp_new(int styleidx, unsigned seed, double seconds, int sids, int voices
 void comp_free(COMP *c);
 int comp_compose(COMP *c);          // compose the tracks (1 = ok)
 int comp_use(COMP *c, const char *name);
+int comp_ghost(COMP *c);            // 1.1: a soft, short copy of the snare
 int comp_use_arp(COMP *c, const char *tpl, int q);
 int comp_bass_root(int pc);
 void comp_bass_bar(COMP *c, const char *pat, CHORD chord, CHORD nxt, int bar_idx, const RIFFSTEP *riff, RND *out, int *n);

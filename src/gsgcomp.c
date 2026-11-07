@@ -128,6 +128,30 @@ int comp_use(COMP *c, const char *name)
   return c->numins++;
 }
 
+// 1.1: the ghost snare - the snare of the kit, short and soft (fast decay,
+// no sustain): the SID has no velocity, a shorter envelope sounds quieter
+int comp_ghost(COMP *c)
+{
+  int src, d;
+  SGINS v;
+  if (c->ghost_ins) return c->ghost_ins - 1;
+  src = comp_use(c, c->kit[SK_SNARE][0] ? c->kit[SK_SNARE] : "Snare Pulse");
+  if (c->numins >= SG_MAXINS) return src;
+  v = c->ins[src];
+  d = v.ad & 0x0f;
+  if (d > 4) d = 4;
+  v.ad = (v.ad & 0x00) | d;
+  v.sr = 0x02;
+  snprintf(v.name, sizeof v.name, "%.40s ghost", c->ins[src].name);
+  snprintf(v.en, sizeof v.en, "%.40s ghost", c->ins[src].en[0] ? c->ins[src].en : c->ins[src].name);
+  v.derived = 1;
+  if (!v.loudref[0]) snprintf(v.loudref, sizeof v.loudref, "%s", c->ins[src].name);
+  c->ins[c->numins] = v;
+  c->arp_tpl[c->numins] = -1;
+  c->ghost_ins = c->numins + 1;
+  return c->numins++;
+}
+
 int comp_use_arp(COMP *c, const char *tpl, int q)
 {
   const SGARP *t = sg_findarp(tpl);
@@ -1873,6 +1897,51 @@ static const char *S16_FILL[] = {"............ssss", "............s.ss", "......
 static const char *S12_FILL[] = {".........sss", "......t.t.tt", ".........s.s", "......s.ss.s", ".........tts"};
 
 // mode: 0 full, 1 hats, 2 kick, 3 none
+// 1.1 groove: ghost notes around the backbeat, a snare roll into the chorus
+static int instyle(COMP *c, const char *const *list)
+{
+  int k;
+  for (k = 0; list[k]; k++)
+    if (!strcmp(c->stylekey, list[k])) return 1;
+  return 0;
+}
+
+static void groove11(COMP *c, int bar, int nbars, int *steps)
+{
+  static const char *GHOSTS[] = {"pop", "hiphop", "reggae", "house", "disco", "rock", "jazz", "dnb", "boogie", "blues", "nineties",
+                                 "noughties", "seventies", "eighties", "sixties", "schlager", "eurodance", NULL};
+  static const char *ROLLS[] = {"techno", "house", "trance", "eurodance", "pop", "dnb", "dubstep", "synthwave", "nineties",
+                                "noughties", "eighties", "deeptrance", "acid", "c64game", "schlager", "disco", NULL};
+  int i, snare = 0;
+  for (i = 0; i < 16; i++)
+    if (steps[i] & (DL_S | DL_C)) snare = 1;
+  // the snare roll: the last two bars before a chorus (from a quieter part)
+  if ((c->enext >= 0.85) && (c->ecur < 0.85) && (nbars >= 4) && (bar >= nbars - 2) && (instyle(c, ROLLS)))
+  {
+    int last = bar == nbars - 1;
+    for (i = 0; i < 16; i++)
+    {
+      int on = last ? ((i < 8) ? (i % 2 == 0) : 1) : (i % 4 == 0) || ((i >= 8) && (i % 2 == 0));
+      if (on) steps[i] = (steps[i] & DL_K) | DL_S;
+      else steps[i] &= DL_K;
+    }
+    return;
+  }
+  // ghost notes: soft snare sixteenths next to the backbeat
+  if ((snare) && (c->ecur >= 0.6) && (instyle(c, GHOSTS)))
+  {
+    static const int spots[4] = {3, 7, 11, 13};
+    for (i = 0; i < 4; i++)
+    {
+      int st = spots[i];
+      if (steps[st] & (DL_K | DL_S | DL_C | DL_X | DL_T | DL_O)) continue;
+      if ((st + 1 < 16) && (!(steps[st + 1] & (DL_S | DL_C))) && (st != 13)) continue;   // only right before a backbeat (or after it)
+      // the same spots in every bar (a groove, not a random scatter)
+      if ((c->seed >> i) & 1) steps[st] = (steps[st] & ~(DL_H | DL_P)) | DL_G;
+    }
+  }
+}
+
 void comp_drum_bar(COMP *c, int sec, int mode, int bar, int nbars, int first_of_sec, int *steps)
 {
   int b = sec_base(sec), spb = c->spb, i, k;
@@ -1937,6 +2006,7 @@ void comp_drum_bar(COMP *c, int sec, int mode, int bar, int nbars, int first_of_
       for (i = half; i < spb; i += c->bt)
         if ((steps[i] & DL_H) && (!(steps[i] & (DL_S | DL_C)))) steps[i] = (steps[i] & ~DL_H) | DL_O;
     }
+    if (spb == 16) groove11(c, bar, nbars, steps);
   }
 }
 
@@ -2080,6 +2150,8 @@ static void plan_energy(COMP *c)
       seenb++;
     }
     if (c->jingle) e = 0.9;
+    // 4-8 SIDs: the energy by the kind of part only (equal parts share their patterns)
+    if (c->sids >= 4) e = b == SEC_INTRO ? 0.3 : b == SEC_OUTRO ? 0.4 : b == SEC_C ? 0.35 : b == SEC_A ? 0.6 : 0.92;
     c->energy[i] = e;
   }
   c->ecur = 0.9;
@@ -2197,6 +2269,16 @@ int comp_compose(COMP *c)
     c->tempo[1] = (int)jv_num(jv_at(x, 1), c->tempo[0]);
     if (c->want_bpm > 0) tempo_for_bpm(c, c->want_bpm);
     if (c->fixed) { c->tempo[0] = c->fixed->tempo[0]; c->tempo[1] = c->fixed->tempo[1]; }
+  }
+  {
+    // 1.1: swing for the styles that live from it (sixteenths long - short)
+    static const char *SWING[] = {"house", "hiphop", "reggae", "disco", "boogie", "jazz", "blues", "dnb", NULL};
+    if ((c->engine) && (!c->fixed) && (!c->kind) && (c->spb == 16) && (c->tempo[0] == c->tempo[1]) && (c->tempo[0] >= 4) &&
+        (instyle(c, SWING)))
+    {
+      c->tempo[0]++;
+      c->tempo[1]--;
+    }
   }
   {
     double avg = (c->tempo[0] + c->tempo[1]) / 2.0;

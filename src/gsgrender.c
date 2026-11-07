@@ -56,15 +56,20 @@ static int filtered_name(COMP *c, int i)
 
 static void render_drums(COMP *c, SGTRACK *t, int row0, const int *drums, int n, int skip)
 {
-  static const struct { int bit; int cat; } prio[9] = {{DL_X, SK_CRASH}, {DL_S, SK_SNARE}, {DL_C, SK_CLAP}, {DL_K, SK_KICK},
-    {DL_T, -1}, {DL_O, SK_OHAT}, {DL_H, SK_HAT}, {DL_R, SK_RIDE}, {DL_P, SK_PERC}};
+  static const struct { int bit; int cat; } prio[10] = {{DL_X, SK_CRASH}, {DL_S, SK_SNARE}, {DL_C, SK_CLAP}, {DL_K, SK_KICK},
+    {DL_T, -1}, {DL_O, SK_OHAT}, {DL_H, SK_HAT}, {DL_R, SK_RIDE}, {DL_P, SK_PERC}, {DL_G, -2}};
   int s, k;
   for (s = 0; s < n; s++)
-    for (k = 0; k < 9; k++)
+    for (k = 0; k < 10; k++)
     {
       if ((drums[s] & prio[k].bit) && (!(prio[k].bit & skip)))
       {
         const char *name;
+        if (prio[k].cat == -2)
+        {
+          tr_note(t, row0 + s, 48, comp_ghost(c), -1);
+          break;
+        }
         if (prio[k].cat < 0) name = tom_for(c, s);
         else name = c->kit[prio[k].cat][0] ? c->kit[prio[k].cat] : c->kit[SK_SNARE];
         tr_note(t, row0 + s, 48, comp_use(c, name), -1);
@@ -723,7 +728,7 @@ static void render6(COMP *c, int sec, int nbars, CHORD *chords, int row0, int fi
 typedef struct
 {
   int sec, nbars, row0;
-  double ecur;
+  double ecur, enext;
   CHORD chords[64];
 } SAMEKEY;
 
@@ -752,6 +757,7 @@ void comp_render(COMP *c)
     CHORD chords[64];
     if (nbars > 64) nbars = 64;
     c->ecur = c->engine ? c->energy[si] : 0.9;
+    c->enext = (c->engine) && (c->sids < 4) && (si + 1 < c->nsecs) ? c->energy[si + 1] : 0.0;
     comp_chords_for(c, sec, nbars, sec == SEC_OUTRO, chords);
     seen[sec] = 1;
     for (b = 0; b < nbars; b++)
@@ -763,7 +769,7 @@ void comp_render(COMP *c)
     if ((c->sids >= 4) && (!last) && (!first))
     {
       for (k = 0; k < nsame; k++)
-        if ((same[k].sec == sec) && (same[k].nbars == nbars) && (same[k].ecur == c->ecur) && (!memcmp(same[k].chords, chords, sizeof(CHORD) * nbars)))
+        if ((same[k].sec == sec) && (same[k].nbars == nbars) && (same[k].ecur == c->ecur) && (same[k].enext == c->enext) && (!memcmp(same[k].chords, chords, sizeof(CHORD) * nbars)))
         {
           int t, rows = nbars * c->spb, d = row - same[k].row0, n;
           for (t = 0; t < c->ntracks; t++)
@@ -819,6 +825,7 @@ void comp_render(COMP *c)
         same[nsame].sec = sec;
         same[nsame].nbars = nbars;
         same[nsame].ecur = c->ecur;
+        same[nsame].enext = c->enext;
         same[nsame].row0 = row;
         memcpy(same[nsame].chords, chords, sizeof(CHORD) * nbars);
         nsame++;
