@@ -27,8 +27,55 @@ typedef int SOCK;
 #define closesock close
 #endif
 
+#include <errno.h>
+#include <stdarg.h>
+#include <time.h>
 #include "gollama.h"
 #include "gsg.h"
+#include "goattrk2.h"
+
+// ollama.log in the configuration folder: what happened on every request
+// (for help when the arranger does not work)
+static void olog(const char *fmt, ...)
+{
+  static int first = 1;
+  char path[MAX_PATHNAME];
+  FILE *f;
+  va_list ap;
+  configpath(path, "ollama.log");
+  f = fopen(path, first ? "wt" : "at");
+  if (!f) return;
+  first = 0;
+  {
+    time_t t = time(NULL);
+    char ts[32];
+    strftime(ts, sizeof ts, "%H:%M:%S", localtime(&t));
+    fprintf(f, "%s ", ts);
+  }
+  va_start(ap, fmt);
+  vfprintf(f, fmt, ap);
+  va_end(ap);
+  fprintf(f, "\n");
+  fclose(f);
+}
+
+static int lasterr(void)
+{
+#ifdef __WIN32__
+  return WSAGetLastError();
+#else
+  return errno;
+#endif
+}
+
+static int istimeout(int e)
+{
+#ifdef __WIN32__
+  return e == WSAETIMEDOUT;
+#else
+  return (e == EAGAIN) || (e == EWOULDBLOCK) || (e == EINTR);
+#endif
+}
 
 char ollamahost[64] = "127.0.0.1:11434";
 
@@ -87,33 +134,46 @@ static SOCK connectto(const char *hostport, int timeout_ms, char *err, int errsi
     s = BADSOCK;
   }
   freeaddrinfo(res);
-  if (s == BADSOCK) snprintf(err, errsize, "Ollama is not running on %s", hostport);
+  if (s == BADSOCK)
+  {
+    snprintf(err, errsize, "Ollama is not running on %s", hostport);
+    olog("connect %s:%s failed (error %d)", host, port, lasterr());
+  }
   return s;
 }
 
 // one request; the body of the answer (malloc) or NULL. maxwait: seconds
-static char *http(const char *method, const char *path, const char *body, int maxwait, char *err, int errsize)
+static char *http1(const char *method, const char *path, const char *body, int maxwait, char *err, int errsize, int *retry)
 {
-  SOCK s = connectto(ollamahost, 1000, err, errsize);
+  SOCK s = connectto(ollamahost, 2000, err, errsize);
   char *req, *resp = NULL, *b;
-  int blen = body ? (int)strlen(body) : 0, rlen = 0, cap = 0, waited = 0, sent = 0, reqlen;
+  int blen = body ? (int)strlen(body) : 0, rlen = 0, cap = 0, waited = 0, sent = 0, reqlen, rerr = 0;
+  *retry = 0;
   if (s == BADSOCK) return NULL;
   req = (char *)malloc(blen + 512);
-  reqlen = sprintf(req, "%s %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: GrooveGoat\r\nContent-Type: application/json\r\n"
-                   "Content-Length: %d\r\nConnection: close\r\n\r\n", method, path, ollamahost, blen);
+  reqlen = sprintf(req, "%s %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: GrooveGoat\r\nAccept: application/json\r\n"
+                   "Content-Type: application/json\r\nContent-Length: %d\r\nConnection: close\r\n\r\n", method, path,
+                   ollamahost, blen);
   if (blen) memcpy(req + reqlen, body, blen);
   reqlen += blen;
   while (sent < reqlen)
   {
     int n = send(s, req + sent, reqlen - sent, 0);
-    if (n <= 0) break;
+    if (n <= 0)
+    {
+      if ((n < 0) && (istimeout(lasterr())) && (++waited < 10)) continue;
+      break;
+    }
     sent += n;
   }
   free(req);
+  waited = 0;
   if (sent < reqlen)
   {
-    snprintf(err, errsize, "Could not send the request to Ollama");
+    snprintf(err, errsize, "Could not send the request to Ollama (error %d)", lasterr());
+    olog("%s %s: sent %d of %d bytes (error %d)", method, path, sent, reqlen, lasterr());
     closesock(s);
+    *retry = 1;
     return NULL;
   }
   for (;;)
@@ -128,7 +188,10 @@ static char *http(const char *method, const char *path, const char *body, int ma
     n = recv(s, resp + rlen, cap - rlen, 0);
     if (n > 0) { rlen += n; continue; }
     if (n == 0) break;
+    rerr = lasterr();
     // timeout of one second: wait on (a big model needs its time)
+    if (!istimeout(rerr)) break;
+    rerr = 0;
     if (++waited > maxwait) break;
   }
   closesock(s);
@@ -138,16 +201,26 @@ static char *http(const char *method, const char *path, const char *body, int ma
     free(resp);
     return NULL;
   }
-  if (!resp)
+  if (resp) resp[rlen] = 0;
+  olog("%s %s: %d bytes in %d s%s%.*s", method, path, rlen, waited, rlen ? ": " : "", rlen > 300 ? 300 : rlen,
+       rlen ? resp : "");
+  if (!rlen)
   {
-    snprintf(err, errsize, "No answer from Ollama");
+    free(resp);
+    if (rerr) olog("  receive error %d", rerr);
+    if (waited > maxwait) snprintf(err, errsize, "Ollama did not answer within %d s", maxwait);
+    else
+    {
+      snprintf(err, errsize, "Ollama closed the connection without an answer%s - see ollama.log",
+               rerr ? " (connection error)" : "");
+      *retry = 1;
+    }
     return NULL;
   }
-  resp[rlen] = 0;
   b = strstr(resp, "\r\n\r\n");
   if ((strncmp(resp, "HTTP/1.", 7)) || (!b))
   {
-    snprintf(err, errsize, "Not an answer from Ollama");
+    snprintf(err, errsize, "Something on %s answers, but it is not Ollama - see ollama.log", ollamahost);
     free(resp);
     return NULL;
   }
@@ -189,13 +262,28 @@ static char *http(const char *method, const char *path, const char *body, int ma
   return resp;
 }
 
+// one request; the body of the answer (malloc) or NULL. maxwait: seconds.
+// A connection closed without an answer is tried once more.
+static char *http(const char *method, const char *path, const char *body, int maxwait, char *err, int errsize)
+{
+  int retry = 0;
+  char *r = http1(method, path, body, maxwait, err, errsize, &retry);
+  if ((!r) && (retry) && (!cancelled))
+  {
+    olog("  trying again");
+    SDL_Delay(500);
+    r = http1(method, path, body, maxwait, err, errsize, &retry);
+  }
+  return r;
+}
+
 int ollama_models(char names[][64], int max, char *err, int errsize)
 {
   char *a;
   JV *j, *m;
   int k, n = 0;
   cancelled = 0;
-  a = http("GET", "/api/tags", NULL, 2, err, errsize);
+  a = http("GET", "/api/tags", NULL, 3, err, errsize);
   if (!a) return -1;
   j = jv_parse(a);
   free(a);
@@ -246,6 +334,7 @@ static int worker(void *arg)
     const char *r = jv_str(jv_get(j, "response"), NULL);
     if (r) text = strdup(r);
     else snprintf(err, sizeof err, "Ollama gave no answer");
+    olog("  answer text: %d characters", r ? (int)strlen(r) : -1);
     jv_free(j);
     free(a);
   }

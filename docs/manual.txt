@@ -1035,7 +1035,9 @@ the plan off again (the composer plans by itself).
 The arranger is a language model that runs on your own computer with Ollama - nothing is sent
 to the internet, and once a model is installed, no internet connection is needed at all.
 
-1. Install Ollama from ollama.com (Windows, macOS, Linux) and start it.
+1. Install Ollama from ollama.com (Windows, macOS, Linux) and start it. C64 GrooveGoat
+   does not install it by itself. On Linux: curl -fsSL https://ollama.com/install.sh | sh
+   (it then runs as a service); check it with: ollama list
 2. Download a model once, for example in a terminal: ollama pull llama3.2
    (small and fast; bigger models such as qwen2.5:7b or mistral plan better but take longer).
 3. Open the song plan (CTRL+G, TAB). The Arranger field lists the installed models - choose
@@ -1045,6 +1047,9 @@ C64 GrooveGoat talks to Ollama on 127.0.0.1:11434. Another address can be set in
 ollama.cfg in the configuration folder (host=192.168.1.20:11434), which also remembers the
 chosen model; the environment variable GG_OLLAMA overrides the address. Without Ollama, F6
 copies the request to the clipboard: paste it into any chatbot and paste its answer with F7.
+If the arranger does not work, the file ollama.log in the configuration folder shows what
+happened with every request (the configuration folder is ~/.groovegoat on Linux and macOS,
+%APPDATA%\C64 GrooveGoat on Windows).
 
 A plan is JSON text, for example:
 
