@@ -158,6 +158,37 @@ void sg_sweep_name(const char *kind, double framesd, int model, char *out, int s
   sg_addfilter(out, l, r, n);
 }
 
+// a lowpass from cutoff c0 to c1 in 'frames' frames (c0 == c1: it stays there)
+static void sg_ramp_name(int c0, int c1, double framesd, char *out, int size)
+{
+  int frames = (int)framesd / 64 * 64, l[64], r[64], n = 0, up = c1 - c0;
+  if (frames < 64) frames = 64;
+  if (frames > 4096) frames = 4096;
+  if (up < 0) up = 0;
+  snprintf(out, size, "x_rmp_%02x_%02x_%d", c0, c0 + up, up ? frames : 0);
+  if (sg_findfilter(out)) return;
+  l[n] = 0x90; r[n++] = 0x100 | 0x9;
+  l[n] = 0x00; r[n++] = c0;
+  if (up)
+  {
+    // 'up' steps of +1 spread over the frames (pairs of step and hold)
+    int hold = frames - up, pairs, k;
+    if (hold < 0) hold = 0;
+    pairs = (up + 126) / 127;
+    if ((hold + 126) / 127 > pairs) pairs = (hold + 126) / 127;
+    if (pairs < 1) pairs = 1;
+    if (pairs > 12) pairs = 12;
+    for (k = 0; k < pairs; k++)
+    {
+      int u = up * (k + 1) / pairs - up * k / pairs, h = hold * (k + 1) / pairs - hold * k / pairs;
+      while ((u > 0) && (n < 58)) { int t = u > 127 ? 127 : u; l[n] = t; r[n++] = 1; u -= t; }
+      while ((h > 0) && (n < 58)) { int t = h > 127 ? 127 : h; l[n] = t; r[n++] = 0; h -= t; }
+    }
+  }
+  l[n] = 0xff; r[n++] = 0;
+  sg_addfilter(out, l, r, n);
+}
+
 // ---------------------------------------------------------------------------
 // Profiles
 // ---------------------------------------------------------------------------
@@ -360,6 +391,7 @@ typedef struct
   int groups[8][3], ngroups, glen[8];
   int secname[SG_MAXSECS], secr0[SG_MAXSECS], secn[SG_MAXSECS], nsec;
   int stats[6];
+  int efilt[8];                 // 1.1: the group got the energy filter
 } EXPR;
 
 static const char *cat(EXPR *x, int ins) { return x->c->ins[ins].cat; }
@@ -646,6 +678,84 @@ static int filter_free(EXPR *x, int g)
   return 1;
 }
 
+// 1.1: the filter follows the energy of the song. On every SID with a free
+// filter one accompaniment voice (arpeggio, pad, chords) runs through a
+// lowpass whose cutoff follows the energy arc: dark in the intro and the first
+// verse, opening towards the chorus (a build-up), wide open in the chorus.
+static double ecut(COMP *c, double e)
+{
+  int lo = c->model == 8580 ? 0x08 : 0x10, hi = c->model == 8580 ? 0x90 : 0x58;
+  double f = (e - 0.25) / 0.6;
+  if (f < 0) f = 0;
+  if (f > 1) f = 1;
+  return lo + (hi - lo) * f;
+}
+
+static void energy_filter(EXPR *x)
+{
+  COMP *c = x->c;
+  int g, s, i;
+  if ((!c->engine) || (c->kind) || (c->jingle) || (!x->nsec)) return;
+  for (g = 0; g < x->ngroups; g++)
+  {
+    int best = -1, filtered = 0, any = 0;
+    double bests = 0;
+    if (!filter_free(x, g)) continue;
+    // the voice: the most accompaniment notes over the song (no lead, bass or drums)
+    for (i = 0; i < x->glen[g]; i++)
+    {
+      SGTRACK *t = &c->tracks[x->groups[g][i]];
+      int r;
+      double score = 0;
+      for (r = 0; r < t->rows; r++)
+      {
+        const char *ct;
+        if (t->ev[r].type != EV_NOTE) continue;
+        ct = cat(x, t->ev[r].ins);
+        if ((tb_isdrum(ct)) || (!strcmp(ct, "kickbass")) || (!strcmp(ct, "lead")) || (!strcmp(ct, "bass"))) continue;
+        score += ((!strcmp(ct, "arp")) || (!strcmp(ct, "pad"))) ? 2 : 1;
+      }
+      if ((score > 0) && ((best < 0) || (score > bests))) { bests = score; best = x->groups[g][i]; }
+    }
+    if (best < 0) continue;
+    for (s = 0; s < x->nsec; s++)
+    {
+      SGTRACK *t = &c->tracks[best];
+      double e = c->energy[s], en = s + 1 < x->nsec ? c->energy[s + 1] : e;
+      int r0 = x->secr0[s], n = x->secn[s], start = -1, q;
+      SGCMD cm;
+      for (q = r0; (q < r0 + 4) && (q < t->rows); q++)
+        if (isfree(t, q)) { start = q; break; }
+      if (start < 0) continue;
+      memset(&cm, 0, sizeof cm);
+      if (e >= 0.85)
+      {
+        // the chorus: open
+        if (!filtered) continue;
+        cm.cmd = 0xb;
+        cm.kind = CD_PLAIN;
+        cm.a = 0;
+        setcmd(t, start, &cm);
+        filtered = 0;
+        continue;
+      }
+      {
+        int c0 = (int)ecut(c, e), c1 = c0;
+        if (en > e) c1 = (int)ecut(c, en >= 0.85 ? 1.0 : en);
+        sg_ramp_name(c0, c1, (n - (start - r0)) * x->fpr, cm.fname, sizeof cm.fname);
+        cm.cmd = 0xa;
+        cm.kind = CD_FPROG;
+        cm.b = -1;
+        setcmd(t, start, &cm);
+        filtered = 1;
+        any = 1;
+        if (c1 > c0) x->stats[5]++;
+      }
+    }
+    if (any) x->efilt[g] = 1;
+  }
+}
+
 static void sweeps(EXPR *x)
 {
   COMP *c = x->c;
@@ -654,6 +764,7 @@ static void sweeps(EXPR *x)
   for (g = 0; g < x->ngroups; g++)
   {
     if (!filter_free(x, g)) continue;
+    if (x->efilt[g]) continue;
     for (s = 0; s < x->nsec; s++)
     {
       int name = x->secname[s], nxt = s + 1 < x->nsec ? x->secname[s + 1] : -1, r0 = x->secr0[s], n = x->secn[s];
@@ -774,6 +885,7 @@ void sg_express(COMP *c)
       x.ngroups++;
     }
   }
+  energy_filter(&x);
   sweeps(&x);
   dclear();
   memcpy(c->expr_stats, x.stats, sizeof x.stats);

@@ -1919,6 +1919,25 @@ void comp_drum_bar(COMP *c, int sec, int mode, int bar, int nbars, int first_of_
     }
   }
   if ((mode == 0) && (first_of_sec) && (bar == 0) && (b == SEC_B)) steps[0] |= DL_X;
+  if ((c->engine) && (mode == 0) && (!c->kind))
+  {
+    int half = c->bt / 2 > 0 ? c->bt / 2 : 1;
+    if (c->ecur < 0.5)
+    {
+      // thin: no open hats, percussion or crash, the hats only on the eighths
+      for (i = 0; i < spb; i++)
+      {
+        steps[i] &= ~(DL_O | DL_P | DL_X);
+        if ((c->bt == 4) && (i % half)) steps[i] &= ~DL_H;
+      }
+    }
+    else if (c->ecur >= 0.95)
+    {
+      // the last chorus lifts: open hats on the off-beats
+      for (i = half; i < spb; i += c->bt)
+        if ((steps[i] & DL_H) && (!(steps[i] & (DL_S | DL_C)))) steps[i] = (steps[i] & ~DL_H) | DL_O;
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -2033,6 +2052,104 @@ static void make_material(COMP *c)
       }
       if (a->mode2 == MD_ECHO) a->mode2 = MD_ARP_HOLD;
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 1.1: the energy arc. Intro low, the first verse still thin, later verses
+// fuller, a bridge / break drops, the choruses rise to the last one, the
+// outro falls. It controls the drums and the filter over the song.
+// ---------------------------------------------------------------------------
+
+static void plan_energy(COMP *c)
+{
+  int i, nb = 0, seenb = 0, seena = 0, lastb = -1;
+  for (i = 0; i < c->nsecs; i++)
+    if (sec_base(c->secs[i]) == SEC_B) { nb++; lastb = i; }
+  for (i = 0; i < c->nsecs; i++)
+  {
+    int b = sec_base(c->secs[i]);
+    double e;
+    if (b == SEC_INTRO) e = 0.3;
+    else if (b == SEC_OUTRO) e = 0.4;
+    else if (b == SEC_C) e = 0.35;
+    else if (b == SEC_A) e = seena++ ? 0.6 : 0.45;
+    else
+    {
+      e = (i == lastb) && (nb > 1) ? 1.0 : seenb ? 0.92 : 0.85;
+      seenb++;
+    }
+    if (c->jingle) e = 0.9;
+    c->energy[i] = e;
+  }
+  c->ecur = 0.9;
+}
+
+// 1.1: the pulse width of the lead moves with the energy. A pulse lead gets
+// two copies: a calm one (slower pulse modulation) for the quiet parts and a
+// lively one (faster modulation) for the choruses.
+static int pw_variant(COMP *c, int src, int faster)
+{
+  SGINS v = c->ins[src];
+  int k, any = 0;
+  if (c->numins >= SG_MAXINS) return src;
+  for (k = 0; k < v.np; k++)
+  {
+    int l = v.pl[k], r = v.pr[k];
+    if ((l >= 1) && (l <= 0x7f))
+    {
+      int sp = r >= 0x80 ? r - 256 : r, t = l;
+      if (faster) { sp *= 2; t = (t + 1) / 2; }
+      else { sp = sp / 2 ? sp / 2 : (sp > 0 ? 1 : -1); t *= 2; }
+      if (sp > 127) sp = 127;
+      if (sp < -127) sp = -127;
+      if (t > 127) t = 127;
+      if (t < 1) t = 1;
+      v.pl[k] = t;
+      v.pr[k] = sp & 0xff;
+      any = 1;
+    }
+  }
+  if (!any) return src;
+  snprintf(v.name, sizeof v.name, "%.40s %s", c->ins[src].name, faster ? "(+)" : "(-)");
+  snprintf(v.en, sizeof v.en, "%.40s %s", c->ins[src].en[0] ? c->ins[src].en : c->ins[src].name, faster ? "(+)" : "(-)");
+  v.derived = 1;
+  if (!v.loudref[0]) snprintf(v.loudref, sizeof v.loudref, "%s", c->ins[src].name);
+  c->ins[c->numins] = v;
+  c->arp_tpl[c->numins] = c->arp_tpl[src];
+  return c->numins++;
+}
+
+static void pw_arc(COMP *c)
+{
+  int t, src, row, si, hi = -1, lo = -1, lead = -1, cnt[SG_MAXINS];
+  if ((!c->engine) || (c->kind) || (c->jingle) || (c->sids > 2) || (c->numins > 40)) return;
+  // the lead instrument: the pulse instrument with the most lead notes
+  memset(cnt, 0, sizeof cnt);
+  for (t = 0; t < c->ntracks; t++)
+    for (row = 0; row < c->tracks[t].rows; row++)
+    {
+      SGEV *e = &c->tracks[t].ev[row];
+      if ((e->type == EV_NOTE) && (e->ins >= 0) && (e->ins < c->numins) && (!strcmp(c->ins[e->ins].cat, "lead")) && (c->ins[e->ins].np))
+        cnt[e->ins]++;
+    }
+  for (src = 0; src < c->numins; src++)
+    if ((cnt[src]) && ((lead < 0) || (cnt[src] > cnt[lead]))) lead = src;
+  if (lead < 0) return;
+  row = 0;
+  for (si = 0; si < c->nsecs; si++)
+  {
+    int n = c->secbars[si] * c->spb, want = -1;
+    if (c->energy[si] >= 0.85) { if (hi < 0) hi = pw_variant(c, lead, 1); want = hi; }
+    else if (c->energy[si] < 0.5) { if (lo < 0) lo = pw_variant(c, lead, 0); want = lo; }
+    if ((want >= 0) && (want != lead))
+      for (t = 0; t < c->ntracks; t++)
+      {
+        int r;
+        for (r = row; (r < row + n) && (r < c->tracks[t].rows); r++)
+          if ((c->tracks[t].ev[r].type == EV_NOTE) && (c->tracks[t].ev[r].ins == lead)) c->tracks[t].ev[r].ins = want;
+      }
+    row += n;
   }
 }
 
@@ -2210,8 +2327,10 @@ int comp_compose(COMP *c)
   pick_instruments(c);
   if (c->sids >= 4) comp_layer_roles(c);
   plan_structure(c);
+  plan_energy(c);
   make_material(c);
   comp_render(c);
+  pw_arc(c);
   if (c->expressive) sg_song_ideas(c);
   return 1;
 }

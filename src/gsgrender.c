@@ -723,6 +723,7 @@ static void render6(COMP *c, int sec, int nbars, CHORD *chords, int row0, int fi
 typedef struct
 {
   int sec, nbars, row0;
+  double ecur;
   CHORD chords[64];
 } SAMEKEY;
 
@@ -750,6 +751,7 @@ void comp_render(COMP *c)
     int sec = c->secs[si], nbars = c->secbars[si], last = si == c->nsecs - 1, first = !seen[sec], b, r, done = 0;
     CHORD chords[64];
     if (nbars > 64) nbars = 64;
+    c->ecur = c->engine ? c->energy[si] : 0.9;
     comp_chords_for(c, sec, nbars, sec == SEC_OUTRO, chords);
     seen[sec] = 1;
     for (b = 0; b < nbars; b++)
@@ -761,7 +763,7 @@ void comp_render(COMP *c)
     if ((c->sids >= 4) && (!last) && (!first))
     {
       for (k = 0; k < nsame; k++)
-        if ((same[k].sec == sec) && (same[k].nbars == nbars) && (!memcmp(same[k].chords, chords, sizeof(CHORD) * nbars)))
+        if ((same[k].sec == sec) && (same[k].nbars == nbars) && (same[k].ecur == c->ecur) && (!memcmp(same[k].chords, chords, sizeof(CHORD) * nbars)))
         {
           int t, rows = nbars * c->spb, d = row - same[k].row0, n;
           for (t = 0; t < c->ntracks; t++)
@@ -816,6 +818,7 @@ void comp_render(COMP *c)
       {
         same[nsame].sec = sec;
         same[nsame].nbars = nbars;
+        same[nsame].ecur = c->ecur;
         same[nsame].row0 = row;
         memcpy(same[nsame].chords, chords, sizeof(CHORD) * nbars);
         nsame++;

@@ -130,6 +130,8 @@ typedef struct COMPS
   int engine;                      // 0 = Classic (the seeds of 1.0), 1 = composer 1.1
   int theme_have, theme_mb;
   MOTIF theme;
+  double energy[SG_MAXSECS];       // 1.1: the energy of every section (0..1), the arc of the song
+  double ecur;                     // while rendering: the energy of the current section
 } COMP;
 
 extern int sg_engine;               // the composer for new pieces (1 = 1.1, 0 = Classic)
