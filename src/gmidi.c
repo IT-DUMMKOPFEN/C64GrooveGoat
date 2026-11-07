@@ -39,9 +39,59 @@ static int tonote(int midinote)
   return n;
 }
 
+// midi.log in the settings folder: the devices and the first raw data, so
+// that a keyboard that is found but not heard can be diagnosed
+static unsigned lograw = 0;
+static int loglines = 0;
+
+static void logdevices(const char *why)
+{
+  char path[MAX_PATHNAME];
+  FILE *f;
+  int c;
+  configpath(path, "midi.log");
+  f = fopen(path, loglines ? "a" : "w");
+  if (!f) return;
+  fprintf(f, "%s: MIDI %s, device \"%s\", %d source(s)\n", why, midion ? "on" : "off",
+          mididevice[0] ? mididevice : "(all)", midisys_numdev());
+  for (c = 0; c < midisys_numdev(); c++)
+    fprintf(f, "  %2d %s%s\n", c, midisys_name(c), midisys_used(c) ? "   (listening)" : "");
+  fclose(f);
+  loglines += 2 + midisys_numdev();
+}
+
+static void lograwline(int dev, const unsigned char *data, int len, void *ctx)
+{
+  FILE *f = (FILE *)ctx;
+  int c;
+  fprintf(f, "  raw dev %d:", dev);
+  for (c = 0; c < len; c++) fprintf(f, " %02X", data[c]);
+  fprintf(f, "\n");
+  loglines++;
+}
+
+static void lograwdata(void)
+{
+  char path[MAX_PATHNAME];
+  FILE *f;
+  if (midisys_rawcount() == lograw) return;
+  if (loglines > 400)
+  {
+    lograw = midisys_rawcount();
+    return;
+  }
+  configpath(path, "midi.log");
+  f = fopen(path, "a");
+  if (!f) return;
+  lograw = midisys_rawdump(lograw, lograwline, f);
+  if (midisys_maclayout()) fprintf(f, "  (packet layout %d)\n", midisys_maclayout());
+  fclose(f);
+}
+
 static void reopen(void)
 {
   midisys_open(midion ? mididevice : NULL);
+  logdevices("open");
 }
 
 void midi_init(void)
@@ -209,7 +259,12 @@ void midi_service(void)
   if (now - lastscan >= 1000)
   {
     lastscan = now;
-    if (midisys_scan()) midi_allnotesoff();
+    if (midisys_scan())
+    {
+      midi_allnotesoff();
+      logdevices("devices changed");
+    }
+    lograwdata();
   }
   while (midisys_read(m))
   {
@@ -247,6 +302,15 @@ void midi_service(void)
 // ---------------------------------------------------------------------------
 // MIDI dialog: choose the keyboard, test it
 // ---------------------------------------------------------------------------
+
+static void lastrawtext(int dev, const unsigned char *data, int len, void *ctx)
+{
+  char *out = (char *)ctx;
+  int c, o = 0;
+  (void)dev;
+  out[0] = 0;
+  for (c = 0; (c < len) && (o < 72); c++) o += snprintf(out + o, 80 - o, "%02X ", data[c]);
+}
 
 void mididialog(void)
 {
@@ -318,6 +382,20 @@ void mididialog(void)
     else snprintf(buf, sizeof buf, "Press a key on the MIDI keyboard to test it.");
     printblankc(x0 + 3, y0 + h - 4, MKCOL(8, C_PANEL), w - 6);
     printtext(x0 + 3, y0 + h - 4, MKCOL(lastnote >= 0 ? 13 : 3, C_PANEL), buf);
+    // what the system delivered, parsed or not (diagnosis: midi.log in the settings folder)
+    {
+      static char raw[80] = "";
+      static unsigned seen = 0;
+      unsigned rc = midisys_rawcount();
+      if (rc != seen)
+      {
+        seen = midisys_rawdump(rc ? rc - 1 : 0, lastrawtext, raw);
+      }
+      if (rc) snprintf(buf, sizeof buf, "Data from the system: %u message(s), last: %.48s", rc, raw);
+      else snprintf(buf, sizeof buf, "Data from the system: none yet (details in midi.log in the settings folder)");
+      printblankc(x0 + 3, y0 + h - 5, MKCOL(8, C_PANEL), w - 6);
+      printtext(x0 + 3, y0 + h - 5, MKCOL(rc ? 8 : 3, C_PANEL), buf);
+    }
     printtext(okx, oky, MKCOL(C_BUTTONTEXT, C_BUTTONHI), "   OK   ");
     printtext(okx + 11, oky, MKCOL(3, C_PANEL), "ENTER / SPACE choose, ESC close");
     if ((mousey == oky) && (mousex >= okx) && (mousex < okx + 8)) okhit = 1;

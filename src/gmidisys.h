@@ -14,5 +14,9 @@ void midisys_push(int st, int d1, int d2);
 int midisys_numdev(void);
 const char *midisys_name(int i);
 int midisys_used(int i);
+// raw data as delivered by the system, before parsing (diagnosis)
+unsigned midisys_rawcount(void);
+unsigned midisys_rawdump(unsigned from, void (*out)(int dev, const unsigned char *data, int len, void *ctx), void *ctx);
+int midisys_maclayout(void);            // macOS: offset of the first packet (4 or 8, 0 = no data yet)
 
 #endif

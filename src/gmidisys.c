@@ -29,6 +29,51 @@ static int numdev = 0;
 static char onlyname[MIDISYS_NAMELEN] = "";
 static int listennone = 0;
 
+// Raw data as it came from the system (for the MIDI dialog and midi.log):
+// what arrives before it is parsed, so that a device that "listens" but
+// delivers nothing usable can be told apart from one that delivers nothing.
+#define RAWRING 64
+#define RAWLEN 48
+static unsigned char rawbuf[RAWRING][RAWLEN];
+static int rawlen[RAWRING], rawdev[RAWRING];
+static volatile int rawhead = 0;
+static volatile unsigned rawtotal = 0;
+
+static void rawnote(int dev, const unsigned char *data, int len)
+{
+  int h;
+  if (!qlock) return;
+  SDL_LockMutex(qlock);
+  h = rawhead;
+  if (len > RAWLEN) len = RAWLEN;
+  if (len < 0) len = 0;
+  memcpy(rawbuf[h], data, len);
+  rawlen[h] = len;
+  rawdev[h] = dev;
+  rawhead = (h + 1) % RAWRING;
+  rawtotal++;
+  SDL_UnlockMutex(qlock);
+}
+
+unsigned midisys_rawcount(void) { return rawtotal; }
+
+// the raw entries from number 'from' on (at most the last RAWRING); returns the new count
+unsigned midisys_rawdump(unsigned from, void (*out)(int dev, const unsigned char *data, int len, void *ctx), void *ctx)
+{
+  unsigned total, n;
+  if (!qlock) return from;
+  SDL_LockMutex(qlock);
+  total = rawtotal;
+  if (total - from > RAWRING) from = total - RAWRING;
+  for (n = from; n < total; n++)
+  {
+    int i = (int)((rawhead + RAWRING - (total - n)) % RAWRING);
+    out(rawdev[i], rawbuf[i], rawlen[i], ctx);
+  }
+  SDL_UnlockMutex(qlock);
+  return total;
+}
+
 static void qpush(int dev, int st, int d1, int d2)
 {
   int n;
@@ -123,6 +168,9 @@ static void CALLBACK wincallback(HMIDIIN h, UINT msg, DWORD_PTR inst, DWORD_PTR 
   if (msg == MIM_DATA)
   {
     unsigned st = p1 & 0xff;
+    unsigned char rb[3];
+    rb[0] = st; rb[1] = (p1 >> 8) & 0xff; rb[2] = (p1 >> 16) & 0xff;
+    rawnote((int)inst, rb, 3);
     if ((st >= 0x80) && (st < 0xf0)) qpush((int)inst, st, (p1 >> 8) & 0x7f, (p1 >> 16) & 0x7f);
   }
 }
@@ -230,24 +278,63 @@ static int connected[MIDISYS_MAXDEV];
 static PARSER parsers[MIDISYS_MAXDEV];
 static ItemCount lastcount = (ItemCount)-1;
 
+// The packet list as CoreMIDI documents it: numPackets (4 bytes), then the
+// packets, each timeStamp (8), length (2), data; packed to 4 bytes, the next
+// packet 4-byte aligned on ARM. In case a system lays it out with the natural
+// 8-byte alignment instead (the first packet at offset 8), that layout is
+// recognised from the first packet and used.
+static int pktsane(const unsigned char *pk, const unsigned char *end)
+{
+  uint16_t len;
+  if (pk + 10 > end) return 0;
+  memcpy(&len, pk + 8, 2);
+  if ((len < 1) || (len > 256)) return 0;
+  return 1;
+}
+
+static int maclayout = 0;          // 0 unknown, 4 or 8: offset of the first packet
+
 static void macread(const MIDIPacketList *list, void *readref, void *srcref)
 {
-  const MIDIPacket *p = &list->packet[0];
-  uint32_t c;
-  int dev = (int)(intptr_t)srcref;
+  const unsigned char *base = (const unsigned char *)list;
+  const unsigned char *end = base + 4 + 65536;      // a sane upper bound
+  const unsigned char *pk;
+  uint32_t c, num;
+  int dev = (int)(intptr_t)srcref, lay;
   (void)readref;
   if ((dev < 0) || (dev >= MIDISYS_MAXDEV)) return;
-  for (c = 0; c < list->numPackets; c++)
+  memcpy(&num, base, 4);
+  rawnote(dev, base, 4 + 8 + 2 + 16);
+  lay = maclayout;
+  if (!lay)
   {
+    if (pktsane(base + 4, end) && ((base[4 + 10] & 0x80) || (!pktsane(base + 8, end)))) lay = 4;
+    else if (pktsane(base + 8, end)) lay = 8;
+    else lay = 4;
+    if (num) maclayout = lay;
+  }
+  pk = base + lay;
+  for (c = 0; c < num; c++)
+  {
+    uint16_t len;
     int b;
-    for (b = 0; b < p->length; b++) parsebyte(&parsers[dev], dev, p->data[b]);
+    if (!pktsane(pk, end)) break;
+    memcpy(&len, pk + 8, 2);
+    for (b = 0; b < len; b++) parsebyte(&parsers[dev], dev, pk[10 + b]);
+    if (lay == 8)
+      pk = (const unsigned char *)(((uintptr_t)(pk + 10 + len) + 7) & ~(uintptr_t)7);
+    else
+    {
 #if defined(__aarch64__) || defined(__arm__)
-    p = (const MIDIPacket *)(((uintptr_t)&p->data[p->length] + 3) & ~(uintptr_t)3);
+      pk = (const unsigned char *)(((uintptr_t)(pk + 10 + len) + 3) & ~(uintptr_t)3);
 #else
-    p = (const MIDIPacket *)&p->data[p->length];
+      pk = pk + 10 + len;
 #endif
+    }
   }
 }
+
+int midisys_maclayout(void) { return maclayout; }
 
 static void closeall(void)
 {
@@ -525,6 +612,11 @@ static void syspoll(void)
     if (!ev) continue;
     ch = ev->data[0] & 0x0f;
     dev = devindex(ev->srcclient, ev->srcport);
+    {
+      unsigned char rb[4];
+      rb[0] = ev->type; rb[1] = ev->data[0]; rb[2] = ev->data[1]; rb[3] = ev->data[2];
+      rawnote(dev, rb, 4);
+    }
     switch (ev->type)
     {
       case EV_NOTEON: qpush(dev, 0x90 | ch, ev->data[1] & 0x7f, ev->data[2] & 0x7f); break;
@@ -559,6 +651,10 @@ static int sysscan(void)
 #endif
 
 // ---------------------------------------------------------------------------
+
+#if !(defined(__MACOSX__) || defined(__APPLE__))
+int midisys_maclayout(void) { return 0; }
+#endif
 
 static int initdone = 0, sysok = 0;
 

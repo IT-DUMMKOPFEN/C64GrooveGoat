@@ -150,12 +150,17 @@ found automatically (also while the program is running), and all MIDI devices ar
 The MIDI button in the status bar opens the MIDI dialog. It is lit while a MIDI device is
 listened to. In the dialog you choose "All MIDI devices" (default), one device, or "Off". The
 line "Last key" shows the last key that was received - press a key to test the connection. The
-choice is saved with the other settings.
+line "Data from the system" shows everything the system delivered, even what was not understood
+as a key. The choice is saved with the other settings.
 
 If nothing arrives: check that the keyboard is switched on and connected before or after the
 start (both work), and that no other program uses it exclusively (Windows lets only one program
 open a MIDI device at a time). On Linux the ALSA sequencer is used (libasound, it is part of
 every desktop system); PipeWire and JACK MIDI devices appear there as well.
+
+midi.log in the settings folder lists the MIDI devices that were found and the first data they
+sent. If a keyboard is found but its keys are not recognised, please send this file along with
+the bug report.
 
 ## Toolbar
 
