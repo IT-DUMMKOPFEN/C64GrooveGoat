@@ -167,7 +167,7 @@ static void sg_ramp_name(int c0, int c1, double framesd, char *out, int size)
   if (up < 0) up = 0;
   snprintf(out, size, "x_rmp_%02x_%02x_%d", c0, c0 + up, up ? frames : 0);
   if (sg_findfilter(out)) return;
-  l[n] = 0x90; r[n++] = 0x100 | 0x9;
+  l[n] = 0x90; r[n++] = 0x100 | 0x4;
   l[n] = 0x00; r[n++] = c0;
   if (up)
   {
@@ -684,7 +684,9 @@ static int filter_free(EXPR *x, int g)
 // verse, opening towards the chorus (a build-up), wide open in the chorus.
 static double ecut(COMP *c, double e)
 {
-  int lo = c->model == 8580 ? 0x08 : 0x10, hi = c->model == 8580 ? 0x90 : 0x58;
+  // not too dark: a very low cutoff makes the 6581 filter muddy and a resonant
+  // peak can sound out of tune
+  int lo = c->model == 8580 ? 0x20 : 0x24, hi = c->model == 8580 ? 0x90 : 0x60;
   double f = (e - 0.25) / 0.6;
   if (f < 0) f = 0;
   if (f > 1) f = 1;

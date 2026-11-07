@@ -319,6 +319,7 @@ static const char *prog_family(const JV *prog)
   return hasmin ? "min" : "maj";
 }
 
+static int progmiss(COMP *c, int sec);
 static void setprog(COMP *c, int sec, const JV *p)
 {
   int k;
@@ -341,6 +342,19 @@ static void setprog(COMP *c, int sec, const JV *p)
 // ---------------------------------------------------------------------------
 // Instrument choice
 // ---------------------------------------------------------------------------
+
+// chord tones of a section's progression that are not in the scale
+static int progmiss(COMP *c, int sec)
+{
+  int j, pc, miss = 0;
+  for (j = 0; j < c->nprog[sec]; j++)
+  {
+    int pcs = comp_chord_pcs(c->progs[sec][j]);
+    for (pc = 0; pc < 12; pc++)
+      if (((pcs >> pc) & 1) && (!scale_contains(&c->scale, pc))) miss++;
+  }
+  return miss;
+}
 
 static int strin(const char *s, const char *const *list, int n)
 {
@@ -942,9 +956,15 @@ static void plan_structure(COMP *c)
 static CHORD dominant(COMP *c)
 {
   CHORD d;
+  int s, k;
   d.root = (c->key + 7) % 12;
   if (c->tonic.q == Q_POW) d.q = Q_POW;
   else d.q = ((scale_contains(&c->scale, c->key + 11)) || (!scale_contains(&c->scale, c->key + 10))) ? Q_MAJ : Q_MIN;
+  // the progressions of the style already use this chord: take it as they play it
+  // (a minor v against a major V in the progression sounds out of tune)
+  for (s = SEC_A; s <= SEC_C; s++)
+    for (k = 0; k < c->nprog[s]; k++)
+      if (c->progs[s][k].root == d.root) return c->progs[s][k];
   return d;
 }
 
@@ -2353,6 +2373,21 @@ int comp_compose(COMP *c)
       nokv[k] = nok;
       memcpy(okv[k], okidx, sizeof okidx);
       setprog(c, SEC_A + k, chosen[k]);
+      // 1.1: a progression whose chords do not fit the scale sounds out of tune
+      // against the melody: the one of the list with the fewest foreign tones
+      if ((c->engine) && (!fam_any) && (progmiss(c, SEC_A + k)))
+      {
+        int j, bestj = -1, bestm = progmiss(c, SEC_A + k), np = nok ? nok : n;
+        for (j = 0; j < np; j++)
+        {
+          int m;
+          setprog(c, SEC_A + k, jv_at(pool, nok ? okidx[j] : j));
+          m = progmiss(c, SEC_A + k);
+          if (m < bestm) { bestm = m; bestj = j; }
+        }
+        if (bestj >= 0) chosen[k] = jv_at(pool, nok ? okidx[bestj] : bestj);
+        setprog(c, SEC_A + k, chosen[k]);
+      }
     }
     k = rng_below(rng, 2);
     memcpy(c->progs[SEC_INTRO], c->progs[SEC_A + k], sizeof c->progs[0]);
@@ -2390,6 +2425,7 @@ int comp_compose(COMP *c)
         }
         if ((n) && (rng_random(&vr) < 0.7)) setprog(c, SEC_A2 + k, other[rng_below(&vr, n)]);
         else setprog(c, SEC_A2 + k, chosen[k]);
+        if ((c->engine) && (!fam_any) && (progmiss(c, SEC_A2 + k) > progmiss(c, SEC_A + k))) setprog(c, SEC_A2 + k, chosen[k]);
       }
     }
     {
@@ -2403,6 +2439,49 @@ int comp_compose(COMP *c)
         SGRNG vr;
         rng_seed(&vr, c->seed * 11 + 5);
         for (k = SEC_A2; k <= SEC_C2; k++) c->chord_bars[k] = n ? (int)jv_num(jv_at(cbl, rng_below(&vr, n)), 1) : 1;
+      }
+    }
+  }
+  // 1.1: the scale must fit the chords. A progression of the style can belong
+  // to another mode than the one drawn (A#m - G# - F# is C# major, not C#
+  // minor); the melody then sounds out of tune against the chords. The mode
+  // of the same key with the fewest foreign chord tones is taken.
+  if ((c->engine) && (c->want_mode < 0) && (!fam_any) && (!c->fixed))
+  {
+    int m, best = c->mode, bestmiss = 1 << 30;
+    for (m = 0; m < M_NUM; m++)
+    {
+      SCALE sc;
+      int miss = 0, s2, j;
+      if ((m == M_PENTMAJ) || (m == M_PENTMIN) || (m == M_BLUES)) continue;
+      scale_init(&sc, c->key, m);
+      for (s2 = SEC_A; s2 <= SEC_C; s2++)
+        for (j = 0; j < c->nprog[s2]; j++)
+        {
+          int pcs = comp_chord_pcs(c->progs[s2][j]), pc;
+          for (pc = 0; pc < 12; pc++)
+            if (((pcs >> pc) & 1) && (!scale_contains(&sc, pc + 60))) miss++;
+        }
+      if ((miss < bestmiss) || ((miss == bestmiss) && (m == c->mode))) { bestmiss = miss; best = m; }
+    }
+    {
+      SCALE cur;
+      int curmiss = 0, s2, j;
+      scale_init(&cur, c->key, c->mode);
+      for (s2 = SEC_A; s2 <= SEC_C; s2++)
+        for (j = 0; j < c->nprog[s2]; j++)
+        {
+          int pcs = comp_chord_pcs(c->progs[s2][j]), pc;
+          for (pc = 0; pc < 12; pc++)
+            if (((pcs >> pc) & 1) && (!scale_contains(&cur, pc + 60))) curmiss++;
+        }
+      if ((curmiss > 0) && (bestmiss < curmiss))
+      {
+        int wasmaj = (c->mode == M_MAJOR) || (c->mode == M_LYDIAN) || (c->mode == M_MIXOLYDIAN) || (c->mode == M_PENTMAJ);
+        int ismaj = (best == M_MAJOR) || (best == M_LYDIAN) || (best == M_MIXOLYDIAN);
+        c->mode = best;
+        scale_init(&c->scale, c->key, c->mode);
+        if ((c->tonic.q != Q_POW) && (wasmaj != ismaj)) c->tonic.q = ismaj ? Q_MAJ : Q_MIN;
       }
     }
   }
