@@ -975,10 +975,90 @@ game music.
 |                     counter lines and drums packed into the free rows of the voices
 |  Key / Scale / Tempo  Random or from the style, or fixed
 |  Seed               The number of the piece: the same seed gives the same song
+|  Composer           1.1 (default) or Classic (the composer of version 1.0 - the same
+|                     seed gives exactly the same song as in 1.0)
 
 D rolls the dice (a new piece), M a new melody with the same instruments, I new instruments
 for the same melody. F1 or SPACE plays the piece, ENTER creates the song (it replaces the
 current song - after a question if it has unsaved changes), ESC brings the old song back.
+
+### Composer 1.1
+
+The composer of version 1.1 writes more like a person:
+
+- Motifs: a short theme is invented first; verses, choruses and the bridge are built from it
+  (repeated, varied, turned upside down, stretched), instead of a new melody in every bar.
+- Phrases and cadences: four-bar phrases that end on a half close (dominant) and eight-bar
+  phrases that come home to the keynote; the chords follow (V at the end of a phrase, V-I at
+  the end of a part), and progressions that do not fit the key and scale are replaced.
+- Tension arc: every part gets an energy (intro low, verses rising, the last chorus the
+  highest). The energy decides how full the drums and the accompaniment are, how far the
+  filter opens and how lively the pulse width of the lead moves.
+- SID dynamics: the filter cutoff of the accompaniment rises and falls with the energy over
+  the whole song (filter ramps), the lead gets a calm and a lively pulse width variant.
+- Groove: swing for swinging styles, ghost notes on the snare, snare rolls and fills before
+  a chorus.
+
+### Song plan (TAB)
+
+TAB (or the "Song plan" button) opens the plan of the piece - what the composer is going to
+write: title, key, tempo, mood, the theme and the list of parts with their length, energy and
+chords. Change the plan and the piece is composed again from it (after a short pause, so typing
+stays smooth); F1 plays it.
+
+|  Up / Down          Select a field or a part
+|  Left / Right       Change the value; energy of the selected part (also shown as a graph)
+|  + / -              Bars of the part (steps of 4)
+|  Page Up / Down     Kind of the part: intro, verse, chorus, bridge, break, outro
+|  ENTER              Edit the chords of the part ("Am . F G": one chord per bar, "." holds
+|                     the chord before) or a text field
+|  INS / DEL          Insert a part (a copy of the selected one) / delete it
+|  CTRL+Up / Down     Move the part
+|  F5                 Ask the arranger (see below) for a new plan from the idea
+|  F6 / F7            Copy the request for a chatbot / paste its answer (a plan)
+|  F8                 The built-in plan (what the composer decided by itself)
+|  F9 / F10           Load / save a plan (.plan)
+|  TAB / ESC          Back to New song / cancel
+
+Write your idea in the Idea field in plain English - for example "a melancholic synthwave
+track for a night drive, slow intro, big last chorus" - and press F5 (or ENTER in the field).
+The arranger answers with a complete plan; the composer then writes the notes, sounds and
+drums from it, so the result always fits the SID. A plan that has mistakes is repaired as far
+as possible (the message line tells what was repaired). With 4-8 SIDs, a plan that would not
+fit into one song is shortened.
+
+Back in New song, the status line shows that the piece is composed from the plan; X switches
+the plan off again (the composer plans by itself).
+
+### The arranger: a local language model (Ollama)
+
+The arranger is a language model that runs on your own computer with Ollama - nothing is sent
+to the internet, and once a model is installed, no internet connection is needed at all.
+
+1. Install Ollama from ollama.com (Windows, macOS, Linux) and start it.
+2. Download a model once, for example in a terminal: ollama pull llama3.2
+   (small and fast; bigger models such as qwen2.5:7b or mistral plan better but take longer).
+3. Open the song plan (CTRL+G, TAB). The Arranger field lists the installed models - choose
+   one with Left / Right (R refreshes the list). "Built-in" uses no model.
+
+C64 GrooveGoat talks to Ollama on 127.0.0.1:11434. Another address can be set in the file
+ollama.cfg in the configuration folder (host=192.168.1.20:11434), which also remembers the
+chosen model; the environment variable GG_OLLAMA overrides the address. Without Ollama, F6
+copies the request to the clipboard: paste it into any chatbot and paste its answer with F7.
+
+A plan is JSON text, for example:
+
+|  {"title": "Midnight Drive", "genre": "synthwave", "key": "A", "scale": "minor",
+|   "bpm": 108, "mood": "melancholic, driving",
+|   "theme": {"degrees": [1, 2, 3, 5, 3, 2, 1], "rhythm": "x-x-x---x-x-x---"},
+|   "sections": [
+|    {"part": "intro", "bars": 8, "energy": 0.3, "chords": "Am . F . C . G ."},
+|    {"part": "verse", "bars": 16, "energy": 0.5, "chords": "Am F C G"},
+|    {"part": "chorus", "bars": 8, "energy": 0.9, "chords": "F G Am Am"},
+|    {"part": "outro", "bars": 4, "energy": 0.4, "chords": "Am"}]}
+
+The theme uses scale degrees (1 = keynote) on the "x" of the rhythm (16 steps per bar, "-"
+holds the note, "." is a rest). The energy goes from 0 (quiet) to 1 (full).
 
 ## MIDI import (CTRL+F)
 
@@ -1550,6 +1630,8 @@ Export and rendering without opening a window:
 |                     window), F = 1 with the fill; into the first pattern of channel 1
 |  --compose=STYLE[/SUB],SEED,SECONDS,SIDS[,MODEL,SUBTUNES,VOICES,ENHANCED]
 |                     New song (STYLE = techno, house, rock ...; then --save)
+|                     GG_PLAN=FILE: from a song plan (.plan); GG_COMPOSER=classic:
+|                     the composer of version 1.0
 |  --midi=FILE,SIDS[,VOICES,MODEL,VARIANT,ACCOMP,HARMONY]
 |                     MIDI import (ACCOMP auto, arp, stabs, pads, broken, counter;
 |                     HARMONY normal, careful, loose; then --save)

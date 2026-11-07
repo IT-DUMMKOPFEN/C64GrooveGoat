@@ -54,7 +54,12 @@ by Lasse Öörni (Cadaver) and the
   33 genres with their subgenres as templates (full songs with intro, verses, choruses, bridge
   and outro), 1-8 SIDs, 6581 / 8580, subtunes (title, in-game, game over jingle), new melody /
   new instruments, playing technique of the style; "Enhanced": composed for 8 SIDs, then
-  calculated down to 1 or 2 SIDs
+  calculated down to 1 or 2 SIDs. Composer 1.1: motifs and a theme, phrases with cadences,
+  a tension arc over the song (energy per part), filter and pulse width moving with it, swing,
+  ghost notes and fills; "Composer Classic" gives the pieces of version 1.0
+- Song plan (`TAB` in New song): parts, bars, energy, chords, key, tempo and theme of the piece,
+  editable; a local language model (Ollama, offline - nothing leaves the computer) can write
+  the plan from an idea in plain English, or any chatbot via copy / paste; `.plan` files
 - MIDI import (`CTRL+F`): grid and tempo map, roles of the parts,
   melody and bass lines, chords checked against the melody, arpeggios / stabs / pads / broken
   chords / counter melody, drums in the gaps, velocity and volume as sustain commands; 1, 2, 4,

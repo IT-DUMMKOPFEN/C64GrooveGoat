@@ -671,6 +671,32 @@ static void plan_take(SONGPLAN *np)
   }
 }
 
+// the Ollama settings (ollama.cfg next to groovegoat.cfg): host=... model=...
+static char g_wantmodel[64] = "";
+static void ollamacfg(int save)
+{
+  char path[MAX_PATHNAME], line[128];
+  FILE *f;
+  configpath(path, "ollama.cfg");
+  if (save)
+  {
+    f = fopen(path, "wt");
+    if (!f) return;
+    fprintf(f, "host=%s\nmodel=%s\n", ollamahost, (g_arranger > 0) && (g_arranger <= g_nmodels) ? g_models[g_arranger - 1] : "built-in");
+    fclose(f);
+    return;
+  }
+  f = fopen(path, "rt");
+  if (!f) return;
+  while (fgets(line, sizeof line, f))
+  {
+    line[strcspn(line, "\r\n")] = 0;
+    if ((!strncmp(line, "host=", 5)) && (line[5])) snprintf(ollamahost, sizeof ollamahost, "%s", line + 5);
+    if (!strncmp(line, "model=", 6)) snprintf(g_wantmodel, sizeof g_wantmodel, "%s", line + 6);
+  }
+  fclose(f);
+}
+
 static int planpage(COMP **cp, int *variant, int *ok, int *previewing, char *err, int errsize, int x0, int y0, int w, int h)
 {
   enum { P_IDEA = 0, P_ARR, P_TITLE, P_KEY, P_TEMPO, P_MOOD, P_SECS };
@@ -682,8 +708,13 @@ static int planpage(COMP **cp, int *variant, int *ok, int *previewing, char *err
   if (g_nmodels == -2)
   {
     char e[200];
+    ollamacfg(0);
+    if (getenv("GG_OLLAMA")) snprintf(ollamahost, sizeof ollamahost, "%s", getenv("GG_OLLAMA"));
     g_nmodels = ollama_models(g_models, OLLAMA_MAXMODELS, e, sizeof e);
     if ((g_nmodels > 0) && (!g_arranger)) g_arranger = 1;
+    if (!strcmp(g_wantmodel, "built-in")) g_arranger = 0;
+    for (k = 0; k < g_nmodels; k++)
+      if (!strcmp(g_models[k], g_wantmodel)) g_arranger = k + 1;
   }
   if (g_arranger > g_nmodels) g_arranger = g_nmodels > 0 ? 1 : 0;
   if ((!g_planon) && (*cp)) plan_from_comp(*cp, &g_plan);
@@ -1220,6 +1251,7 @@ static int planpage(COMP **cp, int *variant, int *ok, int *previewing, char *err
     *cp = compose_now(err, errsize, variant);
     *ok = *cp != NULL;
   }
+  if (g_nmodels > 0) ollamacfg(1);
   key = rawkey = 0;
   return result;
 }

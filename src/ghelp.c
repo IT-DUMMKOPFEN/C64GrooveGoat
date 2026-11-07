@@ -1018,11 +1018,11 @@ int showversioninfo(int frominfo)
   int sidew = x, rightx = x + w, rightw = MAX_COLUMNS - x - w;
   static const char *items[] =
   {
-    "New songs from 33 genres and their subgenres - 1 to 8 SIDs, 6581 / 8580, subtunes",
-    "MIDI import: every MIDI file becomes a SID song, for 1 to 8 SIDs",
-    "Bass, Chords & Arps from the chords of your song, beat editor, Improve, Join songs",
-    "5000+ instruments for the 6581 and the 8580, speech, MIDI keyboard with chords",
-    "Up to 8 SIDs with 24 voices, WAV / MP3 / MP4 export and runnable C64 programs",
+    "Composer 1.1: a theme with motifs, phrases with cadences, a tension arc over the song",
+    "SID dynamics: filter and pulse width follow the energy - plus swing, ghost notes, fills",
+    "Song plan: parts, chords, energy and theme of a new song - edit them as you like",
+    "A local AI arranger (Ollama, offline) writes the plan from your idea in plain English",
+    "Composer Classic: every piece of version 1.0, note for note, is still there",
     NULL
   };
   if (y < 0) y = 0;
@@ -1048,9 +1048,9 @@ int showversioninfo(int frominfo)
     dlg_drawframe(x, y, w, h, "Welcome to C64 GrooveGoat " PROGRAMVERSION);
     drawimage(x + 14, y + 2, "versionart", 70, 26);
     ly = y + 29;
-    printtext(x + 3, ly++, MKCOL(14, C_PANEL), "Version " PROGRAMVERSION " - The Monster Awakens");
+    printtext(x + 3, ly++, MKCOL(14, C_PANEL), "Version " PROGRAMVERSION " - The Monster Learns To Compose");
     ly++;
-    printtext(x + 3, ly++, MKCOL(7, C_PANEL), "What began as a fresh coat of paint for GoatTracker 2 is now a complete C64 music studio:");
+    printtext(x + 3, ly++, MKCOL(7, C_PANEL), "The composer has grown up - it now thinks in themes, phrases and a tension arc:");
     ly++;
     for (c = 0; items[c]; c++)
     {
@@ -1058,9 +1058,9 @@ int showversioninfo(int frominfo)
       printtext(x + 6, ly++, MKCOL(15, C_PANEL), items[c]);
     }
     ly++;
-    printtext(x + 3, ly++, MKCOL(15, C_PANEL), "Thanks to the many comments from so many of you last week, GrooveGoat has grown into a");
-    printtext(x + 3, ly, MKCOL(14, C_PANEL), "real monster. Thank you!");
-    printglyph(x + 28, ly, MKCOL(C_RB1, C_PANEL), GL_HEART);
+    printtext(x + 3, ly++, MKCOL(15, C_PANEL), "Thanks to all of you for the comments and ideas - keep them coming, and keep");
+    printtext(x + 3, ly, MKCOL(14, C_PANEL), "grooving. Thank you!");
+    printglyph(x + 24, ly, MKCOL(C_RB1, C_PANEL), GL_HEART);
     if (frominfo) printtext(x + 3, by - 2, MKCOL(3, C_PANEL), "ENTER / Let's groove!: the program info   ESC: close");
     else printtext(x + 3, by - 2, MKCOL(3, C_PANEL), "ENTER / ESC / click: start   (shown once for every new version)");
     printtext(bx, by, MKCOL(C_BUTTONTEXT, C_BUTTONHI), "  Let's groove!  ");
