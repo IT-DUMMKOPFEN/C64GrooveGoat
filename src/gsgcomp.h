@@ -126,7 +126,13 @@ typedef struct COMPS
   char exprseed[48];               // enhanced: seed of the playing technique ("seed-melvar-enh")
   char filt_owner[12];             // glide scoop fall vib bslide sweep
   char err[160];
+  // composer 1.1 (engine 1): one theme for the whole song, phrases with cadences
+  int engine;                      // 0 = Classic (the seeds of 1.0), 1 = composer 1.1
+  int theme_have, theme_mb;
+  MOTIF theme;
 } COMP;
+
+extern int sg_engine;               // the composer for new pieces (1 = 1.1, 0 = Classic)
 
 void comp_setvariations(COMP *c, int mel_var, int ins_var);
 COMP *comp_new(int styleidx, unsigned seed, double seconds, int sids, int voices, int model);

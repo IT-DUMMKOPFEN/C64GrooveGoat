@@ -171,6 +171,7 @@ int compose_cli(const char *spec, char *err, int errsize)
   snprintf(st, sizeof st, "%.*s", p ? (int)(p - spec) : (int)strlen(spec), spec);
   int subtunes = 0, voices = 3, enhanced = 0;
   if (p) sscanf(p + 1, "%u,%lf,%d,%d,%d,%d,%d", &seed, &seconds, &sids, &model, &subtunes, &voices, &enhanced);
+  if ((getenv("GG_COMPOSER")) && (!strcmp(getenv("GG_COMPOSER"), "classic"))) sg_engine = 0;
   v = findvariant(st, seed);
   if (v < 0)
   {
@@ -543,13 +544,13 @@ static COMP *compose_now(char *err, int errsize, int *variant)
 void composedialog(void)
 {
   static FULLSNAP snap;
-  int w = 108, h = 36;
+  int w = 108, h = 37;
   int x0 = (MAX_COLUMNS - w) / 2;
   int y0 = (MAX_ROWS - h) / 2 - 1;
   int sel = 0, previewing = 0, ok = 0, variant = 0, dirty = 1;
   char msg[200] = "", err[200] = "";
   COMP *c = NULL;
-  enum { O_GENRE = 0, O_SUB, O_LEN, O_SIDS, O_VOICES, O_CHIP, O_SUBT, O_ENH, O_KEY, O_MODE, O_BPM, O_SEED, O_NUM };
+  enum { O_GENRE = 0, O_SUB, O_LEN, O_SIDS, O_VOICES, O_CHIP, O_SUBT, O_ENH, O_ENGINE, O_KEY, O_MODE, O_BPM, O_SEED, O_NUM };
   enum { B_PLAY = O_NUM, B_DICE, B_MEL, B_INS, B_CREATE, B_CANCEL, S_NUM };
 
   sg_init();
@@ -609,6 +610,10 @@ void composedialog(void)
         if ((g_sids > 2) || (g_subtunes)) snprintf(buf, sizeof buf, "Enhanced    -  (only for 1 or 2 SIDs without subtunes)");
         else snprintf(buf, sizeof buf, "Enhanced    " GS_PREV " %s " GS_NEXT "%s", g_enhanced ? "On" : "Off",
                       g_enhanced ? "  composed for 8 SIDs, then calculated down" : "");
+        break;
+        case O_ENGINE:
+        snprintf(buf, sizeof buf, "Composer    " GS_PREV " %s " GS_NEXT "  %s", sg_engine ? "1.1" : "Classic",
+                 sg_engine ? "one theme, phrases with cadences" : "as version 1.0 (same seed, same song)");
         break;
         case O_KEY: snprintf(buf, sizeof buf, "Key         " GS_PREV " %s " GS_NEXT, g_key < 0 ? "Random" : sg_keyname[g_key]); break;
         case O_MODE: snprintf(buf, sizeof buf, "Scale       " GS_PREV " %s " GS_NEXT, g_mode < 0 ? "From the style" : sg_modelabel[g_mode]); break;
@@ -808,6 +813,7 @@ void composedialog(void)
             if ((g_sids <= 2) && (!g_subtunes)) g_enhanced ^= 1;
             else dirty = 0;
             break;
+            case O_ENGINE: sg_engine ^= 1; break;
             case O_KEY: g_key = ((g_key + 1 + d) % 13 + 13) % 13 - 1; break;
             case O_MODE: g_mode = ((g_mode + 1 + d) % (M_NUM + 1) + M_NUM + 1) % (M_NUM + 1) - 1; break;
             case O_BPM:

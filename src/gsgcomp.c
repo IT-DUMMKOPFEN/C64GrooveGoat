@@ -201,10 +201,13 @@ void sg_make_title(SGRNG *rng, const JV *st, char *out, int size)
 // Construction
 // ---------------------------------------------------------------------------
 
+int sg_engine = 1;
+
 COMP *comp_new(int styleidx, unsigned seed, double seconds, int sids, int voices, int model)
 {
   COMP *c = (COMP *)calloc(1, sizeof(COMP));
   sg_init();
+  c->engine = sg_engine;
   c->styleidx = styleidx;
   c->st = style_parse(styleidx);
   snprintf(c->stylekey, sizeof c->stylekey, "%s", jv_str(jv_get(c->st, "key"), sg_styles[styleidx].key));
@@ -910,6 +913,41 @@ static void plan_structure(COMP *c)
   c->seconds = c->total_bars * c->bar_sec;
 }
 
+// the dominant (V) of the key: major if the scale has the leading tone,
+// power chords for power chord styles
+static CHORD dominant(COMP *c)
+{
+  CHORD d;
+  d.root = (c->key + 7) % 12;
+  if (c->tonic.q == Q_POW) d.q = Q_POW;
+  else d.q = ((scale_contains(&c->scale, c->key + 11)) || (!scale_contains(&c->scale, c->key + 10))) ? Q_MAJ : Q_MIN;
+  return d;
+}
+
+// composer 1.1: the chords follow the phrases. In a phrase of 8 bars the 4th
+// bar is open (half cadence on V), the end of a phrase closes (V - I);
+// a verse and a bridge end open on V and so lead into the next part.
+static void cadence_chords(COMP *c, int sec, int nbars, CHORD *out)
+{
+  int base = sec_base(sec), plen, p;
+  CHORD dom, ton = c->tonic;
+  if ((c->kind) || (c->jingle) || (base == SEC_INTRO) || (nbars < 4)) return;
+  if (!strcmp(c->stylekey, "blues")) return;          // the blues form has its own turnaround
+  dom = dominant(c);
+  plen = (nbars % 8 == 0) ? 8 : 4;
+  for (p = 0; p + plen <= nbars; p += plen)
+  {
+    int end = p + plen - 1, lastphrase = p + plen == nbars;
+    if (plen == 8) out[p + 3] = dom;
+    if ((lastphrase) && ((base == SEC_A) || (base == SEC_C))) out[end] = dom;
+    else if ((lastphrase) || (plen == 8))
+    {
+      out[end - 1] = dom;
+      out[end] = ton;
+    }
+  }
+}
+
 // chords for nbars bars of a section
 static void chords_for(COMP *c, int sec, int nbars, int last, CHORD *out)
 {
@@ -917,6 +955,7 @@ static void chords_for(COMP *c, int sec, int nbars, int last, CHORD *out)
   if (cb < 1) cb = 1;
   if ((n * cb > nbars) && (n > nbars)) cb = 1;
   for (b = 0; b < nbars; b++) out[b] = c->progs[sec][(b / cb) % n];
+  if (c->engine) cadence_chords(c, sec, nbars, out);
   if ((last) && (nbars)) out[nbars - 1] = c->tonic;
 }
 
@@ -1158,6 +1197,13 @@ static int realize(COMP *c, const MOTIF *m, int row0, int *prev, int lo, int hi,
       if (k < 0) k = 0;
       if (k > np - 1) k = np - 1;
       note = pool[k];
+      // 1.1: no leaps over a fifth inside a motif - the next tone of the pool instead
+      if ((c->engine) && (*prev >= 0) && (abs(note - *prev) > 7) && (dlt))
+      {
+        int k2 = j + (dlt > 0 ? 1 : -1);
+        if ((k2 >= 0) && (k2 < np) && (abs(pool[k2] - *prev) < abs(note - *prev))) note = pool[k2];
+        if (abs(note - *prev) > 9) note = pool[j];
+      }
     }
     out[n].row = x->pos;
     out[n].note = note;
@@ -1226,6 +1272,185 @@ static int cmprnd(const void *a, const void *b)
   return x->dur - y->dur;
 }
 
+// ---------------------------------------------------------------------------
+// Composer 1.1: one theme for the whole song
+//
+// The theme (a motif of 1-4 bars) is made once. Every part takes it up:
+//  verse   theme - theme varied, open (half cadence) - answer (theme turned
+//          upside down) - theme with a closing cadence
+//  chorus  the hook: the contour of the theme on a new, livelier rhythm,
+//          repeated a step higher (sequence) and closed
+//  bridge  the theme in long notes (augmentation), upside down
+//  outro   the theme comes back and ends on the keynote
+// ---------------------------------------------------------------------------
+
+static void motif_cut(const MOTIF *src, int rows, MOTIF *out)
+{
+  int i;
+  out->n = 0;
+  for (i = 0; i < src->n; i++)
+    if (src->v[i].pos < rows) out->v[out->n++] = src->v[i];
+}
+
+// the contour of 'from' on the rhythm of 'rh' (strong beats from the rhythm)
+static void motif_contour(const MOTIF *from, const MOTIF *rh, MOTIF *out)
+{
+  int i;
+  *out = *rh;
+  if (!from->n) return;
+  for (i = 0; i < out->n; i++) out->v[i].dlt = from->v[i % from->n].dlt;
+}
+
+static void motif_invert(const MOTIF *src, MOTIF *out)
+{
+  int i;
+  *out = *src;
+  for (i = 0; i < out->n; i++) out->v[i].dlt = -out->v[i].dlt;
+}
+
+static void motif_vary(const MOTIF *src, MOTIF *out)
+{
+  int i;
+  *out = *src;
+  for (i = (out->n - 2 > 0 ? out->n - 2 : 0); i < out->n; i++)
+    out->v[i].dlt = out->v[i].dlt ? -out->v[i].dlt : 1;
+}
+
+// twice as slow, the first half of the theme fills the motif
+static void motif_augment(COMP *c, const MOTIF *src, int rows, MOTIF *out)
+{
+  int i;
+  out->n = 0;
+  for (i = 0; (i < src->n) && (out->n < 96); i++)
+  {
+    MNOTE x = src->v[i];
+    x.pos *= 2;
+    x.d *= 2;
+    if (x.pos >= rows) break;
+    if (x.pos + x.d > rows) x.d = rows - x.pos;
+    x.strong = (x.pos % (2 * c->bt) == 0) || (x.d >= c->bt);
+    out->v[out->n++] = x;
+  }
+}
+
+static void make_theme(COMP *c)
+{
+  RCELL rh[400];
+  int mb = c->L_motif_bars, nr;
+  if (mb < 1) mb = 1;
+  if (mb > 4) mb = 4;
+  nr = make_rhythm(c, mb, 0, 0, 0, 0, rh);
+  make_motif(c, rh, nr, rng_random(c->cur) < 0.6, &c->theme);
+  c->theme_mb = mb;
+  c->theme_have = 1;
+}
+
+// the three motifs of a part: [0] main, [1] second (answer or variation), [2] cadence
+static void theme_motifs(COMP *c, int sec, int mb, MOTIF *m)
+{
+  int base = sec_base(sec), rows = mb * c->spb;
+  MOTIF th, tmp;
+  RCELL rh[400];
+  int nr;
+  if (mb <= c->theme_mb) motif_cut(&c->theme, rows, &th);
+  else
+  {
+    // a longer motif: the theme twice, the second time varied
+    int i;
+    th = c->theme;
+    motif_vary(&c->theme, &tmp);
+    for (i = 0; (i < tmp.n) && (th.n < 96); i++)
+    {
+      MNOTE x = tmp.v[i];
+      x.pos += c->theme_mb * c->spb;
+      if (x.pos < rows) th.v[th.n++] = x;
+    }
+  }
+  if (base == SEC_B)
+  {
+    // the hook: the contour of the theme on a livelier rhythm
+    nr = make_rhythm(c, mb, 0.35, 0, 0, 0, rh);
+    make_motif(c, rh, nr, 1, &tmp);
+    motif_contour(&th, &tmp, &m[0]);
+    motif_vary(&m[0], &m[1]);
+  }
+  else if (base == SEC_C)
+  {
+    MOTIF inv;
+    motif_invert(&th, &inv);
+    motif_augment(c, &inv, rows, &m[0]);
+    motif_augment(c, &th, rows, &m[1]);
+  }
+  else
+  {
+    m[0] = th;
+    motif_invert(&th, &m[1]);
+  }
+  // the closing motif: the contour of the main motif on a cadence rhythm
+  nr = make_rhythm(c, mb, base == SEC_B ? 0.35 : 0, base == SEC_C, 1, 1, rh);
+  make_motif(c, rh, nr, 0, &tmp);
+  motif_contour(&m[0], &tmp, &m[2]);
+}
+
+// plan of the phrase slots: 0 main, 1 main varied and open (half cadence),
+// 2 second motif, 3 closing cadence, 6 main a step higher (sequence)
+static int phrase_plan11(COMP *c, int sec, int slots, int *plan)
+{
+  static const int verse[4] = {0, 1, 2, 3}, hook[4] = {0, 6, 0, 3}, bridge[4] = {0, 1, 0, 3};
+  const int *g = sec_base(sec) == SEC_B ? hook : sec_base(sec) == SEC_C ? bridge : verse;
+  int i;
+  (void)c;
+  if (slots > 64) slots = 64;
+  if (slots <= 1) { plan[0] = 3; return 1; }
+  if (slots == 2) { plan[0] = 0; plan[1] = 3; return 2; }
+  if (slots == 3) { plan[0] = 0; plan[1] = 2; plan[2] = 3; return 3; }
+  for (i = 0; i < slots; i++) plan[i] = g[i % 4];
+  // an incomplete group at the end: close it
+  plan[slots - 1] = 3;
+  return slots;
+}
+
+static int lead_section11(COMP *c, int sec, int nbars, int row0, RND *out, int max, int lo, int hi, int mb, int *plan, int *npout)
+{
+  int np, i, n = 0, prev = c->last_lead_note;
+  MOTIF *m;
+  if (!c->theme_have) make_theme(c);
+  if (!c->motif_have[sec][mb])
+  {
+    theme_motifs(c, sec, mb, c->motifs[sec][mb]);
+    c->motif_have[sec][mb] = 1;
+  }
+  m = c->motifs[sec][mb];
+  np = phrase_plan11(c, sec, nbars / mb, plan);
+  *npout = np;
+  for (i = 0; i < np; i++)
+  {
+    int off = i * mb * c->spb, k, nn, pv = prev;
+    RND tmp[128];
+    MOTIF var;
+    const MOTIF *mm;
+    switch (plan[i])
+    {
+      case 1: motif_vary(&m[0], &var); mm = &var; break;
+      case 2: mm = &m[1]; break;
+      case 3: mm = &m[2]; break;
+      default: mm = &m[0]; break;
+    }
+    // a sequence: the hook again, a third higher
+    if ((plan[i] == 6) && (pv >= 0)) pv += 4;
+    nn = realize(c, mm, row0 + off, &pv, lo, hi, (plan[i] == 1) || (plan[i] == 3), tmp);
+    fix_lead(c, tmp, nn, row0 + off);
+    for (k = 0; (k < nn) && (n < max); k++)
+    {
+      out[n] = tmp[k];
+      out[n].row += off;
+      n++;
+    }
+    if (nn) prev = tmp[nn - 1].note;
+  }
+  return n;
+}
+
 // melody of one section (returns the number of notes in out; positions relative)
 int comp_lead_section(COMP *c, int sec, int nbars, int row0, RND *out, int max)
 {
@@ -1241,6 +1466,11 @@ int comp_lead_section(COMP *c, int sec, int nbars, int row0, RND *out, int max)
   if (mb < 1) mb = 1;
   if (nbars % mb) mb = 1;
   if (mb > 8) mb = 8;
+  if (c->engine)
+  {
+    n = lead_section11(c, sec, nbars, row0, out, max, lo, hi, mb, plan, &np);
+    goto PICKUPS;
+  }
   if (!c->motif_have[sec][mb])
   {
     RCELL ra[400], rb[400], rc[400];
@@ -1279,6 +1509,7 @@ int comp_lead_section(COMP *c, int sec, int nbars, int row0, RND *out, int max)
     }
   }
   // pick-up notes into the phrases
+  PICKUPS:
   {
     double pk = c->L_pickup;
     if ((pk > 0) && (n) && ((c->bt == 3) || (c->bt == 4)))
@@ -1754,6 +1985,7 @@ static void make_material(COMP *c)
       a->drums = (has_drums && (rng_random(rng) < 0.5)) ? 0 : (has_drums ? 1 : 3);
       a->bass = 1;
       a->lead = rng_random(rng) < 0.4;
+      if (c->engine) a->lead = 1;         // 1.1: the theme comes back at the end
     }
     else
     {

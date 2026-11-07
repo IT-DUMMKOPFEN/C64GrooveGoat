@@ -1120,7 +1120,7 @@ int sg_buildsongs(COMP **subs, int nsubs, int writeto, char *err, int errsize)
     snprintf(authorname, sizeof authorname, "%.31s", "C64 GrooveGoat");
     if ((c->kind == 1) && (!c->expressive)) snprintf(copyrightname, sizeof copyrightname, "2026 MIDI import");
     else if (c->kind == 1) snprintf(copyrightname, sizeof copyrightname, "2026 Enhanced (Seed %u)", c->seed);
-    else snprintf(copyrightname, sizeof copyrightname, "2026 C64 GrooveGoat (Seed %u)", c->seed);
+    else snprintf(copyrightname, sizeof copyrightname, c->engine ? "2026 C64 GrooveGoat (Seed %u)" : "2026 GG Classic (Seed %u)", c->seed);
     for (ch = 0; ch < MAX_CHN; ch++)
     {
       editorUndoInfo.editorInfo[ch].epnum = songorder[0][ch][0] < MAX_PATT ? songorder[0][ch][0] : 0;

@@ -514,6 +514,7 @@ static int make(char *err, int errsize)
   // the composer of the style: progression, key, instruments, bass figures
   if (comp) comp_free(comp);
   comp = comp_new(style, b_seed, 60, 1, 3, editorInfo.sidmodel ? 8580 : 6581);
+  comp->engine = 0;                 // the bass dialog keeps the progressions of the style
   comp->want_key = b_key;
   if (!comp_compose(comp))
   {
