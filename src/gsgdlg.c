@@ -9,7 +9,6 @@
 #include "gsgbuild.h"
 #include "gsgmidi.h"
 #include "gsgplan.h"
-#include "gollama.h"
 
 // style variant from "key" or "key/subindex" (no sub: chosen by weight)
 static int findvariant(const char *spec, unsigned seed)
@@ -638,9 +637,6 @@ static COMP *compose_now(char *err, int errsize, int *variant)
 
 static SONGPLAN g_plan;
 static int g_planon = 0;               // the piece is composed from g_plan
-static int g_arranger = 0;             // 0 built-in, 1.. an Ollama model
-static char g_models[OLLAMA_MAXMODELS][64];
-static int g_nmodels = -2;             // -2 not asked yet, -1 Ollama not reachable
 
 // the genre and subgenre of a style key ("synthwave") for the settings
 static int genre_of_key(const char *key, int *sub)
@@ -671,62 +667,33 @@ static void plan_take(SONGPLAN *np)
   }
 }
 
-// the Ollama settings (ollama.cfg next to groovegoat.cfg): host=... model=...
-static char g_wantmodel[64] = "";
-static void ollamacfg(int save)
+// the request for an AI chatbot into the clipboard
+static void copyprompt(char *msg, int msgsize)
 {
-  char path[MAX_PATHNAME], line[128];
-  FILE *f;
-  configpath(path, "ollama.cfg");
-  if (save)
-  {
-    f = fopen(path, "wt");
-    if (!f) return;
-    fprintf(f, "host=%s\nmodel=%s\n", ollamahost, (g_arranger > 0) && (g_arranger <= g_nmodels) ? g_models[g_arranger - 1] : "built-in");
-    fclose(f);
-    return;
-  }
-  f = fopen(path, "rt");
-  if (!f) return;
-  while (fgets(line, sizeof line, f))
-  {
-    line[strcspn(line, "\r\n")] = 0;
-    if ((!strncmp(line, "host=", 5)) && (line[5])) snprintf(ollamahost, sizeof ollamahost, "%s", line + 5);
-    if (!strncmp(line, "model=", 6)) snprintf(g_wantmodel, sizeof g_wantmodel, "%s", line + 6);
-  }
-  fclose(f);
+  static char prompt[8192];
+  plan_prompt(&g_plan, g_genre >= 0 ? sg_styles[style_genre_first(g_genre)].key : "", g_seconds, g_sids, prompt, sizeof prompt);
+  SDL_SetClipboardText(prompt);
+  snprintf(msg, msgsize, "The prompt is in the clipboard - paste it into an AI chatbot, copy its answer, then Paste plan (F7)");
 }
 
 static int planpage(COMP **cp, int *variant, int *ok, int *previewing, char *err, int errsize, int x0, int y0, int w, int h)
 {
   enum { P_IDEA = 0, P_ARR, P_TITLE, P_KEY, P_TEMPO, P_MOOD, P_SECS };
-  int sel = P_IDEA, top = 0, editch = 0, result = -1, dirty = 0, asking = 0, k;
+  int sel = P_IDEA, top = 0, editch = 0, result = -1, dirty = 0, k;
   int ofs_idea = 0, ofs_title = 0, ofs_mood = 0, ofs_ch = 0;
   char msg[220] = "", buf[400];
   Uint32 lastchange = 0;
   const int rows = 12;                       // visible parts
-  if (g_nmodels == -2)
-  {
-    char e[200];
-    ollamacfg(0);
-    if (getenv("GG_OLLAMA")) snprintf(ollamahost, sizeof ollamahost, "%s", getenv("GG_OLLAMA"));
-    g_nmodels = ollama_models(g_models, OLLAMA_MAXMODELS, e, sizeof e);
-    if ((g_nmodels > 0) && (!g_arranger)) g_arranger = 1;
-    if (!strcmp(g_wantmodel, "built-in")) g_arranger = 0;
-    for (k = 0; k < g_nmodels; k++)
-      if (!strcmp(g_models[k], g_wantmodel)) g_arranger = k + 1;
-  }
-  if (g_arranger > g_nmodels) g_arranger = g_nmodels > 0 ? 1 : 0;
   if ((!g_planon) && (*cp)) plan_from_comp(*cp, &g_plan);
   key = rawkey = 0;
   while (result < 0)
   {
     int y, hit = -1, hitbtn = -1, nsec = g_plan.nsec, bpm, secs;
     const int ytab = y0 + 2, yidea = y0 + 4, yarr = y0 + 6, ybtn = y0 + 8, yinfo = y0 + 10, yhdr = y0 + 14, ygraph = y0 + 15 + rows + 1;
-    static const char *btns[7] = {" Ask F5 ", " Copy prompt F6 ", " Paste plan F7 ", " Built-in plan F8 ", " Load F9 ", " Save F10 ", NULL};
+    static const char *btns[7] = {" Copy prompt F6 ", " Paste plan F7 ", " Built-in plan F8 ", " Load F9 ", " Save F10 ", NULL, NULL};
     int bx[7];
     // a changed plan: compose again (after a short pause, so typing stays smooth)
-    if ((dirty) && (!asking) && ((SDL_GetTicks() - lastchange > 700) || (rawkey == KEY_F1)))
+    if ((dirty) && ((SDL_GetTicks() - lastchange > 700) || (rawkey == KEY_F1)))
     {
       int was = *previewing;
       if (was) stopwait();
@@ -745,35 +712,23 @@ static int planpage(COMP **cp, int *variant, int *ok, int *previewing, char *err
     printtext(x0 + 16, ytab, MKCOL(C_BUTTONTEXT, C_BUTTONHI), " 2 Song plan ");
     if ((mousey == ytab) && (mousex >= x0 + 2) && (mousex < x0 + 14)) hitbtn = 100;
     printtext(x0 + 32, ytab, MKCOL(8, C_PANEL), g_planon ? "The song is composed from this plan (TAB: settings)" :
-              "The plan of the composer - change something, ask Ollama or paste a plan");
+              "The plan of the composer - change something or paste a plan from an AI chatbot");
     // idea
     printtext(x0 + 2, yidea, MKCOL(sel == P_IDEA ? 15 : 8, C_PANEL), "Idea");
     printblankc(x0 + 12, yidea, MKCOL(15, C_BEATROW), w - 15);
-    drawtextfield(x0 + 12, yidea, w - 15, g_plan.idea, MKCOL(15, C_BEATROW), (sel == P_IDEA) && (!asking), &ofs_idea);
+    drawtextfield(x0 + 12, yidea, w - 15, g_plan.idea, MKCOL(15, C_BEATROW), sel == P_IDEA, &ofs_idea);
     if ((mousey == yidea) && (mousex >= x0 + 12) && (mousex < x0 + w - 3)) hit = P_IDEA;
-    // arranger
-    {
-      const char *st;
-      int col;
-      if (g_arranger == 0) snprintf(buf, sizeof buf, GS_PREV " Built-in " GS_NEXT);
-      else snprintf(buf, sizeof buf, GS_PREV " Ollama: %s " GS_NEXT, g_models[g_arranger - 1]);
-      printblankc(x0 + 2, yarr, MKCOL(8, sel == P_ARR ? C_SELECT : C_PANEL), 44);
-      printtext(x0 + 2, yarr, MKCOL(sel == P_ARR ? 15 : 8, sel == P_ARR ? C_SELECT : C_PANEL), "Arranger");
-      printtext(x0 + 12, yarr, MKCOL(15, sel == P_ARR ? C_SELECT : C_PANEL), buf);
-      if ((mousey == yarr) && (mousex >= x0 + 2) && (mousex < x0 + 46)) hit = P_ARR;
-      if (g_nmodels > 0) { st = "running on this computer, works offline"; col = 13; }
-      else if (g_nmodels == 0) { st = "Ollama runs, but has no model: ollama pull llama3.2"; col = 10; }
-      else { st = "Ollama not found - free from ollama.com (optional; R: look again)"; col = 3; }
-      printtext(x0 + 48, yarr, MKCOL(col, C_PANEL), st);
-    }
+    // how the idea becomes a plan
+    printtext(x0 + 12, yarr, MKCOL(8, C_PANEL),
+              "Copy prompt, paste it into any AI chatbot, copy its answer and Paste plan - or edit the plan below");
     // buttons
     {
       int xx = x0 + 12;
       for (k = 0; btns[k]; k++)
       {
-        int dis = (k == 0) && (g_arranger == 0);
+        int dis = 0;
         bx[k] = xx;
-        printtext(xx, ybtn, MKCOL(dis ? 3 : C_BUTTONTEXT, k == 0 && !dis ? C_BUTTONHI : C_BUTTON), btns[k]);
+        printtext(xx, ybtn, MKCOL(dis ? 3 : C_BUTTONTEXT, k < 2 ? C_BUTTONHI : C_BUTTON), btns[k]);
         if ((mousey == ybtn) && (mousex >= xx) && (mousex < xx + (int)strlen(btns[k]))) hitbtn = k;
         xx += strlen(btns[k]) + 1;
       }
@@ -784,7 +739,7 @@ static int planpage(COMP **cp, int *variant, int *ok, int *previewing, char *err
       int key0 = g_plan.key >= 0 ? g_plan.key : (*cp ? (*cp)->key : 0), mode0 = g_plan.mode >= 0 ? g_plan.mode : (*cp ? (*cp)->mode : 0);
       printtext(x0 + 2, yinfo, MKCOL(sel == P_TITLE ? 15 : 8, C_PANEL), "Title");
       printblankc(x0 + 9, yinfo, MKCOL(14, sel == P_TITLE ? C_BEATROW : C_PANEL), 24);
-      drawtextfield(x0 + 9, yinfo, 24, g_plan.title, MKCOL(14, sel == P_TITLE ? C_BEATROW : C_PANEL), (sel == P_TITLE) && (!asking), &ofs_title);
+      drawtextfield(x0 + 9, yinfo, 24, g_plan.title, MKCOL(14, sel == P_TITLE ? C_BEATROW : C_PANEL), sel == P_TITLE, &ofs_title);
       if ((mousey == yinfo) && (mousex >= x0 + 2) && (mousex < x0 + 33)) hit = P_TITLE;
       snprintf(buf, sizeof buf, "Key " GS_PREV " %s %s " GS_NEXT, sg_keyname[key0], sg_modelabel[mode0]);
       printtext(x0 + 36, yinfo, MKCOL(sel == P_KEY ? 15 : 8, sel == P_KEY ? C_SELECT : C_PANEL), buf);
@@ -794,7 +749,7 @@ static int planpage(COMP **cp, int *variant, int *ok, int *previewing, char *err
       if ((mousey == yinfo) && (mousex >= x0 + 64) && (mousex < x0 + 84)) hit = P_TEMPO;
       printtext(x0 + 2, yinfo + 1, MKCOL(sel == P_MOOD ? 15 : 8, C_PANEL), "Mood");
       printblankc(x0 + 9, yinfo + 1, MKCOL(15, sel == P_MOOD ? C_BEATROW : C_PANEL), 40);
-      drawtextfield(x0 + 9, yinfo + 1, 40, g_plan.mood, MKCOL(15, sel == P_MOOD ? C_BEATROW : C_PANEL), (sel == P_MOOD) && (!asking), &ofs_mood);
+      drawtextfield(x0 + 9, yinfo + 1, 40, g_plan.mood, MKCOL(15, sel == P_MOOD ? C_BEATROW : C_PANEL), sel == P_MOOD, &ofs_mood);
       if ((mousey == yinfo + 1) && (mousex >= x0 + 2) && (mousex < x0 + 49)) hit = P_MOOD;
       {
         int o = snprintf(buf, sizeof buf, "Theme ");
@@ -879,12 +834,7 @@ static int planpage(COMP **cp, int *variant, int *ok, int *previewing, char *err
     secs = (int)(plan_bars(&g_plan) * 4 * 60.0 / (bpm > 0 ? bpm : 120) + 0.5);
     snprintf(buf, sizeof buf, "%d parts, %d bars, %d:%02d min at %d BPM", nsec, plan_bars(&g_plan), secs / 60, secs % 60, bpm);
     printtext(x0 + 2, y0 + h - 6, MKCOL(8, C_PANEL), buf);
-    if (asking)
-    {
-      snprintf(buf, sizeof buf, "Ollama (%s) is planning the song ... %u s   (ESC cancels)", g_models[g_arranger - 1], ollama_seconds());
-      printtext(x0 + 2, y0 + h - 5, MKCOL(7, C_PANEL), buf);
-    }
-    else if (msg[0]) printtext(x0 + 2, y0 + h - 5, MKCOL(10, C_PANEL), msg);
+    if (msg[0]) printtext(x0 + 2, y0 + h - 5, MKCOL(10, C_PANEL), msg);
     else if (!*ok) dlg_printwrapped(x0 + 2, y0 + h - 5, w - 4, 1, MKCOL(10, C_PANEL), err);
     printtext(x0 + 2, y0 + h - 4, MKCOL(3, C_PANEL), editch ? "Chords: one per bar (Am F C G7), '.' holds - ENTER done" :
               GS_UP GS_DOWN " part  " GS_PREV GS_NEXT " energy  +/- bars  PGUP/PGDN part type  ENTER chords  INS add  DEL remove  CTRL+" GS_UP GS_DOWN " move");
@@ -902,52 +852,15 @@ static int planpage(COMP **cp, int *variant, int *ok, int *previewing, char *err
     fliptoscreen();
     getkey();
     if (win_quitted) { result = 2; break; }
-    // Ollama: the answer
-    if (asking)
-    {
-      char *ans = NULL, e[200] = "";
-      int st = ollama_poll(&ans, e, sizeof e);
-      if (st == 1)
-      {
-        SONGPLAN np = g_plan;
-        char m2[200];
-        asking = 0;
-        if (plan_parse(ans, &np, m2, sizeof m2))
-        {
-          plan_take(&np);
-          snprintf(msg, sizeof msg, "Ollama: %s", m2);
-          dirty = 1;
-          lastchange = 0;
-        }
-        else snprintf(msg, sizeof msg, "Ollama: %s - the plan stays as it was", m2);
-        free(ans);
-      }
-      else if (st == -1)
-      {
-        asking = 0;
-        snprintf(msg, sizeof msg, "%s", e);
-      }
-      if (asking)
-      {
-        if (rawkey == KEY_ESC)
-        {
-          ollama_cancel();
-          asking = 0;
-          snprintf(msg, sizeof msg, "Cancelled");
-        }
-        key = rawkey = 0;
-        continue;
-      }
-    }
     // the mouse
     if ((mouseb & MOUSEB_LEFT) && (!prevmouseb))
     {
       if (hitbtn >= 0)
       {
-        static const int bkeys[6] = {KEY_F5, KEY_F6, KEY_F7, KEY_F8, KEY_F9, KEY_F10};
+        static const int bkeys[5] = {KEY_F6, KEY_F7, KEY_F8, KEY_F9, KEY_F10};
         editch = 0;
         if (hitbtn == 100) rawkey = KEY_TAB;
-        else if (hitbtn < 6) rawkey = bkeys[hitbtn];
+        else if (hitbtn < 5) rawkey = bkeys[hitbtn];
         else if (hitbtn == 50) rawkey = KEY_F1;
         else if (hitbtn == 51) { result = 1; break; }
         else if (hitbtn == 52) rawkey = KEY_TAB;
@@ -962,7 +875,7 @@ static int planpage(COMP **cp, int *variant, int *ok, int *previewing, char *err
         if (hit == P_IDEA) editstring_click(g_plan.idea, mousex - (x0 + 12) + ofs_idea);
         else if (hit == P_TITLE) editstring_click(g_plan.title, mousex - (x0 + 9) + ofs_title);
         else if (hit == P_MOOD) editstring_click(g_plan.mood, mousex - (x0 + 9) + ofs_mood);
-        else if ((hit == P_ARR) || (hit == P_KEY) || (hit == P_TEMPO)) rawkey = ar < 0 ? KEY_LEFT : KEY_RIGHT;
+        else if ((hit == P_KEY) || (hit == P_TEMPO)) rawkey = ar < 0 ? KEY_LEFT : KEY_RIGHT;
         else if (hit >= P_SECS)
         {
           PLANSEC *ps = &g_plan.sec[hit - P_SECS];
@@ -977,7 +890,7 @@ static int planpage(COMP **cp, int *variant, int *ok, int *previewing, char *err
           if (dirty) { g_planon = 1; lastchange = SDL_GetTicks(); }
         }
         key = 0;
-        if ((hit != P_ARR) && (hit != P_KEY) && (hit != P_TEMPO)) rawkey = 0;
+        if ((hit != P_KEY) && (hit != P_TEMPO)) rawkey = 0;
       }
     }
     if (!rawkey && !key) continue;
@@ -991,26 +904,9 @@ static int planpage(COMP **cp, int *variant, int *ok, int *previewing, char *err
       key = rawkey = 0;
       continue;
     }
-    if (rawkey == KEY_F5)
-    {
-      if (g_arranger == 0) snprintf(msg, sizeof msg, "Choose an Ollama model as the arranger first (or use Copy prompt / Paste plan)");
-      else if (!g_plan.idea[0]) snprintf(msg, sizeof msg, "Describe the song in the Idea field first");
-      else
-      {
-        static char prompt[8192];
-        plan_prompt(&g_plan, g_genre >= 0 ? sg_styles[style_genre_first(g_genre)].key : "", g_seconds, g_sids, prompt, sizeof prompt);
-        if (ollama_start(g_models[g_arranger - 1], prompt)) asking = 1;
-        else snprintf(msg, sizeof msg, "Ollama could not be asked");
-      }
-      key = rawkey = 0;
-      continue;
-    }
     if (rawkey == KEY_F6)
     {
-      static char prompt[8192];
-      plan_prompt(&g_plan, g_genre >= 0 ? sg_styles[style_genre_first(g_genre)].key : "", g_seconds, g_sids, prompt, sizeof prompt);
-      SDL_SetClipboardText(prompt);
-      snprintf(msg, sizeof msg, "The prompt is in the clipboard - paste it into a chatbot, copy its answer, then Paste plan (F7)");
+      copyprompt(msg, sizeof msg);
       key = rawkey = 0;
       continue;
     }
@@ -1019,7 +915,9 @@ static int planpage(COMP **cp, int *variant, int *ok, int *previewing, char *err
       char *clip = SDL_GetClipboardText();
       SONGPLAN np = g_plan;
       char m2[200];
-      if ((clip) && (plan_parse(clip, &np, m2, sizeof m2)))
+      if ((clip) && (strstr(clip, "You are the arranger of C64 GrooveGoat")))
+        snprintf(msg, sizeof msg, "The clipboard holds the prompt - paste it into an AI chatbot first, then copy its answer");
+      else if ((clip) && (plan_parse(clip, &np, m2, sizeof m2)))
       {
         plan_take(&np);
         dirty = 1;
@@ -1108,11 +1006,9 @@ static int planpage(COMP **cp, int *variant, int *ok, int *previewing, char *err
       }
       else if (rawkey == KEY_ENTER)
       {
-        // ENTER in the idea field: ask the arranger
-        if ((sel == P_IDEA) && (g_arranger)) rawkey = KEY_F5;
-        key = 0;
-        if (rawkey == KEY_F5) continue;
-        rawkey = 0;
+        // ENTER in the idea field: copy the prompt
+        if (sel == P_IDEA) copyprompt(msg, sizeof msg);
+        key = rawkey = 0;
         continue;
       }
       else
@@ -1139,7 +1035,7 @@ static int planpage(COMP **cp, int *variant, int *ok, int *previewing, char *err
         sel--;
         g_planon = 1; dirty = 1; lastchange = SDL_GetTicks();
       }
-      else if (sel > 0) sel--;
+      else if (sel > 0) { sel--; if (sel == P_ARR) sel--; }
       break;
       case KEY_DOWN:
       if ((ctrlpressed) && (sel >= P_SECS) && (sel - P_SECS < nsec - 1))
@@ -1150,18 +1046,13 @@ static int planpage(COMP **cp, int *variant, int *ok, int *previewing, char *err
         sel++;
         g_planon = 1; dirty = 1; lastchange = SDL_GetTicks();
       }
-      else if (sel < P_SECS + nsec - 1) sel++;
+      else if (sel < P_SECS + nsec - 1) { sel++; if (sel == P_ARR) sel++; }
       break;
       case KEY_LEFT:
       case KEY_RIGHT:
       {
         int d = rawkey == KEY_RIGHT ? 1 : -1;
-        if (sel == P_ARR)
-        {
-          int n = g_nmodels > 0 ? g_nmodels + 1 : 1;
-          g_arranger = (g_arranger + d + n) % n;
-        }
-        else if (sel == P_KEY)
+        if (sel == P_KEY)
         {
           int k0 = g_plan.key >= 0 ? g_plan.key : (*cp ? (*cp)->key : 0), m0 = g_plan.mode >= 0 ? g_plan.mode : (*cp ? (*cp)->mode : 0);
           if (shiftpressed) m0 = (m0 + d + M_NUM) % M_NUM;
@@ -1199,7 +1090,6 @@ static int planpage(COMP **cp, int *variant, int *ok, int *previewing, char *err
       break;
       case KEY_ENTER:
       if (sel >= P_SECS) { editch = 1; editstring_click(g_plan.sec[sel - P_SECS].chords, 999); }
-      else if (sel == P_ARR) { rawkey = KEY_F5; key = 0; continue; }
       break;
       case KEY_INS:
       if ((sel >= P_SECS) && (nsec < PLAN_MAXSECS))
@@ -1230,17 +1120,10 @@ static int planpage(COMP **cp, int *variant, int *ok, int *previewing, char *err
         if (ps->bars > 32) ps->bars = 32;
         g_planon = 1; dirty = 1; lastchange = SDL_GetTicks();
       }
-      else if ((rawkey == KEY_R) && (sel == P_ARR))
-      {
-        char e[200];
-        g_nmodels = ollama_models(g_models, OLLAMA_MAXMODELS, e, sizeof e);
-        if (g_arranger > g_nmodels) g_arranger = g_nmodels > 0 ? 1 : 0;
-      }
       break;
     }
     key = rawkey = 0;
   }
-  if (asking) ollama_cancel();
   // a changed plan that is not composed yet
   if ((result == 1) && (dirty))
   {
@@ -1251,7 +1134,6 @@ static int planpage(COMP **cp, int *variant, int *ok, int *previewing, char *err
     *cp = compose_now(err, errsize, variant);
     *ok = *cp != NULL;
   }
-  if (g_nmodels > 0) ollamacfg(1);
   key = rawkey = 0;
   return result;
 }

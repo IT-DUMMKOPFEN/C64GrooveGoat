@@ -1021,7 +1021,7 @@ int showversioninfo(int frominfo)
     "Composer 1.1: a theme with motifs, phrases with cadences, a tension arc over the song",
     "SID dynamics: filter and pulse width follow the energy - plus swing, ghost notes, fills",
     "Song plan: parts, chords, energy and theme of a new song - edit them as you like",
-    "A local AI arranger (Ollama, offline) writes the plan from your idea in plain English",
+    "Copy the prompt into any AI chatbot - it writes the plan from your idea in plain English",
     "Composer Classic: every piece of version 1.0, note for note, is still there",
     NULL
   };

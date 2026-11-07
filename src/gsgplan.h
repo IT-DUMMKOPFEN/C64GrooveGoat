@@ -2,8 +2,8 @@
 //
 // A song plan says what the composer should write: title, genre, key, tempo,
 // mood, the theme and the parts with their length, energy and chords. It is
-// made by the composer itself (the built-in plan), by a local language model
-// (Ollama) or pasted from any chatbot, and is kept as JSON text (.plan).
+// made by the composer itself (the built-in plan) or pasted from any AI
+// chatbot, and is kept as JSON text (.plan).
 #ifndef GSGPLAN_H
 #define GSGPLAN_H
 

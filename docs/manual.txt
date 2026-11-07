@@ -1014,42 +1014,22 @@ stays smooth); F1 plays it.
 |                     the chord before) or a text field
 |  INS / DEL          Insert a part (a copy of the selected one) / delete it
 |  CTRL+Up / Down     Move the part
-|  F5                 Ask the arranger (see below) for a new plan from the idea
-|  F6 / F7            Copy the request for a chatbot / paste its answer (a plan)
+|  F6 / F7            Copy the request for an AI chatbot / paste its answer (a plan)
 |  F8                 The built-in plan (what the composer decided by itself)
 |  F9 / F10           Load / save a plan (.plan)
 |  TAB / ESC          Back to New song / cancel
 
 Write your idea in the Idea field in plain English - for example "a melancholic synthwave
-track for a night drive, slow intro, big last chorus" - and press F5 (or ENTER in the field).
-The arranger answers with a complete plan; the composer then writes the notes, sounds and
-drums from it, so the result always fits the SID. A plan that has mistakes is repaired as far
-as possible (the message line tells what was repaired). With 4-8 SIDs, a plan that would not
-fit into one song is shortened.
+track for a night drive, slow intro, big last chorus" - and press F6 (Copy prompt, or ENTER in
+the field). The request for an AI is now in the clipboard: paste it into any AI chatbot
+(ChatGPT, Claude, Gemini, Le Chat ...), copy its whole answer and press F7 (Paste plan). The
+composer then writes the notes, sounds and drums from the plan, so the result always fits the
+SID. Text around the plan in the answer does not matter; a plan that has mistakes is repaired
+as far as possible (the message line tells what was repaired). With 4-8 SIDs, a plan that would
+not fit into one song is shortened.
 
 Back in New song, the status line shows that the piece is composed from the plan; X switches
 the plan off again (the composer plans by itself).
-
-### The arranger: a local language model (Ollama)
-
-The arranger is a language model that runs on your own computer with Ollama - nothing is sent
-to the internet, and once a model is installed, no internet connection is needed at all.
-
-1. Install Ollama from ollama.com (Windows, macOS, Linux) and start it. C64 GrooveGoat
-   does not install it by itself. On Linux: curl -fsSL https://ollama.com/install.sh | sh
-   (it then runs as a service); check it with: ollama list
-2. Download a model once, for example in a terminal: ollama pull llama3.2
-   (small and fast; bigger models such as qwen2.5:7b or mistral plan better but take longer).
-3. Open the song plan (CTRL+G, TAB). The Arranger field lists the installed models - choose
-   one with Left / Right (R refreshes the list). "Built-in" uses no model.
-
-C64 GrooveGoat talks to Ollama on 127.0.0.1:11434. Another address can be set in the file
-ollama.cfg in the configuration folder (host=192.168.1.20:11434), which also remembers the
-chosen model; the environment variable GG_OLLAMA overrides the address. Without Ollama, F6
-copies the request to the clipboard: paste it into any chatbot and paste its answer with F7.
-If the arranger does not work, the file ollama.log in the configuration folder shows what
-happened with every request (the configuration folder is ~/.groovegoat on Linux and macOS,
-%APPDATA%\C64 GrooveGoat on Windows).
 
 A plan is JSON text, for example:
 

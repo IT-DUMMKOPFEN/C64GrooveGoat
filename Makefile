@@ -17,7 +17,7 @@ SRCDIR = src
 
 CSRC = goattrk2.c gsong.c gorder.c gpattern.c ginstr.c gtable.c gplay.c gdisplay.c \
        gfile.c greloc.c ghelp.c gsound.c gconsole.c gundo.c gplatform.c gaudio.c \
-       gfileio.c gdialog.c gres.c gsonglen.c gautotest.c gexport.c gvideo.c gadsr.c ginslib.c grandins.c gbackup.c gpiano.c gspeech.c gspeechdlg.c gbeat.c gbeatcat.c gjoin.c gimprove.c gproject.c gmidi.c gmidisys.c gsgcore.c gsgtimbre.c gsgcomp.c gsgrender.c gsgexpr.c gsglayers.c gsgbuild.c gsgmidi.c gsgenh.c gsgdlg.c gsgdata.c gbassline.c glibpack.c gsgplan.c gollama.c
+       gfileio.c gdialog.c gres.c gsonglen.c gautotest.c gexport.c gvideo.c gadsr.c ginslib.c grandins.c gbackup.c gpiano.c gspeech.c gspeechdlg.c gbeat.c gbeatcat.c gjoin.c gimprove.c gproject.c gmidi.c gmidisys.c gsgcore.c gsgtimbre.c gsgcomp.c gsgrender.c gsgexpr.c gsglayers.c gsgbuild.c gsgmidi.c gsgenh.c gsgdlg.c gsgdata.c gbassline.c glibpack.c gsgplan.c
 CXXSRC = gsid.cpp
 RESIDSRC = resid/envelope.cpp resid/extfilt.cpp resid/filter.cpp resid/pot.cpp resid/sid.cpp \
        resid/wave.cpp resid/wave6581__ST.cpp resid/wave6581_P_T.cpp resid/wave6581_PS_.cpp \
@@ -67,7 +67,7 @@ WINDRES = $(MINGW)/bin/x86_64-w64-mingw32-windres
 COMMONFLAGS += -I$(SDLMINGW)/include/SDL2 -Dmain=SDL_main -D__WIN32__
 LDFLAGS = -mwindows -static
 LIBS = -L$(SDLMINGW)/lib -lmingw32 -lSDL2main -lSDL2 -lm -ldinput8 -ldxguid -ldxerr8 -luser32 -lgdi32 \
-       -lwinmm -limm32 -lole32 -loleaut32 -lshell32 -lsetupapi -lversion -luuid -lcfgmgr32 -lws2_32
+       -lwinmm -limm32 -lole32 -loleaut32 -lshell32 -lsetupapi -lversion -luuid -lcfgmgr32
 EXE = $(BUILDDIR)/GrooveGoat.exe
 WINRES = $(BUILDDIR)/groovegoat_res.o
 endif

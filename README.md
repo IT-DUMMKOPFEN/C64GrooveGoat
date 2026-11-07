@@ -58,8 +58,8 @@ by Lasse Öörni (Cadaver) and the
   a tension arc over the song (energy per part), filter and pulse width moving with it, swing,
   ghost notes and fills; "Composer Classic" gives the pieces of version 1.0
 - Song plan (`TAB` in New song): parts, bars, energy, chords, key, tempo and theme of the piece,
-  editable; a local language model (Ollama, offline - nothing leaves the computer) can write
-  the plan from an idea in plain English, or any chatbot via copy / paste; `.plan` files
+  editable; any AI chatbot can write the plan from an idea in plain English (copy the prompt,
+  paste the answer); `.plan` files
 - MIDI import (`CTRL+F`): grid and tempo map, roles of the parts,
   melody and bass lines, chords checked against the melody, arpeggios / stabs / pads / broken
   chords / counter melody, drums in the gaps, velocity and volume as sustain commands; 1, 2, 4,
