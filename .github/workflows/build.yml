@@ -249,8 +249,8 @@ jobs:
           if-no-files-found: error
 
   mac:
-    name: mac (macos-14 arm64, SDK from xcrun)
-    runs-on: macos-14
+    name: mac (macos-15 arm64, SDK from xcrun)
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
         with:
