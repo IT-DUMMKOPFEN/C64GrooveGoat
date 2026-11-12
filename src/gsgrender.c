@@ -592,6 +592,13 @@ static int layindex(const char *l)
   return 0;
 }
 
+// parts left out (the Bass dialog: bass, arpeggios and chords only)
+static void strip_parts(COMP *c, int *nlead, int *drums, int n)
+{
+  if (c->parts & SGP_NOLEAD) *nlead = 0;
+  if (c->parts & SGP_NODRUMS) memset(drums, 0, sizeof(int) * n);
+}
+
 static void render3(COMP *c, int sec, int nbars, CHORD *chords, int row0, int first, int last)
 {
   static RND lead[MAXLEAD];
@@ -603,7 +610,8 @@ static void render3(COMP *c, int sec, int nbars, CHORD *chords, int row0, int fi
   int lead_ins, has_drums = 0;
   CTX x;
   section_material(c, sec, nbars, chords, row0, first, last, ch_drum >= 0, (lay == 1) || (lay == 3), lead, &nlead, bn, bd, drums);
-  lead_ins = comp_use(c, lead_for(c, sec));
+  strip_parts(c, &nlead, drums, nbars * spb);
+  lead_ins = nlead ? comp_use(c, lead_for(c, sec)) : 0;
   for (s = 0; s < nbars * spb; s++)
     if (drums[s]) has_drums = 1;
   has_drums = has_drums && (ch_drum >= 0);
@@ -681,7 +689,8 @@ static void render6(COMP *c, int sec, int nbars, CHORD *chords, int row0, int fi
   SGTRACK *freev[3];
   int nfree = 0, modes[2];
   section_material(c, sec, nbars, chords, row0, first, last, has_kit, 1, lead, &nlead, bn, bd, drums);
-  lead_ins = comp_use(c, lead_for(c, sec));
+  strip_parts(c, &nlead, drums, nbars * spb);
+  lead_ins = nlead ? comp_use(c, lead_for(c, sec)) : 0;
   for (s = 0; s < nbars * spb; s++)
     if (drums[s]) has_drums = 1;
   has_drums = has_drums && has_kit;

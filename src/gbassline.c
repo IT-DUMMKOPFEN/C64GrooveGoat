@@ -74,10 +74,11 @@ static const char *figures[] = {"root8", "root16", "offbeat", "rolling", "octave
                                 "robot", "sequencer"};
 #define NFIG ((int)(sizeof figures / sizeof figures[0]))
 
-static int b_part = PART_BOTH, b_style = -1, b_figure = -1, b_bassins = -1, b_arpmode = AM_HOLD, b_arptpl = -1;
+static int b_part = PART_BOTH, b_genre = -1, b_sub = -1, b_figure = -1, b_bassins = -1, b_arpmode = AM_HOLD, b_arptpl = -1;
 static int b_source = 0;               // 0 recognise (random when nothing is found), 1 always random
 static int b_bt = 4, b_key = -1, b_arpchn = -1;
 static unsigned b_seed = 0;
+static int b_newsid = 0, b_secs = 90, b_sids = 1;   // a new SID (bass, arps & chords) instead of the current song
 
 // bass instruments of the library (hand-made ones)
 static int nbassins, bassins[512];
@@ -450,6 +451,37 @@ static int defaultstyle(void)
   return 0;
 }
 
+static int genreofstyle(int st, int *sub)
+{
+  int g, ng = style_numgenres();
+  for (g = 0; g < ng; g++)
+  {
+    int first = style_genre_first(g), n = style_genre_count(g);
+    if ((st >= first) && (st < first + n))
+    {
+      *sub = st - first;
+      return g;
+    }
+  }
+  *sub = -1;
+  return 0;
+}
+
+// the genre (and subgenre) of the dialog; "Any" subgenre: chosen by the seed
+static void genredefault(void)
+{
+  int g, sb;
+  song_genre_get(&g, &sb);
+  if (g >= 0) { b_genre = g; b_sub = sb; }
+  if (b_genre < 0) b_genre = genreofstyle(defaultstyle(), &sb);
+}
+
+static int curstyle(void)
+{
+  if (b_genre < 0) genredefault();
+  return song_style_of(b_genre, b_sub, b_seed ? b_seed : 1);
+}
+
 static int emptyvoice(int c)
 {
   int d, r;
@@ -503,9 +535,10 @@ static int arpvoice(void)
 
 static int make(char *err, int errsize)
 {
-  int spb = 4 * b_bt, plen, bc = bassvoice(), ac, b, random = 0, style = b_style < 0 ? defaultstyle() : b_style;
+  int spb = 4 * b_bt, plen, bc = bassvoice(), ac, b, random = 0, style;
   SGTRACK tb, ta;
   if (!b_seed) b_seed = (unsigned)time(NULL) % 99999 + 1;
+  style = curstyle();
   sub = editorInfo.esnum;
   ac = arpvoice();
   used_ac = ac;
@@ -607,9 +640,9 @@ int bassline_cli(const char *spec, char *err, int errsize)
   listbass();
   sscanf(spec, "%d,%39[^,],%d,%d,%u", &part, st, &fig, &am, &seed);
   b_part = part >= 0 && part < PART_NUM ? part : PART_BOTH;
-  b_style = -1;
+  b_genre = genreofstyle(defaultstyle(), &b_sub);
   for (k = 0; k < sg_numstyles; k++)
-    if (!strcmp(sg_styles[k].key, st)) { b_style = k; break; }
+    if (!strcmp(sg_styles[k].key, st)) { b_genre = genreofstyle(k, &b_sub); break; }
   b_figure = fig < NFIG ? fig : -1;
   b_arpmode = am >= 0 && am < AM_NUM ? am : AM_HOLD;
   b_seed = seed;
@@ -632,14 +665,42 @@ static void stopandwait(void)
   for (t = 0; (t < 100) && (isplaying()); t++) SDL_Delay(5);
 }
 
+static COMP *ncomp = NULL;             // the new SID (bass, arps & chords)
+static int nvariant = 0;
+
 static int rebuild(char *err, int errsize)
 {
   int ok;
   if (previewing) stopandwait();
+  if (ncomp) { comp_free(ncomp); ncomp = NULL; }
   snd_lock();
-  brestore(orig);
-  ok = make(err, errsize);
-  if (!ok) brestore(orig);
+  songsnap_back();
+  if (b_newsid)
+  {
+    snd_unlock();
+    if (!b_seed) b_seed = (unsigned)time(NULL) % 99999 + 1;
+    if (b_genre < 0) genredefault();
+    ncomp = compose_parts(b_genre, b_sub, b_seed, b_secs, b_sids, b_key, SGP_NOLEAD | SGP_NODRUMS, err, errsize, &nvariant);
+    ok = ncomp != NULL;
+    snd_lock();
+    if (!ok) songsnap_back();
+    else
+    {
+      snprintf(info1, sizeof info1, "\"%s\" - %s%s%s, %s %s, %d BPM", ncomp->title, sg_styles[nvariant].name,
+               sg_styles[nvariant].sub[0] ? " / " : "", sg_styles[nvariant].sub, sg_keyname[ncomp->key], sg_modelabel[ncomp->mode],
+               (int)(ncomp->bpm + 0.5));
+      snprintf(info2, sizeof info2, "%d parts, %d bars: bass, arpeggios and chords - the melody and drum voices stay free",
+               ncomp->nsecs, ncomp->total_bars);
+    }
+    sub = 0;
+  }
+  else
+  {
+    brestore(orig);
+    sub = editorInfo.esnum;
+    ok = make(err, errsize);
+    if (!ok) brestore(orig);
+  }
   snd_unlock();
   if ((previewing) && (ok)) initsong(sub, PLAY_BEGINNING);
   if (!ok) previewing = 0;
@@ -662,54 +723,83 @@ static int writebackup(char *out, int outsize)
 
 void basslinedialog(void)
 {
-  int w = 100, h = 30;
+  int w = 100, h = 32;
   int x0 = (MAX_COLUMNS - w) / 2;
   int y0 = (MAX_ROWS - h) / 2 - 1;
   int sel = 0, ok, dirty = 0;
   int restoresel = -1;
   char err[200] = "", msg[200] = "", buf[300];
-  enum { O_PART = 0, O_SOURCE, O_STYLE, O_KEY, O_FIGURE, O_BASSINS, O_ARPMODE, O_ARPTPL, O_ARPCHN, O_BT, O_NUM };
+  enum { O_WRITE = 0, O_PART, O_SOURCE, O_GENRE, O_SUB, O_KEY, O_LEN, O_SIDS, O_FIGURE, O_BASSINS, O_ARPMODE, O_ARPTPL, O_ARPCHN,
+         O_BT, O_NUM };
   enum { B_PLAY = O_NUM, B_DICE, B_CREATE, B_CANCEL, S_NUM };
 
   sg_init();
   listbass();
+  genredefault();
   if (!orig) orig = (BSNAP *)malloc(sizeof(BSNAP));
   stopandwait();
   sub = editorInfo.esnum;
   bsave(orig);
+  songsnap_take();
   previewing = 0;
   ok = rebuild(err, sizeof err);
   key = rawkey = 0;
   for (;;)
   {
-    int k, hit = -1, bc = bassvoice(), ac = used_ac >= 0 ? used_ac : bc, y;
+    int k, hit = -1, bc = bassvoice(), ac = used_ac >= 0 ? used_ac : bc, y, vis[O_NUM], nvis = 0, vi;
+    int gfirst, gcount;
+    // the rows of the mode
+    for (k = 0; k < O_NUM; k++)
+    {
+      int show;
+      if (b_newsid) show = (k == O_WRITE) || (k == O_GENRE) || (k == O_SUB) || (k == O_KEY) || (k == O_LEN) || (k == O_SIDS);
+      else show = (k != O_LEN) && (k != O_SIDS);
+      if (show) vis[nvis++] = k;
+    }
+    if (sel < O_NUM)
+    {
+      for (vi = 0; vi < nvis; vi++)
+        if (vis[vi] == sel) break;
+      if (vi == nvis) sel = O_WRITE;
+    }
     if (dirty)
     {
       ok = rebuild(err, sizeof err);
       dirty = 0;
     }
+    if (b_genre < 0) genredefault();
+    gfirst = style_genre_first(b_genre);
+    gcount = style_genre_count(b_genre);
     printmainscreen();
     dlg_drawframe(x0, y0, w, h, "Bass, Chords & Arps");
-    for (k = 0; k < O_NUM; k++)
+    for (vi = 0; vi < nvis; vi++)
     {
-      int ry = y0 + 2 + k, isel = sel == k, bg = isel ? C_SELECT : C_PANEL, st = b_style < 0 ? defaultstyle() : b_style;
-      switch (k)
+      int k2 = vis[vi], ry = y0 + 2 + vi, isel = sel == k2, bg = isel ? C_SELECT : C_PANEL;
+      switch (k2)
       {
+        case O_WRITE: snprintf(buf, sizeof buf, "Write           " GS_PREV " %s " GS_NEXT, b_newsid ?
+                               "New SID: a whole song with bass, arpeggios and chords" : "Into the current song (voice of the cursor)"); break;
         case O_PART: snprintf(buf, sizeof buf, "Part            " GS_PREV " %s " GS_NEXT, partname[b_part]); break;
-        case O_SOURCE: snprintf(buf, sizeof buf, "Chords          " GS_PREV " %s " GS_NEXT, b_source ? "Progression of the style" :
-                                "Recognised from the song (else of the style)"); break;
-        case O_STYLE:
-        snprintf(buf, sizeof buf, "Style           " GS_PREV " %s%s%s " GS_NEXT, sg_styles[st].name, sg_styles[st].sub[0] ? " / " : "", sg_styles[st].sub);
+        case O_SOURCE: snprintf(buf, sizeof buf, "Chords          " GS_PREV " %s " GS_NEXT, b_source ? "Progression of the genre" :
+                                "Recognised from the song (else of the genre)"); break;
+        case O_GENRE: snprintf(buf, sizeof buf, "Genre           " GS_PREV " %s " GS_NEXT "  %d/%d", sg_styles[gfirst].name, b_genre + 1,
+                               style_numgenres()); break;
+        case O_SUB:
+        if (gcount <= 1) snprintf(buf, sizeof buf, "Subgenre        -");
+        else if (b_sub < 0) snprintf(buf, sizeof buf, "Subgenre        " GS_PREV " Any " GS_NEXT "  (%d subgenres - D picks another one)", gcount);
+        else snprintf(buf, sizeof buf, "Subgenre        " GS_PREV " %s " GS_NEXT "  %d/%d", sg_styles[gfirst + b_sub].sub, b_sub + 1, gcount);
         break;
-        case O_KEY: snprintf(buf, sizeof buf, "Key (style)     " GS_PREV " %s " GS_NEXT, b_key < 0 ? "From the style" : sg_keyname[b_key]); break;
-        case O_FIGURE: snprintf(buf, sizeof buf, "Bass figure     " GS_PREV " %s " GS_NEXT, b_figure < 0 ? "From the style" : figures[b_figure]); break;
+        case O_KEY: snprintf(buf, sizeof buf, "Key             " GS_PREV " %s " GS_NEXT, b_key < 0 ? "From the genre" : sg_keyname[b_key]); break;
+        case O_LEN: snprintf(buf, sizeof buf, "Length          " GS_PREV " %d:%02d " GS_NEXT "  (1 to 10 minutes)", b_secs / 60, b_secs % 60); break;
+        case O_SIDS: snprintf(buf, sizeof buf, "SIDs            " GS_PREV " %d " GS_NEXT "  (%d voices)", b_sids, b_sids * 3); break;
+        case O_FIGURE: snprintf(buf, sizeof buf, "Bass figure     " GS_PREV " %s " GS_NEXT, b_figure < 0 ? "From the genre" : figures[b_figure]); break;
         case O_BASSINS:
-        snprintf(buf, sizeof buf, "Bass sound      " GS_PREV " %s " GS_NEXT, b_bassins < 0 ? "From the style" :
+        snprintf(buf, sizeof buf, "Bass sound      " GS_PREV " %s " GS_NEXT, b_bassins < 0 ? "From the genre" :
                  (sg_hand(bassins[b_bassins])->en[0] ? sg_hand(bassins[b_bassins])->en : sg_hand(bassins[b_bassins])->name));
         break;
         case O_ARPMODE: snprintf(buf, sizeof buf, "Chord part      " GS_PREV " %s " GS_NEXT, arpmodename[b_arpmode]); break;
         case O_ARPTPL:
-        snprintf(buf, sizeof buf, "Arpeggio sound  " GS_PREV " %s " GS_NEXT, b_arptpl < 0 ? "From the style" :
+        snprintf(buf, sizeof buf, "Arpeggio sound  " GS_PREV " %s " GS_NEXT, b_arptpl < 0 ? "From the genre" :
                  (sg_arpat(b_arptpl)->en[0] ? sg_arpat(b_arptpl)->en : sg_arpat(b_arptpl)->name));
         break;
         case O_ARPCHN:
@@ -721,19 +811,21 @@ void basslinedialog(void)
       }
       printblankc(x0 + 2, ry, MKCOL(8, bg), w - 4);
       printtext(x0 + 3, ry, MKCOL(isel ? 15 : 8, bg), buf);
-      if ((mousey == ry) && (mousex >= x0 + 2) && (mousex < x0 + w - 2)) hit = k;
+      if ((mousey == ry) && (mousex >= x0 + 2) && (mousex < x0 + w - 2)) hit = k2;
     }
-    y = y0 + 3 + O_NUM;
+    y = y0 + 3 + nvis;
     if (ok)
     {
       printtext(x0 + 3, y++, MKCOL(14, C_PANEL), info1);
       printtext(x0 + 3, y++, MKCOL(8, C_PANEL), info2);
-      snprintf(buf, sizeof buf, "Seed %u - written from the start of subtune %02X, the old notes of the voice are replaced", b_seed, sub);
+      if (b_newsid) snprintf(buf, sizeof buf, "Seed %u - Create replaces the current song (like New song)", b_seed);
+      else snprintf(buf, sizeof buf, "Seed %u - written from the start of subtune %02X, the old notes of the voice are replaced", b_seed, sub);
       printtext(x0 + 3, y++, MKCOL(8, C_PANEL), buf);
     }
     else dlg_printwrapped(x0 + 3, y, w - 6, 3, MKCOL(10, C_PANEL), err);
     if (msg[0]) printtext(x0 + 3, y0 + h - 5, MKCOL(10, C_PANEL), msg);
-    printtext(x0 + 3, y0 + h - 4, MKCOL(3, C_PANEL), "F1/SPACE play, D dice, ENTER create (backup + undo step), ESC cancel (the old song again)");
+    printtext(x0 + 3, y0 + h - 4, MKCOL(3, C_PANEL), b_newsid ? "F1/SPACE play, D dice, ENTER create (a new song), ESC cancel (the old song again)" :
+              "F1/SPACE play, D dice, ENTER create (backup + undo step), ESC cancel (the old song again)");
     {
       const char *bt[4] = {previewing ? " " GS_STOP " Stop " : " " GS_PLAY " Play ", " " GS_DICE GS_DICER " Dice ", "  Create  ", "  Cancel  "};
       int bx[4], xx = x0 + 3;
@@ -788,6 +880,19 @@ void basslinedialog(void)
       dirty = 1;
     }
     else if ((rawkey == KEY_ESC) || ((rawkey == KEY_ENTER) && (sel == B_CANCEL))) break;
+    else if (((rawkey == KEY_ENTER) && ((sel < O_NUM) || (sel == B_CREATE))) && (ok) && (b_newsid))
+    {
+      if ((songsnap_modified()) && (!dlg_confirm("New SID", "Discard the changes of the current song?"))) continue;
+      stopandwait();
+      previewing = 0;
+      compose_keep(ncomp, nvariant, b_seed, "New SID with bass, arpeggios and chords");
+      comp_free(ncomp);
+      ncomp = NULL;
+      song_genre_set(b_genre, b_sub);
+      key = rawkey = 0;
+      printmainscreen();
+      return;
+    }
     else if (((rawkey == KEY_ENTER) && ((sel < O_NUM) || (sel == B_CREATE))) && (ok))
     {
       char bak[MAX_FILENAME + 64];
@@ -812,6 +917,7 @@ void basslinedialog(void)
       }
       free(now);
       songmodified = 1;
+      song_genre_set(b_genre, b_sub);
       snprintf(buf, sizeof buf, "%s written%s%s", partname[b_part], bak[0] ? " - backup of the old song: " : "", bak);
       setstatusmessage(buf);
       key = rawkey = 0;
@@ -820,10 +926,20 @@ void basslinedialog(void)
     }
     else
     {
+      int cur = 0;
+      for (vi = 0; vi < nvis; vi++)
+        if (vis[vi] == sel) cur = vi;
       switch (rawkey)
       {
-        case KEY_UP: if (sel > 0) sel--; break;
-        case KEY_DOWN: case KEY_TAB: if (sel < S_NUM - 1) sel++; break;
+        case KEY_UP:
+        if (sel >= O_NUM) sel = vis[nvis - 1];
+        else if (cur > 0) sel = vis[cur - 1];
+        break;
+        case KEY_DOWN: case KEY_TAB:
+        if (sel >= O_NUM) { if (sel < S_NUM - 1) sel++; }
+        else if (cur < nvis - 1) sel = vis[cur + 1];
+        else sel = B_PLAY;
+        break;
         case KEY_LEFT:
         case KEY_RIGHT:
         {
@@ -838,15 +954,35 @@ void basslinedialog(void)
           dirty = 1;
           switch (sel)
           {
+            case O_WRITE: b_newsid ^= 1; break;
             case O_PART: b_part = (b_part + d + PART_NUM) % PART_NUM; break;
             case O_SOURCE: b_source ^= 1; break;
-            case O_STYLE:
+            case O_GENRE:
             {
-              int st = b_style < 0 ? defaultstyle() : b_style;
-              b_style = (st + d + sg_numstyles) % sg_numstyles;
+              int ng = style_numgenres();
+              b_genre = (b_genre + d + ng) % ng;
+              b_sub = -1;
             }
             break;
+            case O_SUB:
+            if (gcount > 1) b_sub = ((b_sub + 1 + d) % (gcount + 1) + gcount + 1) % (gcount + 1) - 1;
+            else dirty = 0;
+            break;
             case O_KEY: b_key = ((b_key + 1 + d) % 13 + 13) % 13 - 1; break;
+            case O_LEN:
+            b_secs += d * (shiftpressed ? 60 : 15);
+            if (b_secs < 60) b_secs = 60;
+            if (b_secs > 600) b_secs = 600;
+            break;
+            case O_SIDS:
+            {
+              static const int sv[4] = {1, 2, 4, 8};
+              int i;
+              for (i = 0; i < 4; i++)
+                if (sv[i] == b_sids) break;
+              b_sids = sv[(i + d + 4) % 4];
+            }
+            break;
             case O_FIGURE: b_figure = ((b_figure + 1 + d) % (NFIG + 1) + NFIG + 1) % (NFIG + 1) - 1; break;
             case O_BASSINS: b_bassins = ((b_bassins + 1 + d) % (nbassins + 1) + nbassins + 1) % (nbassins + 1) - 1; break;
             case O_ARPMODE: b_arpmode = (b_arpmode + d + AM_NUM) % AM_NUM; break;
@@ -888,8 +1024,9 @@ void basslinedialog(void)
   // cancel: the old song again
   stopandwait();
   previewing = 0;
+  if (ncomp) { comp_free(ncomp); ncomp = NULL; }
   snd_lock();
-  brestore(orig);
+  songsnap_back();
   snd_unlock();
   key = rawkey = 0;
   printmainscreen();

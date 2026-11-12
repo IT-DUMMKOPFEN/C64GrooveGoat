@@ -227,12 +227,14 @@ void sg_make_title(SGRNG *rng, const JV *st, char *out, int size)
 // ---------------------------------------------------------------------------
 
 int sg_engine = 1;
+int sg_parts = 0;
 
 COMP *comp_new(int styleidx, unsigned seed, double seconds, int sids, int voices, int model)
 {
   COMP *c = (COMP *)calloc(1, sizeof(COMP));
   sg_init();
   c->engine = sg_engine;
+  c->parts = sg_parts;
   c->styleidx = styleidx;
   c->st = style_parse(styleidx);
   snprintf(c->stylekey, sizeof c->stylekey, "%s", jv_str(jv_get(c->st, "key"), sg_styles[styleidx].key));

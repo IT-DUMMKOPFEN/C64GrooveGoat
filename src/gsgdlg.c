@@ -235,6 +235,7 @@ int compose_cli(const char *spec, char *err, int errsize)
   if (p) sscanf(p + 1, "%u,%lf,%d,%d,%d,%d,%d", &seed, &seconds, &sids, &model, &subtunes, &voices, &enhanced);
   if ((getenv("GG_COMPOSER")) && (!strcmp(getenv("GG_COMPOSER"), "classic"))) sg_engine = 0;
   // GG_PLAN=FILE: compose from a song plan (JSON); its genre wins over STYLE
+  if (getenv("GG_PARTS")) sg_parts = atoi(getenv("GG_PARTS"));   // 3: bass, arps & chords only (tests)
   if (getenv("GG_PLAN"))
   {
     static SONGPLAN plan;
@@ -630,6 +631,79 @@ static COMP *compose_now(char *err, int errsize, int *variant)
 }
 
 
+
+// ---------------------------------------------------------------------------
+// The composer for other dialogs (Bass: a new SID with bass, arpeggios and
+// chords only). The genre and subgenre are shared with New song.
+// ---------------------------------------------------------------------------
+
+static FULLSNAP *g_snap = NULL;
+
+void songsnap_take(void)
+{
+  if (!g_snap) g_snap = (FULLSNAP *)malloc(sizeof(FULLSNAP));
+  if (g_snap) fullsave(g_snap);
+}
+
+void songsnap_back(void)
+{
+  if (g_snap) fullrestore(g_snap);
+}
+
+int songsnap_modified(void) { return g_snap ? g_snap->modified : 0; }
+
+void song_genre_get(int *genre, int *sub) { *genre = g_genre; *sub = g_sub; }
+void song_genre_set(int genre, int sub) { g_genre = genre; g_sub = sub; }
+
+int song_style_of(int genre, int sub, unsigned seed)
+{
+  int g0 = g_genre, s0 = g_sub, v, sb;
+  g_genre = genre;
+  g_sub = sub;
+  v = genrevariant(seed, &sb);
+  g_genre = g0;
+  g_sub = s0;
+  return v;
+}
+
+COMP *compose_parts(int genre, int sub, unsigned seed, int seconds, int sids, int key, int parts, char *err, int errsize,
+                    int *variant)
+{
+  int s_genre = g_genre, s_sub = g_sub, s_sids = g_sids, s_voices = g_voices, s_chip = g_chip, s_subt = g_subtunes, s_key = g_key;
+  int s_mode = g_mode, s_bpm = g_bpm, s_secs = g_seconds, s_enh = g_enhanced, s_mel = g_melvar, s_ins = g_insvar;
+  unsigned s_seed = g_seed;
+  const SONGPLAN *s_plan = activeplan;
+  COMP *c;
+  g_genre = genre; g_sub = sub; g_seed = seed; g_seconds = seconds; g_sids = sids; g_voices = 3;
+  g_chip = editorInfo.sidmodel ? 1 : 0; g_subtunes = 0; g_key = key; g_mode = -1; g_bpm = 0; g_enhanced = 0;
+  g_melvar = g_insvar = 0;
+  activeplan = NULL;
+  sg_parts = parts;
+  c = compose_now(err, errsize, variant);
+  sg_parts = 0;
+  activeplan = s_plan;
+  g_sids = s_sids; g_voices = s_voices; g_chip = s_chip; g_subtunes = s_subt; g_key = s_key; g_mode = s_mode; g_bpm = s_bpm;
+  g_seconds = s_secs; g_enhanced = s_enh; g_melvar = s_mel; g_insvar = s_ins; g_seed = s_seed;
+  (void)s_genre; (void)s_sub;          // the genre stays shared
+  return c;
+}
+
+// the new song is kept: no file name yet, the name from the piece
+void compose_keep(COMP *c, int variant, unsigned seed, const char *what)
+{
+  char nm[200], buf[300], *p;
+  undoInitAllAreas();
+  songmodified = 1;
+  loadedsongfilename[0] = 0;
+  snprintf(nm, sizeof nm, "%s_%s_%u%s", sg_styles[variant].key, c->title, seed, numsids > 2 ? ".ggt" : ".sng");
+  for (p = nm; *p; p++)
+    if ((*p == ' ') || (*p == '/') || (*p == '\\') || (*p == ':')) *p = '_';
+    else if ((*p >= 'A') && (*p <= 'Z')) *p += 32;
+  snprintf(songfilename, MAX_FILENAME, "%s", nm);
+  snprintf(buf, sizeof buf, "%s \"%s\" (%s%s%s, seed %u) - click Save to keep it", what, c->title, sg_styles[variant].name,
+           sg_styles[variant].sub[0] ? " / " : "", sg_styles[variant].sub, seed);
+  setstatusmessage(buf);
+}
 
 // ---------------------------------------------------------------------------
 // The song plan page of "New song" (composer 1.1)

@@ -13,6 +13,16 @@ int sg_buildsongs(COMP **subs, int nsubs, int writeto, char *err, int errsize);
 COMP *song_make(int styleidx, unsigned seed, double seconds, int sids, int voices, int model, char *err, int errsize, int subtunes,
                   int enhanced);
 void composedialog(void);
+// the composer for other dialogs (gsgdlg.c)
+void songsnap_take(void);
+void songsnap_back(void);
+int songsnap_modified(void);
+void song_genre_get(int *genre, int *sub);
+void song_genre_set(int genre, int sub);
+int song_style_of(int genre, int sub, unsigned seed);
+COMP *compose_parts(int genre, int sub, unsigned seed, int seconds, int sids, int key, int parts, char *err, int errsize,
+                    int *variant);
+void compose_keep(COMP *c, int variant, unsigned seed, const char *what);
 void midiimportdialog(void);       // CTRL+F: MIDI file -> new song
 int compose_cli(const char *spec, char *err, int errsize);
 int midi_cli(const char *spec, char *err, int errsize);

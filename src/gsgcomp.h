@@ -128,6 +128,7 @@ typedef struct COMPS
   char err[160];
   // composer 1.1 (engine 1): one theme for the whole song, phrases with cadences
   int engine;                      // 0 = Classic (the seeds of 1.0), 1 = composer 1.1
+  int parts;                       // SGP_...: parts left out (the Bass dialog: no melody, no drums)
   int theme_have, theme_mb;
   MOTIF theme;
   double energy[SG_MAXSECS];       // 1.1: the energy of every section (0..1), the arc of the song
@@ -138,6 +139,9 @@ typedef struct COMPS
   int degshift;                    // 1.1: a motif with degrees played this many steps higher
 } COMP;
 
+#define SGP_NOLEAD 1
+#define SGP_NODRUMS 2
+extern int sg_parts;                // parts left out of new pieces (SGP_...)
 extern int sg_engine;               // the composer for new pieces (1 = 1.1, 0 = Classic)
 
 void comp_setvariations(COMP *c, int mel_var, int ins_var);
