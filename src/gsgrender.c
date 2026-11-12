@@ -611,7 +611,7 @@ static void render3(COMP *c, int sec, int nbars, CHORD *chords, int row0, int fi
   CTX x;
   section_material(c, sec, nbars, chords, row0, first, last, ch_drum >= 0, (lay == 1) || (lay == 3), lead, &nlead, bn, bd, drums);
   strip_parts(c, &nlead, drums, nbars * spb);
-  lead_ins = nlead ? comp_use(c, lead_for(c, sec)) : 0;
+  lead_ins = (c->parts & SGP_NOLEAD) ? 0 : comp_use(c, lead_for(c, sec));
   for (s = 0; s < nbars * spb; s++)
     if (drums[s]) has_drums = 1;
   has_drums = has_drums && (ch_drum >= 0);
@@ -690,7 +690,7 @@ static void render6(COMP *c, int sec, int nbars, CHORD *chords, int row0, int fi
   int nfree = 0, modes[2];
   section_material(c, sec, nbars, chords, row0, first, last, has_kit, 1, lead, &nlead, bn, bd, drums);
   strip_parts(c, &nlead, drums, nbars * spb);
-  lead_ins = nlead ? comp_use(c, lead_for(c, sec)) : 0;
+  lead_ins = (c->parts & SGP_NOLEAD) ? 0 : comp_use(c, lead_for(c, sec));
   for (s = 0; s < nbars * spb; s++)
     if (drums[s]) has_drums = 1;
   has_drums = has_drums && has_kit;
