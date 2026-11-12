@@ -71,8 +71,7 @@ by Lasse Öörni (Cadaver) and the
   progression of a genre / subgenre; or a whole new SID (length, 1-8 SIDs) with bass, arpeggios
   and chords only - the melody and drum voices stay free; preview, dice, backup
 - Speech generator (`CTRL+K`): English text or CMU phonemes become formant speech on one SID
-  voice (the channel of the cursor), or on two: both voices speak on the same pitch through the
-  resonant filter on the second formant for clearer vowels - instruments, wave / pulse / filter tables and pattern
+  voice (the channel of the cursor) - instruments, wave / pulse / filter tables and pattern
   rows for the speed of your song (F03, F05, F06 ... or detected automatically), with voice,
   pitch, speed and melody options, preview and a text listing.
   Example: `examples/together_we_hunt.sng`

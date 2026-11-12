@@ -717,14 +717,6 @@ frame (20 ms), and the pattern gets one note per sound.
 |                 song (the first tempo command Fxx in the current patterns, else the
 |                 default 6), or choose F03 ... F10 yourself (F03 = 60 ms, F05 = 100 ms,
 |                 F06 = 120 ms per row). Optionally the tempo command goes on the first row.
-|  SID voices     1, or 2: the next voice of the same SID (1.1 -> 1.2, 1.2 -> 1.3, 1.3 -> 1.1)
-|                 helps, like a parallel formant synthesizer: both voices speak on the same
-|                 pitch, the speaking voice with a pulse width that keeps the low formant
-|                 F1, the second one with a sawtooth, and both go through the resonant low
-|                 pass + band pass on the second formant F2 - the vowels become clearer and
-|                 fuller. The second voice also hisses the voiced Z, V, DH and ZH while the
-|                 voicing goes on. Its instruments are called "Say2 ...". The two voices
-|                 need two different patterns.
 
 The sounds keep their natural length at every song speed: the speech is cut at the rows in
 which sounds begin, and at slower speeds one instrument can hold several short sounds (for
