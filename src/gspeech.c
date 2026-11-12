@@ -376,6 +376,7 @@ typedef struct
 } FRAME;
 
 static FRAME frames[MAXFRAMES];
+static FRAME bframes[MAXFRAMES];        // the second voice (two-voice speech)
 static int numframes;
 static int f1t[MAXFRAMES], f2t[MAXFRAMES];   // formant tracks (Hz)
 
@@ -796,8 +797,9 @@ static void synthesize(const SPEECHPARAMS *p)
         if (!strcmp(ph->name, "F") || !strcmp(ph->name, "TH")) fr->res = 0;
         break;
         case PFV:
-        // voiced fricative: voicing with noise frames in between
-        if ((f & 1) && (n > 2)) noiseframe(fr, fscale(ph->noise), 0x20, 6);
+        // voiced fricative: voicing with noise frames in between (two
+        // voices: the voicing goes on, the second voice hisses)
+        if ((f & 1) && (n > 2) && (!p->twovoices)) noiseframe(fr, fscale(ph->noise), 0x20, 6);
         else
         {
           voiced(fr, fscale(ph->f1), fscale(ph->f2), note, p, g);
@@ -860,6 +862,63 @@ static void synthesize(const SPEECHPARAMS *p)
   }
 }
 
+// The second voice: hard synced to the speaking voice, its oscillator on the
+// second formant - every period of the voice restarts it, so the sound gets
+// a resonance at F2 (like a real vocal tract). Noise for the hiss of voiced
+// fricatives (Z, V, DH, ZH). Not routed through the filter.
+static int hz2note(int hz)
+{
+  int n;
+  if (hz < 60) hz = 60;
+  n = (int)floor(57.0 + 12.0 * log((double)hz / 440.0) / log(2.0) + 0.5);
+  if (n < 0) n = 0;
+  if (n > 95) n = 95;
+  return n;
+}
+
+static void synthesize2(const SPEECHPARAMS *p)
+{
+  int c, f, g;
+  int syncwave = getenv("GG_SPEECHBWAVE") ? (int)strtol(getenv("GG_SPEECHBWAVE"), NULL, 16) : 0x13;
+  for (g = 0; g < numframes; g++)
+  {
+    memset(&bframes[g], 0, sizeof(FRAME));
+    bframes[g].wave = W_SILENT;
+  }
+  for (c = 0; c < numphones; c++)
+  {
+    int s = phones[c].start, n = phones[c].frames, note = phones[c].note;
+    const PHON *ph = phones[c].ph == PSILENCE ? NULL : &phon[phones[c].ph];
+    if (!ph) continue;
+    for (f = 0; f < n; f++)
+    {
+      FRAME *b = &bframes[s + f];
+      int fn;
+      g = s + f;
+      switch (ph->type)
+      {
+        case PV: case PD: case PG:
+        fn = hz2note(f2t[g]);
+        if (fn < note + 12) fn = note + 12;
+        if (fn > 95) fn = 95;
+        b->wave = syncwave;
+        b->note = 0x80 + fn;
+        break;
+        case PFV:
+        if ((f & 1) || (n <= 2))
+        {
+          b->wave = W_NOISE;
+          b->note = noisenote(fscale(ph->noise));
+        }
+        break;
+        default:
+        break;
+      }
+    }
+  }
+  (void)p;
+}
+
 // ---------------------------------------------------------------------------
 // Frames -> GoatTracker tables
 // ---------------------------------------------------------------------------
@@ -880,7 +939,13 @@ static int progadd(PROG *pr, int l, int r)
 }
 
 // Wavetable program for frames [a, b)
+static void makewavef(PROG *pr, const FRAME *frames, int a, int b);
 static void makewave(PROG *pr, int a, int b)
+{
+  makewavef(pr, frames, a, b);
+}
+
+static void makewavef(PROG *pr, const FRAME *frames, int a, int b)
 {
   int f = a;
   pr->n = 0;
@@ -1088,9 +1153,11 @@ static int samephones(int a, int b, int n)
 
 int speech_generate(const SPEECHPARAMS *p, int chn, int row, char *err, int errsize)
 {
-  static PROG wp[MAXPHONES], pp[MAXPHONES], fp[MAXPHONES];
+  static PROG wp[MAXPHONES], pp[MAXPHONES], fp[MAXPHONES], bw[MAXPHONES];
   int slot[MAXPHONES], inum[MAXPHONES], plen[MAXPHONES], fwv[MAXPHONES], gtv[MAXPHONES], exist[MAXPHONES];
-  int c, k, need = 0, tlen[3], rows, patt, voicebit, sid;
+  static int bslot[MAXPHONES], binum[MAXPHONES], bfw[MAXPHONES], bexist[MAXPHONES];
+  int c, k, need = 0, tlen[3], rows, patt, voicebit, sid, chb = -1, pattb = -1;
+  int bsr = getenv("GG_SPEECHBSR") ? (int)strtol(getenv("GG_SPEECHBSR"), NULL, 16) : 0xa4;
   char phs[1024], nb[16];
   SPEECHPARAMS fixed;
 
@@ -1112,6 +1179,24 @@ int speech_generate(const SPEECHPARAMS *p, int chn, int row, char *err, int errs
     for (fr = 0; fr < numframes; fr++) { f1t[fr] = fscale(f1t[fr]); f2t[fr] = fscale(f2t[fr]); }
   }
   synthesize(p);
+  patt = editorUndoInfo.editorInfo[chn].epnum;
+  if (p->twovoices)
+  {
+    chb = (chn / 3) * 3 + (chn % 3 + 1) % 3;
+    pattb = editorUndoInfo.editorInfo[chb].epnum;
+    if (chb >= numchannels)
+    {
+      snprintf(err, errsize, "Two voices: the SID of channel %d.%d has no voice %d", chn / 3 + 1, chn % 3 + 1, (chn % 3 + 1) % 3 + 1);
+      return 0;
+    }
+    if (pattb == patt)
+    {
+      snprintf(err, errsize, "Two voices: channel %d.%d shows the same pattern %02X - give it another pattern", chb / 3 + 1,
+               chb % 3 + 1, patt);
+      return 0;
+    }
+    synthesize2(p);
+  }
 
   voicebit = 1 << (chn % 3);
   sid = chn / 3;
@@ -1181,6 +1266,38 @@ int speech_generate(const SPEECHPARAMS *p, int chn, int row, char *err, int errs
       if (!exist[c]) need++;
     }
   }
+  // the second voice: a wave program per sound, identical ones share an
+  // instrument (also with an earlier sentence)
+  if (p->twovoices)
+  {
+    for (c = 0; c < numsegs; c++)
+    {
+      int a = segs[c].start, b = segs[c].end, fw = c ? bframes[a - 1].wave : W_SILENT;
+      makewavef(&bw[c], bframes, a, b);
+      bfw[c] = (fw == W_SILENT) ? 0x01 : fw;
+      bslot[c] = c;
+      bexist[c] = 0;
+      for (k = 0; k < c; k++)
+        if ((bslot[k] == k) && (gtv[k] == gtv[c]) && (bfw[k] == bfw[c]) && (bw[k].n == bw[c].n) &&
+            (!memcmp(bw[k].l, bw[c].l, bw[c].n)) && (!memcmp(bw[k].r, bw[c].r, bw[c].n)))
+        {
+          bslot[c] = k;
+          break;
+        }
+      if (bslot[c] == c)
+      {
+        int i;
+        for (i = 1; i < MAX_INSTR - 1; i++)
+        {
+          const INSTR *in = &instr[i];
+          if ((in->ad != 0x00) || (in->sr != bsr) || (in->gatetimer != gtv[c]) || (in->firstwave != bfw[c]) || (in->ptr[PTBL]) ||
+              (in->ptr[FTBL]) || (in->ptr[STBL]) || (strncmp(in->name, "Say2 ", 5))) continue;
+          if (sameprogat(WTBL, in->ptr[WTBL], &bw[c])) { bexist[c] = i; break; }
+        }
+        if (!bexist[c]) need++;
+      }
+    }
+  }
   // space: instruments, tables, pattern rows
   {
     int free = 0;
@@ -1201,6 +1318,9 @@ int speech_generate(const SPEECHPARAMS *p, int chn, int row, char *err, int errs
         const PROG *pr = k == 0 ? &wp[c] : (k == 1 ? &pp[c] : &fp[c]);
         if (!findprog(k, pr, tlen[k])) sum += pr->n;
       }
+    if ((k == 0) && (p->twovoices))
+      for (c = 0; c < numsegs; c++)
+        if ((bslot[c] == c) && (!bexist[c]) && (!findprog(0, &bw[c], tlen[0]))) sum += bw[c].n;
     if (tlen[k] + sum > MAX_TABLELEN)
     {
       static const char *tn[3] = {"wave", "pulse", "filter"};
@@ -1209,7 +1329,6 @@ int speech_generate(const SPEECHPARAMS *p, int chn, int row, char *err, int errs
     }
   }
   rows = numframes / p->tempo + 1;
-  patt = editorUndoInfo.editorInfo[chn].epnum;
   if (row + rows > MAX_PATTROWS)
   {
     snprintf(err, errsize, "The speech needs %d rows, the pattern has room for %d from row %d", rows, MAX_PATTROWS - row, row);
@@ -1255,7 +1374,68 @@ int speech_generate(const SPEECHPARAMS *p, int chn, int row, char *err, int errs
     k++;
   }
 
+  // the instruments of the second voice: only a wave program
+  if (p->twovoices)
+  {
+    for (c = 0; c < numsegs; c++)
+    {
+      INSTR *in;
+      char name[MAX_INSTRNAMELEN + 8], sn[MAX_INSTRNAMELEN];
+      if (bslot[c] != c) { binum[c] = binum[bslot[c]]; continue; }
+      if (bexist[c]) { binum[c] = bexist[c]; continue; }
+      while (!instrempty(k)) k++;
+      binum[c] = k;
+      in = &instr[k];
+      memset(in, 0, sizeof *in);
+      in->ad = 0x00;
+      in->sr = bsr;
+      in->gatetimer = gtv[c];
+      in->firstwave = bfw[c];
+      segname(&segs[c], sn, MAX_INSTRNAMELEN - 5);
+      snprintf(name, sizeof name, "Say2 %s", sn);
+      strncpy(in->name, name, MAX_INSTRNAMELEN - 1);
+      in->ptr[WTBL] = findprog(WTBL, &bw[c], tlen[WTBL]);
+      if (!in->ptr[WTBL])
+      {
+        in->ptr[WTBL] = tlen[WTBL] + 1;
+        memcpy(&ltable[WTBL][tlen[WTBL]], bw[c].l, bw[c].n);
+        memcpy(&rtable[WTBL][tlen[WTBL]], bw[c].r, bw[c].n);
+        tlen[WTBL] += bw[c].n;
+      }
+      k++;
+    }
+  }
+
   // pattern rows
+  if (p->twovoices)
+  {
+    int r;
+    if (pattlen[pattb] < row + rows)
+    {
+      for (r = pattlen[pattb]; r < row + rows; r++)
+      {
+        pattern[pattb][r * 4] = REST;
+        pattern[pattb][r * 4 + 1] = pattern[pattb][r * 4 + 2] = pattern[pattb][r * 4 + 3] = 0;
+      }
+      pattlen[pattb] = row + rows;
+      pattern[pattb][pattlen[pattb] * 4] = ENDPATT;
+      pattern[pattb][pattlen[pattb] * 4 + 1] = pattern[pattb][pattlen[pattb] * 4 + 2] = pattern[pattb][pattlen[pattb] * 4 + 3] = 0;
+    }
+    for (r = row; r < row + rows; r++)
+    {
+      pattern[pattb][r * 4] = REST;
+      pattern[pattb][r * 4 + 1] = 0;
+      if ((pattern[pattb][r * 4 + 2] != CMD_SETTEMPO) && (pattern[pattb][r * 4 + 2] != CMD_FUNKTEMPO))
+        pattern[pattb][r * 4 + 2] = pattern[pattb][r * 4 + 3] = 0;
+    }
+    for (c = 0; c < numsegs; c++)
+    {
+      r = row + segs[c].row;
+      pattern[pattb][r * 4] = FIRSTNOTE + phones[segs[c].first].note;
+      pattern[pattb][r * 4 + 1] = binum[c];
+    }
+    pattern[pattb][(row + rows - 1) * 4] = KEYOFF;
+  }
   if (pattlen[patt] < row + rows)
   {
     int r;
@@ -1300,6 +1480,9 @@ int speech_generate(const SPEECHPARAMS *p, int chn, int row, char *err, int errs
   lst("Text:      %s\nPhonemes:  %s\n", p->text, phs);
   lst("Speaker:   %s, base note %s (formants %d%%)\n", curvoice->name, notestr(p->basenote, nb), curvoice->formant);
   lst("Voice:     channel %d.%d (SID %d voice %d), filter on this voice only (bitmask $%X)\n", sid + 1, chn % 3 + 1, sid + 1, chn % 3 + 1, voicebit);
+  if (p->twovoices)
+    lst("Voice 2:   channel %d.%d, hard synced to channel %d.%d: its oscillator follows formant 2 (instruments \"Say2\"),\n"
+        "           noise for the hiss of Z, V, DH, ZH; not through the filter\n", chb / 3 + 1, chb % 3 + 1, sid + 1, chn % 3 + 1);
   lst("Timing:    song speed F%02X = %d frames per row (%d ms), tables run every frame (%d per second),\n"
       "           %d rows, %.2f s. Several short sounds can share one row / instrument.\n",
       p->tempo, p->tempo, p->tempo * 1000 / framespersec(), framespersec(), rows, (double)numframes / framespersec());

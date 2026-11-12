@@ -18,6 +18,8 @@ typedef struct
   int settempo;               // put an F0x tempo command on the first row
   int mode;                   // formant model (see gspeech.c), 0 = default
   int share;                  // 1 = one instrument per sound (phonemes) in a sentence
+  int twovoices;              // 1 = a second SID voice (the next one of the SID), hard synced:
+                              //     the second formant and the hiss of voiced sounds
 } SPEECHPARAMS;
 
 void speech_defaults(SPEECHPARAMS *p);

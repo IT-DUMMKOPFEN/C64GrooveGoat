@@ -638,6 +638,7 @@ int main(int argc, char **argv)
       sp.tempo = getenv("GG_SPEECHTEMPO") ? atoi(getenv("GG_SPEECHTEMPO")) : speech_songtempo(chn);
       if (getenv("GG_SPEECHSETTEMPO")) sp.settempo = atoi(getenv("GG_SPEECHSETTEMPO"));
       if (getenv("GG_SPEECHSHARE")) sp.share = atoi(getenv("GG_SPEECHSHARE"));
+      if (getenv("GG_SPEECH2")) sp.twovoices = atoi(getenv("GG_SPEECH2"));
       if (!speech_generate(&sp, chn, getenv("GG_SPEECHROW") ? atoi(getenv("GG_SPEECHROW")) : 0, err, sizeof err))
       {
         fprintf(stderr, "error: %s\n", err);

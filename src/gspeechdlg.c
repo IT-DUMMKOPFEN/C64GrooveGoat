@@ -124,7 +124,7 @@ void speechdialog(void)
 
     printstatus();
     dlg_drawframe(x0, y0, w, h, "Speech generator");
-    for (c = 0; c <= 6; c++)
+    for (c = 0; c <= 7; c++)
     {
       int isel = (c == sel);
       int bg = isel ? C_SELECT : C_PANEL;
@@ -147,6 +147,14 @@ void speechdialog(void)
           if ((songspeed) && (sp.tempo != detected) && (!sp.settempo)) sprintf(buf + strlen(buf), "%02X!)", detected);
           break;
         case 6: sprintf(buf, "[%c] Put the tempo command F%02X on the first row", sp.settempo ? 'x' : ' ', sp.tempo); break;
+        case 7:
+        {
+          int cb = (chn / 3) * 3 + (chn % 3 + 1) % 3;
+          if (sp.twovoices) sprintf(buf, "SID voices        " GS_PREV " 2 " GS_NEXT "   (%d.%d speaks, %d.%d synced to it: clearer vowels)", chn / 3 + 1,
+                                    chn % 3 + 1, cb / 3 + 1, cb % 3 + 1);
+          else sprintf(buf, "SID voices        " GS_PREV " 1 " GS_NEXT "   (2: one more voice of the SID for clearer vowels)");
+        }
+        break;
       }
       printblankc(x0 + 2, ry, MKCOL(8, bg), w - 4);
       printtext(x0 + 3, ry, MKCOL(isel ? 15 : 8, bg), buf);
@@ -183,7 +191,8 @@ void speechdialog(void)
       sprintf(buf, "Channel %d.%d (SID %d voice %d), pattern %02X from row %02X", chn / 3 + 1, chn % 3 + 1, chn / 3 + 1, chn % 3 + 1, patt, row);
       printtext(x0 + 21, y + 2, MKCOL(8, C_PANEL), buf);
       printtext(x0 + 3, y + 3, MKCOL(14, C_PANEL), "Filter:");
-      sprintf(buf, "Only this voice. Keep the other voices of SID %d unfiltered.", chn / 3 + 1);
+      if (sp.twovoices) sprintf(buf, "Only the speaking voice. %d.%d is used too (from row %02X).", chn / 3 + 1, (chn % 3 + 1) % 3 + 1, row);
+      else sprintf(buf, "Only this voice. Keep the other voices of SID %d unfiltered.", chn / 3 + 1);
       printtext(x0 + 21, y + 3, MKCOL(8, C_PANEL), buf);
       printtext(x0 + 3, y + 5, MKCOL(3, C_PANEL), "English words, numbers and , . ? ! pauses. Exact sounds between slashes:");
       printtext(x0 + 3, y + 6, MKCOL(3, C_PANEL), "/HH AH0 L OW1 | W ER1 L D/  (CMU phonemes, stress 0-2, | = word gap)");
@@ -192,7 +201,7 @@ void speechdialog(void)
 
     for (c = 0; c < 4; c++)
     {
-      int isel = (sel == 7 + c);
+      int isel = (sel == 8 + c);
       printtext(btnx[c], y0 + h - 2, MKCOL(C_BUTTONTEXT, isel ? C_BUTTONHI : C_BUTTON), btntext[c]);
       if ((mousey == y0 + h - 2) && (mousex >= btnx[c]) && (mousex < btnx[c] + (int)strlen(btntext[c]))) hitbtn = c;
     }
@@ -217,7 +226,7 @@ void speechdialog(void)
       if (hitbtn >= 0)
       {
         restoresel = sel;
-        sel = 7 + hitbtn;
+        sel = 8 + hitbtn;
         rawkey = KEY_ENTER;
         key = 0;
       }
@@ -251,8 +260,8 @@ void speechdialog(void)
       continue;
     }
 
-    if (rawkey == KEY_F1) { if (restoresel < 0) restoresel = sel; sel = 7; rawkey = KEY_ENTER; }
-    if (rawkey == KEY_F2) { if (restoresel < 0) restoresel = sel; sel = 9; rawkey = KEY_ENTER; }
+    if (rawkey == KEY_F1) { if (restoresel < 0) restoresel = sel; sel = 8; rawkey = KEY_ENTER; }
+    if (rawkey == KEY_F2) { if (restoresel < 0) restoresel = sel; sel = 10; rawkey = KEY_ENTER; }
 
     switch (rawkey)
     {
@@ -266,7 +275,7 @@ void speechdialog(void)
 
       case KEY_DOWN:
       case KEY_TAB:
-      if (sel < 10) sel++;
+      if (sel < 11) sel++;
       break;
 
       case KEY_BACKSPACE:
@@ -311,30 +320,31 @@ void speechdialog(void)
           if (songspeed > 16) songspeed = 0;
           break;
           case 6: sp.settempo ^= 1; break;
+          case 7: sp.twovoices ^= 1; break;
           default:
-          if ((sel >= 7) && (rawkey != KEY_SPACE))
+          if ((sel >= 8) && (rawkey != KEY_SPACE))
           {
             sel += dir;
-            if (sel < 7) sel = 7;
-            if (sel > 10) sel = 10;
+            if (sel < 8) sel = 8;
+            if (sel > 11) sel = 11;
           }
           break;
         }
-        if (rawkey != KEY_SPACE || sel < 7) break;
+        if (rawkey != KEY_SPACE || sel < 8) break;
       }
       // SPACE on a button = ENTER
       // fallthrough
 
       case KEY_ENTER:
       {
-        int act = sel >= 7 ? sel : 8;
+        int act = sel >= 8 ? sel : 9;
         char e2[160] = "";
-        if (act == 10)
+        if (act == 11)
         {
           endpreview();
           goto done;
         }
-        if (act == 7)
+        if (act == 8)
         {
           if (generate(0, chn, row, e2, sizeof e2))
           {
@@ -348,7 +358,7 @@ void speechdialog(void)
             msgcol = 10;
           }
         }
-        if (act == 9)
+        if (act == 10)
         {
           int r;
           if (!generate(0, chn, row, e2, sizeof e2))
@@ -363,7 +373,7 @@ void speechdialog(void)
           else if (r < 0) snprintf(msg, sizeof msg, "Could not write %s", listname), msgcol = 10;
           key = rawkey = 0;
         }
-        if (act == 8)
+        if (act == 9)
         {
           void *ed;
           int r;
@@ -381,7 +391,9 @@ void speechdialog(void)
           songmodified = 1;
           {
             char st[120];
-            snprintf(st, sizeof st, "Speech inserted on channel %d.%d, rows %02X-%02X (CTRL+K)", chn / 3 + 1, chn % 3 + 1, row, row + r - 1);
+            if (sp.twovoices) snprintf(st, sizeof st, "Speech inserted on channels %d.%d + %d.%d, rows %02X-%02X (CTRL+K)", chn / 3 + 1, chn % 3 + 1,
+                                       chn / 3 + 1, (chn % 3 + 1) % 3 + 1, row, row + r - 1);
+            else snprintf(st, sizeof st, "Speech inserted on channel %d.%d, rows %02X-%02X (CTRL+K)", chn / 3 + 1, chn % 3 + 1, row, row + r - 1);
             setstatusmessage(st);
           }
           goto done;
