@@ -43,6 +43,17 @@
 int menu = 0;
 int recordmode = 1;
 int followplay = 0;
+Uint32 follow_pattuntil = 0, follow_orduntil = 0;
+
+// the user scrolls or clicks while the song plays: the view stays there for
+// a few seconds instead of following the play position
+void follow_hold(int patterns)
+{
+  Uint32 t = SDL_GetTicks() + 4000;
+  if (!t) t = 1;
+  follow_orduntil = t;
+  if (patterns) follow_pattuntil = t;
+}
 int hexnybble = -1;
 int stepsize = 4;
 int autoadvance = 0;
@@ -1630,7 +1641,7 @@ static void buttoncommand(int id, int param)
     case BTN_PLAYPOS: initsong(editorInfo.esnum, PLAY_POS); followplay = shiftpressed; break;
     case BTN_PLAYPATT: initsong(editorInfo.esnum, PLAY_PATTERN); followplay = shiftpressed; break;
     case BTN_STOP: stopsong(); break;
-    case BTN_FOLLOW: followplay ^= 1; break;
+    case BTN_FOLLOW: followplay ^= 1; follow_pattuntil = follow_orduntil = SDL_GetTicks(); break;
     case BTN_SIDS1: case BTN_SIDS2: case BTN_SIDS4: case BTN_SIDS8:
       changenumsids(param);
       break;
@@ -1790,6 +1801,7 @@ void mousecommands(void)
       }
       else if ((mousex >= RP_X) && (mousey >= ORD_ROWS_Y) && (mousey < ORD_ROWS_Y + VISIBLEORDERCHNS))
       {
+        follow_hold(0);
         editorInfo.esview += dir;
         if (editorInfo.esview < 0) editorInfo.esview = 0;
         if (editorInfo.esview > MAX_SONGLEN) editorInfo.esview = MAX_SONGLEN;
@@ -2044,6 +2056,32 @@ void mousecommands(void)
       editorInfo.eschn = newchn;
       editorInfo.eseditpos = newpos;
       editorInfo.escolumn = newcolumn;
+    }
+    if ((mouseb & MOUSEB_LEFT) && (!prevmouseb))
+    {
+      // a click: the patterns of this position in the pattern editor;
+      // a double click (or SHIFT+click) plays the song from here
+      static Uint32 lastclick = 0;
+      static int lastpos = -1;
+      Uint32 now = SDL_GetTicks();
+      int dbl = ((now - lastclick < 400) && (lastpos == newpos)) || (shiftpressed);
+      lastclick = now;
+      lastpos = newpos;
+      orderlist_show(newpos);
+      if (dbl)
+      {
+        int c;
+        for (c = 0; c < numchannels; c++)
+        {
+          int p = newpos;
+          if (p >= songlen[editorInfo.esnum][c]) p = songlen[editorInfo.esnum][c] ? songlen[editorInfo.esnum][c] - 1 : 0;
+          editorUndoInfo.editorInfo[c].espos = p;
+        }
+        initsong(editorInfo.esnum, PLAY_POS);
+        follow_pattuntil = follow_orduntil = now;
+        lastclick = 0;
+      }
+      else if (isplaying()) follow_hold(1);
     }
 
     if ((mouseb & (MOUSEB_RIGHT | MOUSEB_MIDDLE)) && (newpos < songlen[editorInfo.esnum][newchn])) editorInfo.esmarkend = newpos;

@@ -365,9 +365,12 @@ static void drawpatterns(void)
 
   if ((followplay) && (isplaying()))
   {
+    Uint32 now = SDL_GetTicks();
+    int holdpatt = (int)(follow_pattuntil - now) > 0, holdord = (int)(follow_orduntil - now) > 0;
     for (c = 0; c < numchannels; c++)
     {
       int newpos = chn[c].pattptr / 4;
+      if (holdpatt) goto ORDERLIST;
       if (chn[c].advance) editorUndoInfo.editorInfo[c].epnum = chn[c].pattnum;
 
       if (newpos > pattlen[editorUndoInfo.editorInfo[c].epnum]) newpos = pattlen[editorUndoInfo.editorInfo[c].epnum];
@@ -378,6 +381,8 @@ static void drawpatterns(void)
         editorInfo.epview = newpos-VISIBLEPATTROWS/2;
       }
 
+    ORDERLIST:
+      if (holdord) continue;
       newpos = chn[c].songptr;
       newpos--;
       if (newpos < 0) newpos = 0;

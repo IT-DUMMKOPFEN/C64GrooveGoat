@@ -60,6 +60,8 @@ extern int menu;
 //extern int editorInfo.editmode;
 extern int recordmode;
 extern int followplay;
+extern Uint32 follow_pattuntil, follow_orduntil;   // follow paused (the user looks elsewhere) until
+void follow_hold(int patterns);
 extern int hexnybble;
 extern int stepsize;
 extern int autoadvance;

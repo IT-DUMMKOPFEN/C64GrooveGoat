@@ -16,6 +16,7 @@
 #endif
 
 void updateviewtopos(void);
+void orderlist_show(int pos);
 void orderlistcommands(void);
 void namecommands(void);
 void nextsong(void);

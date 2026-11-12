@@ -30,6 +30,9 @@ void orderlistcommands(void)
 {
   int c, scrrep;
 
+  // keys in the order list while the song plays: the view stays here for a while
+  if (((rawkey) || (hexnybble >= 0)) && (isplaying())) follow_hold(rawkey == KEY_ENTER);
+
   if (hexnybble >= 0)
   {
     if (editorInfo.eseditpos != songlen[editorInfo.esnum][editorInfo.eschn])
@@ -609,6 +612,26 @@ void songchange(void)
   editorInfo.epmarkchn = -1;
   editorInfo.esmarkchn = -1;
   stopsong();
+}
+
+// the patterns of an order list position in the pattern editor (all voices)
+void orderlist_show(int pos)
+{
+  int c, d;
+  for (c = 0; c < numchannels; c++)
+  {
+    for (d = pos; d < songlen[editorInfo.esnum][c]; d++)
+    {
+      if (songorder[editorInfo.esnum][c][d] < MAX_PATT)
+      {
+        editorUndoInfo.editorInfo[c].epnum = songorder[editorInfo.esnum][c][d];
+        break;
+      }
+    }
+  }
+  editorInfo.eppos = 0;
+  editorInfo.epview = 0;
+  editorInfo.epmarkchn = -1;
 }
 
 void updateviewtopos(void)
