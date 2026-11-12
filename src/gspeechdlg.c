@@ -150,7 +150,7 @@ void speechdialog(void)
         case 7:
         {
           int cb = (chn / 3) * 3 + (chn % 3 + 1) % 3;
-          if (sp.twovoices) sprintf(buf, "SID voices        " GS_PREV " 2 " GS_NEXT "   (%d.%d speaks, %d.%d synced to it: clearer vowels)", chn / 3 + 1,
+          if (sp.twovoices) sprintf(buf, "SID voices        " GS_PREV " 2 " GS_NEXT "   (%d.%d and %d.%d speak together: clearer vowels)", chn / 3 + 1,
                                     chn % 3 + 1, cb / 3 + 1, cb % 3 + 1);
           else sprintf(buf, "SID voices        " GS_PREV " 1 " GS_NEXT "   (2: one more voice of the SID for clearer vowels)");
         }
@@ -191,7 +191,7 @@ void speechdialog(void)
       sprintf(buf, "Channel %d.%d (SID %d voice %d), pattern %02X from row %02X", chn / 3 + 1, chn % 3 + 1, chn / 3 + 1, chn % 3 + 1, patt, row);
       printtext(x0 + 21, y + 2, MKCOL(8, C_PANEL), buf);
       printtext(x0 + 3, y + 3, MKCOL(14, C_PANEL), "Filter:");
-      if (sp.twovoices) sprintf(buf, "Only the speaking voice. %d.%d is used too (from row %02X).", chn / 3 + 1, (chn % 3 + 1) % 3 + 1, row);
+      if (sp.twovoices) sprintf(buf, "Only the two speech voices (%d.%d is used too). Keep the third one unfiltered.", chn / 3 + 1, (chn % 3 + 1) % 3 + 1);
       else sprintf(buf, "Only this voice. Keep the other voices of SID %d unfiltered.", chn / 3 + 1);
       printtext(x0 + 21, y + 3, MKCOL(8, C_PANEL), buf);
       printtext(x0 + 3, y + 5, MKCOL(3, C_PANEL), "English words, numbers and , . ? ! pauses. Exact sounds between slashes:");

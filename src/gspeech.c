@@ -373,6 +373,7 @@ typedef struct
   unsigned char ftype;    // 0x10 LP, 0x20 BP, 0x40 HP (combinations)
   unsigned char res;      // 0-15
   int cutoff;             // 0-255
+  int route;              // filter routing bits for this frame, 0 = the speaking voice
 } FRAME;
 
 static FRAME frames[MAXFRAMES];
@@ -876,14 +877,27 @@ static int hz2note(int hz)
   return n;
 }
 
-static void synthesize2(const SPEECHPARAMS *p)
+// The second voice. Modes (GG_SPEECHBMODE for tests):
+//  0 "formants": two sources on the same pitch, like a parallel formant
+//    synthesizer: the second voice (sawtooth) goes through the resonant band
+//    pass on F2, the speaking voice is not filtered in vowels - its pulse
+//    width keeps the harmonics up to about F1 strong. Hissing sounds use the
+//    filter on the speaking voice as before.
+//  3 "bright": the same pitch, not filtered, pulse width from F2
+//  1 "saw": the same pitch, sawtooth, not filtered (brightness only)
+//  2 "sync": hard synced, the oscillator on F2 (a clear F2 peak, but it can
+//    be heard as a whistle)
+static int bmode = 0;
+
+static void synthesize2(const SPEECHPARAMS *p, int cha, int chb)
 {
   int c, f, g;
-  int syncwave = getenv("GG_SPEECHBWAVE") ? (int)strtol(getenv("GG_SPEECHBWAVE"), NULL, 16) : 0x13;
+  bmode = getenv("GG_SPEECHBMODE") ? atoi(getenv("GG_SPEECHBMODE")) : 4;
   for (g = 0; g < numframes; g++)
   {
     memset(&bframes[g], 0, sizeof(FRAME));
     bframes[g].wave = W_SILENT;
+    bframes[g].pulse = 0x800;
   }
   for (c = 0; c < numphones; c++)
   {
@@ -894,15 +908,55 @@ static void synthesize2(const SPEECHPARAMS *p)
     {
       FRAME *b = &bframes[s + f];
       int fn;
+      double d;
       g = s + f;
       switch (ph->type)
       {
         case PV: case PD: case PG:
-        fn = hz2note(f2t[g]);
-        if (fn < note + 12) fn = note + 12;
-        if (fn > 95) fn = 95;
-        b->wave = syncwave;
-        b->note = 0x80 + fn;
+        if (bmode == 2)
+        {
+          fn = hz2note(f2t[g]);
+          if (fn < note + 12) fn = note + 12;
+          if (fn > 95) fn = 95;
+          b->wave = 0x13;
+          b->note = 0x80 + fn;
+        }
+        else if (bmode == 1) b->wave = 0x21;
+        else if ((bmode == 0) || (bmode == 4))
+        {
+          FRAME *a = &frames[g];
+          b->wave = 0x21;
+          // the second voice through the band pass on F2 (mode 4: both
+          // voices through low pass + band pass on F2)
+          a->route = bmode == 4 ? (1 << (chb % 3)) | (1 << (cha % 3)) : 1 << (chb % 3);
+          a->ftype = bmode == 4 ? 0x30 : 0x20;
+          a->res = bmode == 4 ? 12 : 13;
+          a->cutoff = hz2cutoff(f2t[g]);
+          // the speaking voice: pulse, the harmonics up to about F1
+          if ((a->wave == 0x41) && (curvoice->wave != VW_SQUARE))
+          {
+            d = (double)notefreq(note) / (2.0 * (f1t[g] > 200 ? f1t[g] : 200));
+            if (d < 0.05) d = 0.05;
+            if (d > 0.45) d = 0.45;
+            a->pulse = ((int)(d * 4096)) & ~0x0f;
+          }
+          // a whisper has no voicing: the second voice whispers too
+          if (curvoice->wave == VW_NOISE)
+          {
+            b->wave = W_NOISE;
+            b->note = noisenote(f2t[g]);
+          }
+        }
+        else
+        {
+          // a pulse of duty d has its first spectral null at f0/d: the
+          // harmonics up to about F2 stay strong, the ones above fall away
+          d = (double)notefreq(note) / (double)(f2t[g] > 300 ? f2t[g] : 300);
+          if (d < 0.04) d = 0.04;
+          if (d > 0.5) d = 0.5;
+          b->wave = 0x41;
+          b->pulse = ((int)(d * 4096)) & ~0x0f;
+        }
         break;
         case PFV:
         if ((f & 1) || (n <= 2))
@@ -914,6 +968,19 @@ static void synthesize2(const SPEECHPARAMS *p)
         default:
         break;
       }
+    }
+  }
+  // pulse width held through silent frames (no jumps); silent frames of the
+  // speaking voice get the filter of the sound that follows
+  for (g = numframes - 2; g >= 0; g--)
+  {
+    if (bframes[g].wave != 0x41) bframes[g].pulse = bframes[g + 1].pulse;
+    if (frames[g].wave == W_SILENT)
+    {
+      frames[g].route = frames[g + 1].route;
+      frames[g].ftype = frames[g + 1].ftype;
+      frames[g].res = frames[g + 1].res;
+      frames[g].cutoff = frames[g + 1].cutoff;
     }
   }
   (void)p;
@@ -969,7 +1036,13 @@ static void makewavef(PROG *pr, const FRAME *frames, int a, int b)
 }
 
 // Pulse program: set + modulation steps
+static void makepulsef(PROG *pr, const FRAME *frames, int a, int b);
 static void makepulse(PROG *pr, int a, int b)
+{
+  makepulsef(pr, frames, a, b);
+}
+
+static void makepulsef(PROG *pr, const FRAME *frames, int a, int b)
 {
   int f = a + 1;
   pr->n = 0;
@@ -996,15 +1069,16 @@ static void makepulse(PROG *pr, int a, int b)
 static void makefilter(PROG *pr, int a, int b, int voicebit)
 {
   int f = a + 1;
+#define VB(x) (frames[x].route ? frames[x].route : voicebit)
   pr->n = 0;
-  progadd(pr, 0x80 | frames[a].ftype, (frames[a].res << 4) | voicebit);
+  progadd(pr, 0x80 | frames[a].ftype, (frames[a].res << 4) | VB(a));
   progadd(pr, 0x00, frames[a].cutoff);
   while (f < b)
   {
     int d, len = 1;
-    if ((frames[f].ftype != frames[f - 1].ftype) || (frames[f].res != frames[f - 1].res))
+    if ((frames[f].ftype != frames[f - 1].ftype) || (frames[f].res != frames[f - 1].res) || (VB(f) != VB(f - 1)))
     {
-      progadd(pr, 0x80 | frames[f].ftype, (frames[f].res << 4) | voicebit);
+      progadd(pr, 0x80 | frames[f].ftype, (frames[f].res << 4) | VB(f));
       progadd(pr, 0x00, frames[f].cutoff);
       f++;
       continue;
@@ -1017,13 +1091,15 @@ static void makefilter(PROG *pr, int a, int b, int voicebit)
       continue;
     }
     while ((f + len < b) && (frames[f + len].cutoff - frames[f + len - 1].cutoff == d) &&
-           (frames[f + len].ftype == frames[f].ftype) && (frames[f + len].res == frames[f].res) && (len < 127)) len++;
+           (frames[f + len].ftype == frames[f].ftype) && (frames[f + len].res == frames[f].res) && (VB(f + len) == VB(f)) &&
+           (len < 127)) len++;
     if ((d == 0) && (f + len >= b)) break;
     if ((len == 1) && (d != 0)) progadd(pr, 0x00, frames[f].cutoff);
     else progadd(pr, len, d & 0xff);
     f += len;
   }
   progadd(pr, 0xff, 0x00);
+#undef VB
 }
 
 // ---------------------------------------------------------------------------
@@ -1153,11 +1229,11 @@ static int samephones(int a, int b, int n)
 
 int speech_generate(const SPEECHPARAMS *p, int chn, int row, char *err, int errsize)
 {
-  static PROG wp[MAXPHONES], pp[MAXPHONES], fp[MAXPHONES], bw[MAXPHONES];
+  static PROG wp[MAXPHONES], pp[MAXPHONES], fp[MAXPHONES], bw[MAXPHONES], bp[MAXPHONES];
   int slot[MAXPHONES], inum[MAXPHONES], plen[MAXPHONES], fwv[MAXPHONES], gtv[MAXPHONES], exist[MAXPHONES];
   static int bslot[MAXPHONES], binum[MAXPHONES], bfw[MAXPHONES], bexist[MAXPHONES];
   int c, k, need = 0, tlen[3], rows, patt, voicebit, sid, chb = -1, pattb = -1;
-  int bsr = getenv("GG_SPEECHBSR") ? (int)strtol(getenv("GG_SPEECHBSR"), NULL, 16) : 0xa4;
+  int bsr = getenv("GG_SPEECHBSR") ? (int)strtol(getenv("GG_SPEECHBSR"), NULL, 16) : 0xc4;
   char phs[1024], nb[16];
   SPEECHPARAMS fixed;
 
@@ -1195,7 +1271,7 @@ int speech_generate(const SPEECHPARAMS *p, int chn, int row, char *err, int errs
                chb % 3 + 1, patt);
       return 0;
     }
-    synthesize2(p);
+    synthesize2(p, chn, chb);
   }
 
   voicebit = 1 << (chn % 3);
@@ -1274,12 +1350,14 @@ int speech_generate(const SPEECHPARAMS *p, int chn, int row, char *err, int errs
     {
       int a = segs[c].start, b = segs[c].end, fw = c ? bframes[a - 1].wave : W_SILENT;
       makewavef(&bw[c], bframes, a, b);
+      makepulsef(&bp[c], bframes, a, b);
       bfw[c] = (fw == W_SILENT) ? 0x01 : fw;
       bslot[c] = c;
       bexist[c] = 0;
       for (k = 0; k < c; k++)
         if ((bslot[k] == k) && (gtv[k] == gtv[c]) && (bfw[k] == bfw[c]) && (bw[k].n == bw[c].n) &&
-            (!memcmp(bw[k].l, bw[c].l, bw[c].n)) && (!memcmp(bw[k].r, bw[c].r, bw[c].n)))
+            (!memcmp(bw[k].l, bw[c].l, bw[c].n)) && (!memcmp(bw[k].r, bw[c].r, bw[c].n)) && (bp[k].n == bp[c].n) &&
+            (!memcmp(bp[k].l, bp[c].l, bp[c].n)) && (!memcmp(bp[k].r, bp[c].r, bp[c].n)))
         {
           bslot[c] = k;
           break;
@@ -1290,9 +1368,9 @@ int speech_generate(const SPEECHPARAMS *p, int chn, int row, char *err, int errs
         for (i = 1; i < MAX_INSTR - 1; i++)
         {
           const INSTR *in = &instr[i];
-          if ((in->ad != 0x00) || (in->sr != bsr) || (in->gatetimer != gtv[c]) || (in->firstwave != bfw[c]) || (in->ptr[PTBL]) ||
+          if ((in->ad != 0x00) || (in->sr != bsr) || (in->gatetimer != gtv[c]) || (in->firstwave != bfw[c]) ||
               (in->ptr[FTBL]) || (in->ptr[STBL]) || (strncmp(in->name, "Say2 ", 5))) continue;
-          if (sameprogat(WTBL, in->ptr[WTBL], &bw[c])) { bexist[c] = i; break; }
+          if (sameprogat(WTBL, in->ptr[WTBL], &bw[c]) && sameprogat(PTBL, in->ptr[PTBL], &bp[c])) { bexist[c] = i; break; }
         }
         if (!bexist[c]) need++;
       }
@@ -1318,9 +1396,9 @@ int speech_generate(const SPEECHPARAMS *p, int chn, int row, char *err, int errs
         const PROG *pr = k == 0 ? &wp[c] : (k == 1 ? &pp[c] : &fp[c]);
         if (!findprog(k, pr, tlen[k])) sum += pr->n;
       }
-    if ((k == 0) && (p->twovoices))
+    if ((k <= 1) && (p->twovoices))
       for (c = 0; c < numsegs; c++)
-        if ((bslot[c] == c) && (!bexist[c]) && (!findprog(0, &bw[c], tlen[0]))) sum += bw[c].n;
+        if ((bslot[c] == c) && (!bexist[c]) && (!findprog(k, k ? &bp[c] : &bw[c], tlen[k]))) sum += k ? bp[c].n : bw[c].n;
     if (tlen[k] + sum > MAX_TABLELEN)
     {
       static const char *tn[3] = {"wave", "pulse", "filter"};
@@ -1394,13 +1472,20 @@ int speech_generate(const SPEECHPARAMS *p, int chn, int row, char *err, int errs
       segname(&segs[c], sn, MAX_INSTRNAMELEN - 5);
       snprintf(name, sizeof name, "Say2 %s", sn);
       strncpy(in->name, name, MAX_INSTRNAMELEN - 1);
-      in->ptr[WTBL] = findprog(WTBL, &bw[c], tlen[WTBL]);
-      if (!in->ptr[WTBL])
       {
-        in->ptr[WTBL] = tlen[WTBL] + 1;
-        memcpy(&ltable[WTBL][tlen[WTBL]], bw[c].l, bw[c].n);
-        memcpy(&rtable[WTBL][tlen[WTBL]], bw[c].r, bw[c].n);
-        tlen[WTBL] += bw[c].n;
+        int t;
+        for (t = 0; t < 2; t++)
+        {
+          PROG *pr = t ? &bp[c] : &bw[c];
+          in->ptr[t] = findprog(t, pr, tlen[t]);
+          if (!in->ptr[t])
+          {
+            in->ptr[t] = tlen[t] + 1;
+            memcpy(&ltable[t][tlen[t]], pr->l, pr->n);
+            memcpy(&rtable[t][tlen[t]], pr->r, pr->n);
+            tlen[t] += pr->n;
+          }
+        }
       }
       k++;
     }
@@ -1481,8 +1566,9 @@ int speech_generate(const SPEECHPARAMS *p, int chn, int row, char *err, int errs
   lst("Speaker:   %s, base note %s (formants %d%%)\n", curvoice->name, notestr(p->basenote, nb), curvoice->formant);
   lst("Voice:     channel %d.%d (SID %d voice %d), filter on this voice only (bitmask $%X)\n", sid + 1, chn % 3 + 1, sid + 1, chn % 3 + 1, voicebit);
   if (p->twovoices)
-    lst("Voice 2:   channel %d.%d, hard synced to channel %d.%d: its oscillator follows formant 2 (instruments \"Say2\"),\n"
-        "           noise for the hiss of Z, V, DH, ZH; not through the filter\n", chb / 3 + 1, chb % 3 + 1, sid + 1, chn % 3 + 1);
+    lst("Voice 2:   channel %d.%d speaks on the same pitch as channel %d.%d (sawtooth, instruments \"Say2\"); in the\n"
+        "           vowels both go through low pass + band pass on formant 2; noise for the hiss of Z, V, DH, ZH\n",
+        chb / 3 + 1, chb % 3 + 1, sid + 1, chn % 3 + 1);
   lst("Timing:    song speed F%02X = %d frames per row (%d ms), tables run every frame (%d per second),\n"
       "           %d rows, %.2f s. Several short sounds can share one row / instrument.\n",
       p->tempo, p->tempo, p->tempo * 1000 / framespersec(), framespersec(), rows, (double)numframes / framespersec());
