@@ -48,7 +48,9 @@ by Lasse Öörni (Cadaver) and the
   a backup of the current song is saved first, a check shows the result before joining
 - Beat editor (`CTRL+D`): 959 drum beats plus a dice for new beats in the style of the subgenre, in 12 genres (Chiptune, Techno, EBM, Electro,
   Hip-Hop, Funk, Drum & Bass, Rock, Metal, House, Reggae, Latin) with variants, drum kits,
-  swing, fills and random variations, written over the whole pattern of the cursor channel;
+  swing, fills and random variations, written over the whole pattern of the cursor channel,
+  or over the whole song: the beat follows the parts (quiet intro and outro, fuller choruses,
+  fills before every new part, crashes);
   drum sounds from the instrument library or generated kits; looped preview without changing the song
 - New song (`CTRL+G`): a composer for complete pieces -
   33 genres with their subgenres as templates (full songs with intro, verses, choruses, bridge
@@ -66,9 +68,11 @@ by Lasse Öörni (Cadaver) and the
   6 or 8 SIDs, "Convert again" for other arrangements
 - Bass, Chords & Arps (`CTRL+P`): a bassline (32 bass figures) and / or chords and
   arpeggios for the voice of the cursor, from the chords recognised in the song or from the
-  progression of a style; preview, dice, backup
+  progression of a genre / subgenre; or a whole new SID (length, 1-8 SIDs) with bass, arpeggios
+  and chords only - the melody and drum voices stay free; preview, dice, backup
 - Speech generator (`CTRL+K`): English text or CMU phonemes become formant speech on one SID
-  voice (the channel of the cursor) - instruments, wave / pulse / filter tables and pattern
+  voice (the channel of the cursor), or on two: the second voice is hard synced and follows the
+  second formant for clearer vowels - instruments, wave / pulse / filter tables and pattern
   rows for the speed of your song (F03, F05, F06 ... or detected automatically), with voice,
   pitch, speed and melody options, preview and a text listing.
   Example: `examples/together_we_hunt.sng`
