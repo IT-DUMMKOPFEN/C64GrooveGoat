@@ -59,6 +59,19 @@ typedef struct
 // Parse a grid string. Returns the number of hits; *steps = length in 16ths.
 int beat_parse(const char *grid, BEATHIT *hits, int maxhits, int *steps);
 
+// The parts of the last composed song (set by the composer when it writes a
+// song), so a whole-song beat knows the structure exactly
+#define SP_MAX 64
+enum { SPK_INTRO = 0, SPK_VERSE, SPK_CHORUS, SPK_BRIDGE, SPK_OUTRO };
+typedef struct
+{
+  char title[32];
+  int rows, barrows, n;
+  int bars[SP_MAX], kind[SP_MAX];
+  double energy[SP_MAX];
+} SONGPARTS;
+extern SONGPARTS songparts;
+
 // The "Beat editor" dialog (CTRL+D)
 void beatdialog(void);
 

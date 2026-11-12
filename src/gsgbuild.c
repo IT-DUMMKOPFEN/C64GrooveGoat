@@ -8,6 +8,7 @@
 #include "goattrk2.h"
 #include "gsgcomp.h"
 #include "gsgbuild.h"
+#include "gbeat.h"
 #include "gsgexpr.h"
 #include "gsgtimbre.h"
 
@@ -1118,6 +1119,25 @@ int sg_buildsongs(COMP **subs, int nsubs, int writeto, char *err, int errsize)
     }
     snprintf(songname, sizeof songname, "%.31s", c->title);
     snprintf(authorname, sizeof authorname, "%.31s", "C64 GrooveGoat");
+    // the parts for a whole-song beat (Beat editor)
+    memset(&songparts, 0, sizeof songparts);
+    if ((c->kind != 1) && (c->nsecs > 0) && (c->nsecs <= SP_MAX))
+    {
+      static const double e0[SEC_NUM] = {0.3, 0.55, 0.85, 0.5, 0.35, 0.6, 0.9, 0.5};
+      int s2;
+      snprintf(songparts.title, sizeof songparts.title, "%.31s", c->title);
+      songparts.rows = c->total_rows;
+      songparts.barrows = c->spb;
+      songparts.n = c->nsecs;
+      for (s2 = 0; s2 < c->nsecs; s2++)
+      {
+        int sec = c->secs[s2];
+        songparts.bars[s2] = c->secbars[s2];
+        songparts.kind[s2] = sec == SEC_INTRO ? SPK_INTRO : sec == SEC_OUTRO ? SPK_OUTRO : ((sec == SEC_B) || (sec == SEC_B2)) ? SPK_CHORUS :
+                             ((sec == SEC_C) || (sec == SEC_C2)) ? SPK_BRIDGE : SPK_VERSE;
+        songparts.energy[s2] = (c->engine) && (c->energy[s2] > 0) ? c->energy[s2] : e0[sec < SEC_NUM ? sec : 1];
+      }
+    }
     if ((c->kind == 1) && (!c->expressive)) snprintf(copyrightname, sizeof copyrightname, "2026 MIDI import");
     else if (c->kind == 1) snprintf(copyrightname, sizeof copyrightname, "2026 Enhanced (Seed %u)", c->seed);
     else snprintf(copyrightname, sizeof copyrightname, c->engine ? "2026 C64 GrooveGoat (Seed %u)" : "2026 GG Classic (Seed %u)", c->seed);

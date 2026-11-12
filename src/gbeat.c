@@ -995,19 +995,10 @@ static int render(ROWEV *ev, int rows, int r16)
   return 1;
 }
 
-// Write the beat into the pattern of channel chn (whole pattern). Missing
-// instruments are generated. Returns the number of rows, 0 on error.
-static int writebeat(int chn, char *err, int errsize)
+// the instruments for the events (missing ones are generated); 0 = error
+static int makeslots(const ROWEV *ev, int rows, char *err, int errsize, int tempo)
 {
-  static ROWEV ev[MAX_PATTROWS];
-  int patt = chnpattern(chn), rows = pattlen[patt], r16 = currows16(chn);
-  int need[BR_NUM][BL_NUM], r, l, kit = curkit(), tempo = songtempo(chn);
-
-  if (!render(ev, rows, r16))
-  {
-    snprintf(err, errsize, "Template error in %s / %s", cursub()->name, curvar()->name);
-    return 0;
-  }
+  int need[BR_NUM][BL_NUM], r, l, kit = curkit();
   memset(need, 0, sizeof need);
   for (r = 0; r < rows; r++)
     if (ev[r].role >= 0) need[ev[r].role][ev[r].level] = 1;
@@ -1044,6 +1035,23 @@ static int writebeat(int chn, char *err, int errsize)
       }
     }
   }
+  return 1;
+}
+
+// Write the beat into the pattern of channel chn (whole pattern). Missing
+// instruments are generated. Returns the number of rows, 0 on error.
+static int writebeat(int chn, char *err, int errsize)
+{
+  static ROWEV ev[MAX_PATTROWS];
+  int patt = chnpattern(chn), rows = pattlen[patt], r16 = currows16(chn);
+  int r, tempo = songtempo(chn);
+
+  if (!render(ev, rows, r16))
+  {
+    snprintf(err, errsize, "Template error in %s / %s", cursub()->name, curvar()->name);
+    return 0;
+  }
+  if (!makeslots(ev, rows, err, errsize, tempo)) return 0;
   // whole pattern: notes, instruments and commands are replaced; tempo
   // commands stay
   for (r = 0; r < rows; r++)
@@ -1066,11 +1074,460 @@ static int writebeat(int chn, char *err, int errsize)
 }
 
 // ---------------------------------------------------------------------------
+// A beat for the whole song: the parts of the song (from the composer, or
+// found in what the other voices play), the beat follows them - quieter in
+// the intro and outro, fuller in the strong parts, a fill before every new
+// part, a crash at the start of a strong part
+// ---------------------------------------------------------------------------
+
+SONGPARTS songparts;
+static int bs_whole = 0;               // 1 = the whole subtune instead of the pattern
+
+#define WS_MAXROWS 16384
+#define WS_MAXSECS 256
+static ROWEV *wev = NULL;
+static int ws_total, ws_barrows, ws_n, ws_exact;
+static int ws_start[WS_MAXSECS], ws_bars[WS_MAXSECS], ws_kind[WS_MAXSECS], ws_level[WS_MAXSECS], ws_new[WS_MAXSECS];
+static char ws_info[200];
+static int ws_emin;
+static const char *ws_kindname[5] = {"intro", "verse", "chorus", "bridge", "outro"};
+
+static int ws_flatlen(int sub, int c)
+{
+  int d, n = 0, rep = 0;
+  for (d = 0; d < songlen[sub][c]; d++)
+  {
+    int v = songorder[sub][c][d];
+    if (v >= TRANSDOWN) continue;
+    if (v >= REPEAT) { rep = v - REPEAT; continue; }
+    n += pattlen[v] * (rep + 1);
+    rep = 0;
+  }
+  return n;
+}
+
+static int ws_empty(int c)
+{
+  int sub = editorInfo.esnum, d, r;
+  for (d = 0; d < songlen[sub][c]; d++)
+  {
+    int v = songorder[sub][c][d];
+    if (v >= REPEAT) continue;
+    for (r = 0; r < pattlen[v]; r++)
+      if (pattern[v][r * 4] <= LASTNOTE) return 0;
+  }
+  return 1;
+}
+
+// the voice for a whole-song beat: the cursor's voice when it is empty, else
+// an empty voice (first on the same SID)
+static int ws_target(int ch)
+{
+  int c;
+  if (ws_empty(ch)) return ch;
+  for (c = (ch / 3) * 3; (c < (ch / 3) * 3 + 3) && (c < numchannels); c++)
+    if (ws_empty(c)) return c;
+  for (c = 0; c < numchannels; c++)
+    if (ws_empty(c)) return c;
+  return ch;
+}
+
+static int ws_levelof(double e)
+{
+  return e < 0.3 ? 0 : e < 0.55 ? 1 : e < 0.8 ? 2 : 3;
+}
+
+// the parts of the subtune; 0 = nothing to follow
+static int ws_analyse(int chn, char *err, int errsize)
+{
+  int sub = editorInfo.esnum, c, k, nbars, b;
+  static int dens[WS_MAXROWS / 4 + 1];
+  static unsigned sig[WS_MAXROWS / 4 + 1];
+  ws_barrows = 16 * currows16(chn);
+  ws_total = 0;
+  for (c = 0; c < numchannels; c++)
+  {
+    int n = ws_flatlen(sub, c);
+    if ((c != chn) && (n > ws_total)) ws_total = n;
+  }
+  if (ws_total > WS_MAXROWS) ws_total = WS_MAXROWS;
+  if (ws_total < ws_barrows)
+  {
+    snprintf(err, errsize, "The other voices of subtune %02X are empty - write the song first (or use Length: This pattern)", sub);
+    return 0;
+  }
+  ws_n = 0;
+  ws_exact = 0;
+  // a song of the composer: its parts exactly
+  if ((songparts.n) && (!strcmp(songname, songparts.title)) && (songparts.barrows == ws_barrows) &&
+      (abs(songparts.rows - ws_total) <= ws_barrows))
+  {
+    int bar = 0;
+    for (k = 0; (k < songparts.n) && (ws_n < WS_MAXSECS); k++)
+    {
+      ws_start[ws_n] = bar;
+      ws_bars[ws_n] = songparts.bars[k];
+      ws_kind[ws_n] = songparts.kind[k];
+      ws_level[ws_n] = ws_levelof(songparts.energy[k]);
+      ws_new[ws_n] = (!k) || (songparts.kind[k] != songparts.kind[k - 1]);
+      bar += songparts.bars[k];
+      ws_n++;
+    }
+    ws_exact = 1;
+  }
+  else
+  {
+    // what the other voices play, bar by bar: how much and what
+    int d, P, np, i, emax = 0;
+    static int pe[WS_MAXSECS];
+    static unsigned ps[WS_MAXSECS];
+    nbars = (ws_total + ws_barrows - 1) / ws_barrows;
+    memset(dens, 0, sizeof(int) * (nbars + 1));
+    memset(sig, 0, sizeof(unsigned) * (nbars + 1));
+    for (c = 0; c < numchannels; c++)
+    {
+      int row = 0, rep = 0, trans = 0;
+      if (c == chn) continue;
+      for (d = 0; (d < songlen[sub][c]) && (row < ws_total); d++)
+      {
+        int v = songorder[sub][c][d], x, r;
+        if (v >= TRANSDOWN) { trans = v - TRANSUP; continue; }
+        if (v >= REPEAT) { rep = v - REPEAT; continue; }
+        for (x = 0; x <= rep; x++)
+          for (r = 0; (r < pattlen[v]) && (row < ws_total); r++, row++)
+          {
+            unsigned char *q = &pattern[v][r * 4];
+            if (q[0] <= LASTNOTE)
+            {
+              b = row / ws_barrows;
+              dens[b]++;
+              sig[b] = sig[b] * 31u + (unsigned)(c * 7919 + (row % ws_barrows) * 131 + (q[0] + trans) * 17 + q[1]);
+            }
+          }
+        rep = 0;
+      }
+    }
+    // phrases of 4 or 8 bars; the same phrase again belongs to the same part
+    P = nbars > 128 ? 8 : (nbars >= 4 ? 4 : nbars);
+    np = (nbars + P - 1) / P;
+    if (np > WS_MAXSECS) np = WS_MAXSECS;
+    for (i = 0; i < np; i++)
+    {
+      pe[i] = 0;
+      ps[i] = 0;
+      for (b = i * P; (b < (i + 1) * P) && (b < nbars); b++)
+      {
+        pe[i] += dens[b];
+        ps[i] = ps[i] * 2654435761u + sig[b];
+      }
+      if (pe[i] > emax) emax = pe[i];
+    }
+    {
+      int emin = emax;
+      for (i = 0; i < np; i++)
+        if ((pe[i] < emin) && (((i + 1) * P <= nbars) || (np == 1))) emin = pe[i];
+      ws_emin = emin;
+    }
+    for (i = 0; i < np; i++)
+    {
+      // the energy relative to the quietest and the fullest phrase of the song
+      double e = (emax - ws_emin > emax / 8) ? 0.35 + 0.6 * (pe[i] - ws_emin) / (double)(emax - ws_emin) : 0.65;
+      int bars = (i + 1) * P <= nbars ? P : nbars - i * P;
+      if ((ws_n) && (ps[i] == ps[i - 1]) && (ws_n > 0) && (ws_start[ws_n - 1] + ws_bars[ws_n - 1] == i * P) && (ws_bars[ws_n - 1] < 16))
+      {
+        ws_bars[ws_n - 1] += bars;            // the same phrase again: the part goes on
+        continue;
+      }
+      ws_start[ws_n] = i * P;
+      ws_bars[ws_n] = bars;
+      ws_level[ws_n] = ws_levelof(e);
+      ws_kind[ws_n] = e >= 0.8 ? SPK_CHORUS : SPK_VERSE;
+      ws_new[ws_n] = (!ws_n) || (ps[i] != ps[i - 1]);
+      ws_n++;
+    }
+    // neighbours of the same kind and strength make one part (up to 16 bars)
+    for (i = 1; i < ws_n; i++)
+      if ((ws_kind[i] == ws_kind[i - 1]) && (ws_level[i] == ws_level[i - 1]) && (ws_bars[i - 1] + ws_bars[i] <= 16))
+      {
+        ws_bars[i - 1] += ws_bars[i];
+        memmove(&ws_start[i], &ws_start[i + 1], sizeof(int) * (ws_n - i - 1));
+        memmove(&ws_bars[i], &ws_bars[i + 1], sizeof(int) * (ws_n - i - 1));
+        memmove(&ws_kind[i], &ws_kind[i + 1], sizeof(int) * (ws_n - i - 1));
+        memmove(&ws_level[i], &ws_level[i + 1], sizeof(int) * (ws_n - i - 1));
+        memmove(&ws_new[i], &ws_new[i + 1], sizeof(int) * (ws_n - i - 1));
+        ws_n--;
+        i--;
+      }
+    if ((ws_n > 2) && (ws_level[0] < ws_level[1])) ws_kind[0] = SPK_INTRO;
+    if ((ws_n > 2) && (ws_level[ws_n - 1] < ws_level[ws_n - 2])) ws_kind[ws_n - 1] = SPK_OUTRO;
+  }
+  for (k = 0; k < ws_n; k++)
+    if (((ws_kind[k] == SPK_INTRO) || (ws_kind[k] == SPK_OUTRO)) && (ws_level[k] > 1)) ws_level[k] = 1;
+  {
+    int o = snprintf(ws_info, sizeof ws_info, "%d parts%s: ", ws_n, ws_exact ? " (of the composed song)" : " found");
+    for (k = 0; (k < ws_n) && (o < (int)sizeof ws_info - 16); k++)
+      o += snprintf(ws_info + o, sizeof ws_info - o, "%s%s %d", k ? ", " : "", ws_kindname[ws_kind[k]], ws_bars[k]);
+    if (k < ws_n) snprintf(ws_info + o, sizeof ws_info - o, " ...");
+  }
+  return 1;
+}
+
+static void ws_put(int row, int role, int level)
+{
+  BEATHIT h;
+  h.pos32 = 0;
+  h.role = role;
+  h.level = level;
+  place(wev, ws_total, row, &h);
+}
+
+// the beat of one part: the template, thinned or filled by the level
+static void ws_part(int s, const BEATHIT *hits, int n, int steps, int r16, int swingoff)
+{
+  int r0 = ws_start[s] * ws_barrows, rows = ws_bars[s] * ws_barrows, end = r0 + rows, lvl = ws_level[s], base, k, last = s == ws_n - 1;
+  int fillrows = 0, big = 0, hashat = 0;
+  if (end > ws_total) end = ws_total;
+  for (k = 0; k < n; k++)
+    if ((hits[k].role == BR_CHAT) || (hits[k].role == BR_OHAT)) hashat = 1;
+  // a fill before the next part
+  if ((bs.fill) && (!last) && (ws_bars[s] >= 2) && (lvl >= 1))
+  {
+    big = (ws_level[s + 1] > lvl) || ((ws_kind[s + 1] == SPK_CHORUS) && (ws_new[s + 1]));
+    fillrows = big ? ws_barrows : ws_barrows / 4;
+    if ((!big) && (!ws_new[s + 1])) fillrows = 0;
+  }
+  for (base = r0; base < end - fillrows; base += steps * r16)
+  {
+    for (k = 0; k < n; k++)
+    {
+      BEATHIT h = hits[k];
+      int pos16 = h.pos32 / 2, row = base + h.pos32 * r16 / 2;
+      if (pos16 & 1) row += swingoff;
+      if (row >= end - fillrows) continue;
+      if (lvl == 0)
+      {
+        // quiet: the hats on the 8ths, a kick on the one
+        if ((h.role == BR_CHAT) && (!(pos16 & 1))) { h.level = BL_SOFT; place(wev, ws_total, row, &h); }
+        else if ((h.role == BR_KICK) && (pos16 % 16 == 0)) place(wev, ws_total, row, &h);
+        else if ((!hashat) && (h.role == BR_RIM)) place(wev, ws_total, row, &h);
+        continue;
+      }
+      if (lvl == 1)
+      {
+        // light: no open hats, no ghost notes, hats only on the 8ths
+        if (h.role == BR_OHAT) continue;
+        if ((h.level == BL_SOFT) && (h.role != BR_CHAT)) continue;
+        if ((h.role == BR_CHAT) && (pos16 & 1)) continue;
+        if (h.role == BR_CRASH) continue;
+      }
+      place(wev, ws_total, row, &h);
+    }
+    if ((lvl == 3) && (hashat))
+    {
+      // full: the hats on every 16th, an open hat at the end of two bars
+      int p;
+      for (p = 0; p < steps; p++)
+      {
+        int row = base + p * r16 + ((p & 1) ? swingoff : 0);
+        if (row < end - fillrows) ws_put(row, BR_CHAT, (p & 1) ? BL_SOFT : BL_NORMAL);
+      }
+      if (base + (steps - 2) * r16 < end - fillrows) ws_put(base + (steps - 2) * r16, BR_OHAT, BL_NORMAL);
+    }
+  }
+  // crash at the start of a strong new part
+  if (((lvl >= 2) && (ws_new[s])) || ((s) && (ws_kind[s - 1] == SPK_INTRO) && (lvl >= 1)))
+  {
+    ws_put(r0, BR_CRASH, BL_ACCENT);
+  }
+  // the fill
+  if (fillrows)
+  {
+    int f0 = end - fillrows, p;
+    if ((big) && (cursub()->fill))
+    {
+      static BEATHIT fh[MAXHITS];
+      int fs = 16, fn = beat_parse(cursub()->fill, fh, MAXHITS, &fs);
+      for (k = 0; k < fn; k++)
+      {
+        int row = f0 + fh[k].pos32 * r16 / 2;
+        if ((fh[k].pos32 / 2) & 1) row += swingoff;
+        if (row < end) place(wev, ws_total, row, &fh[k]);
+      }
+    }
+    else
+    {
+      // a snare roll that gets louder, toms at the end of a big one
+      int n16 = fillrows / r16;
+      for (p = 0; p < n16; p++)
+      {
+        int row = f0 + p * r16, role = BR_SNARE, lev = p < n16 / 2 ? BL_SOFT : (p >= n16 - 2 ? BL_ACCENT : BL_NORMAL);
+        if ((big) && (n16 >= 8) && (p >= n16 - 4)) role = p == n16 - 4 ? BR_TOMH : p == n16 - 3 ? BR_TOMM : BR_TOML;
+        if ((!big) || (p >= n16 / 2) || (!(p & 1))) ws_put(row, role, lev);
+      }
+      ws_put(f0, BR_KICK, BL_NORMAL);
+    }
+  }
+  // the end of the song: a last hit
+  if (last)
+  {
+    int lb = (ws_start[s] + ws_bars[s] - 1) * ws_barrows;
+    int r;
+    if (lb < r0) lb = r0;
+    for (r = lb; r < end; r++) wev[r].role = -1;
+    ws_put(lb, BR_CRASH, BL_ACCENT);
+  }
+}
+
+static int ws_render(int chn, char *err, int errsize)
+{
+  static BEATHIT hits[MAXHITS];
+  int n, steps, k, r16 = currows16(chn), sw = curswing(), swingoff;
+  if (!ws_analyse(chn, err, errsize)) return 0;
+  n = varianthits(hits, &steps);
+  if (n < 0)
+  {
+    snprintf(err, errsize, "Template error in %s / %s", cursub()->name, curvar()->name);
+    return 0;
+  }
+  if (!wev) wev = (ROWEV *)malloc(sizeof(ROWEV) * (WS_MAXROWS + 1));
+  if (!wev)
+  {
+    snprintf(err, errsize, "Out of memory");
+    return 0;
+  }
+  swingoff = (2 * r16 * sw + 50) / 100 - r16;
+  if (swingoff < 0) swingoff = 0;
+  if (swingoff >= r16) swingoff = r16 - 1;
+  for (k = 0; k < ws_total; k++) wev[k].role = -1;
+  for (k = 0; k < ws_n; k++) ws_part(k, hits, n, steps, r16, swingoff);
+  return 1;
+}
+
+static int ws_patternfree(int p, const unsigned char *reserved)
+{
+  int s2, c, d, r;
+  if (reserved[p]) return 0;
+  for (r = 0; r < pattlen[p]; r++)
+    if ((pattern[p][r * 4] != REST) || (pattern[p][r * 4 + 1]) || (pattern[p][r * 4 + 2]) || (pattern[p][r * 4 + 3])) return 0;
+  for (s2 = 0; s2 < MAX_SONGS; s2++)
+    for (c = 0; c < MAX_CHN; c++)
+      for (d = 0; d < songlen[s2][c]; d++)
+        if (songorder[s2][c][d] == p) return 0;
+  return 1;
+}
+
+// the whole subtune: new patterns and order list of voice chn (its tempo
+// commands are kept). Returns the rows, 0 on error
+static int writesongbeat(int chn, char *err, int errsize)
+{
+  static unsigned char reserved[MAX_PATT];
+  static unsigned char tcmd[WS_MAXROWS + 1], tdat[WS_MAXROWS + 1];
+  int sub = editorInfo.esnum, plen, start, n = 0, k, d, row, rep, old[MAX_SONGLEN], nold = 0;
+  unsigned char order[MAX_SONGLEN + 2];
+  if (!ws_render(chn, err, errsize)) return 0;
+  if (!makeslots(wev, ws_total, err, errsize, songtempo(chn))) return 0;
+  plen = ws_barrows * 4 <= MAX_PATTROWS ? ws_barrows * 4 : ws_barrows;
+  // the tempo commands of the voice
+  memset(tcmd, 0, ws_total);
+  memset(tdat, 0, ws_total);
+  row = 0;
+  rep = 0;
+  for (d = 0; (d < songlen[sub][chn]) && (row < ws_total); d++)
+  {
+    int v = songorder[sub][chn][d], x, r;
+    if (v >= TRANSDOWN) continue;
+    if (v >= REPEAT) { rep = v - REPEAT; continue; }
+    for (x = 0; x <= rep; x++)
+      for (r = 0; (r < pattlen[v]) && (row < ws_total); r++, row++)
+      {
+        int cm = pattern[v][r * 4 + 2];
+        if ((cm == CMD_SETTEMPO) || (cm == CMD_FUNKTEMPO)) { tcmd[row] = cm; tdat[row] = pattern[v][r * 4 + 3]; }
+      }
+    rep = 0;
+  }
+  // the old patterns of the voice: emptied when nothing else uses them
+  for (k = 0; k < songlen[sub][chn]; k++)
+    if (songorder[sub][chn][k] < REPEAT) old[nold++] = songorder[sub][chn][k];
+  songlen[sub][chn] = 0;
+  songorder[sub][chn][0] = LOOPSONG;
+  songorder[sub][chn][1] = 0;
+  for (k = 0; k < nold; k++)
+  {
+    int p = old[k], s2, cc, used = 0;
+    for (s2 = 0; (s2 < MAX_SONGS) && (!used); s2++)
+      for (cc = 0; (cc < MAX_CHN) && (!used); cc++)
+        for (d = 0; d < songlen[s2][cc]; d++)
+          if (songorder[s2][cc][d] == p) { used = 1; break; }
+    if (!used)
+    {
+      int r;
+      for (r = 0; r < pattlen[p]; r++)
+      {
+        pattern[p][r * 4] = REST;
+        pattern[p][r * 4 + 1] = pattern[p][r * 4 + 2] = pattern[p][r * 4 + 3] = 0;
+      }
+    }
+  }
+  memset(reserved, 0, sizeof reserved);
+  for (start = 0; start < ws_total; start += plen)
+  {
+    unsigned char rows[MAX_PATTROWS * 4];
+    int len = ws_total - start < plen ? ws_total - start : plen, r, p, q;
+    for (r = 0; r < len; r++)
+    {
+      unsigned char *w = &rows[r * 4];
+      int rr = start + r;
+      w[0] = REST;
+      w[1] = w[2] = w[3] = 0;
+      if (wev[rr].role >= 0)
+      {
+        w[0] = FIRSTNOTE + rolenote[wev[rr].role];
+        w[1] = genslot[wev[rr].role][wev[rr].level];
+      }
+      if (tcmd[rr]) { w[2] = tcmd[rr]; w[3] = tdat[rr]; }
+    }
+    p = -1;
+    for (q = 0; q < MAX_PATT; q++)
+      if ((reserved[q]) && (pattlen[q] == len) && (!memcmp(pattern[q], rows, len * 4))) { p = q; break; }
+    if (p < 0)
+    {
+      for (q = 0; q < MAX_PATT; q++)
+        if (ws_patternfree(q, reserved)) { p = q; break; }
+      if (p < 0)
+      {
+        snprintf(err, errsize, "No free pattern left (all %d are used)", MAX_PATT);
+        return 0;
+      }
+      memcpy(pattern[p], rows, len * 4);
+      pattern[p][len * 4] = ENDPATT;
+      pattern[p][len * 4 + 1] = pattern[p][len * 4 + 2] = pattern[p][len * 4 + 3] = 0;
+      pattlen[p] = len;
+      reserved[p] = 1;
+    }
+    if (n >= MAX_SONGLEN - 2)
+    {
+      snprintf(err, errsize, "The order list of the voice would be too long");
+      return 0;
+    }
+    order[n++] = p;
+  }
+  for (k = 0; k < n; k++) songorder[sub][chn][k] = order[k];
+  songorder[sub][chn][n] = LOOPSONG;
+  songorder[sub][chn][n + 1] = 0;
+  songlen[sub][chn] = n;
+  countpatternlengths();
+  editorUndoInfo.editorInfo[chn].epnum = order[0];
+  return ws_total;
+}
+
+// ---------------------------------------------------------------------------
 // Preview: song data snapshot, pattern loop, restore
 // ---------------------------------------------------------------------------
 
 static void *prevdata = NULL;
 static int prevlen[MAX_PATT];
+static unsigned char (*prevorder)[MAX_CHN][MAX_SONGLEN + 2] = NULL;   // the order lists (whole-song beat)
+static int prevsonglen[MAX_SONGS][MAX_CHN], prevepnum[MAX_CHN];
 static unsigned char prevmute[MAX_CHN];
 static int previewing = 0;
 
@@ -1088,6 +1545,14 @@ static void restoresong(void)
   snd_lock();
   songdata_restore(prevdata);
   memcpy(pattlen, prevlen, sizeof prevlen);
+  if (prevorder)
+  {
+    int c;
+    memcpy(songorder, prevorder, sizeof songorder);
+    memcpy(songlen, prevsonglen, sizeof songlen);
+    for (c = 0; c < MAX_CHN; c++) editorUndoInfo.editorInfo[c].epnum = prevepnum[c];
+    countpatternlengths();
+  }
   snd_unlock();
 }
 
@@ -1120,6 +1585,13 @@ static int preview(int ch, char *err, int errsize)
       return 0;
     }
     memcpy(prevlen, pattlen, sizeof prevlen);
+    if (!prevorder) prevorder = malloc(sizeof songorder);
+    if (prevorder)
+    {
+      memcpy(prevorder, songorder, sizeof songorder);
+      memcpy(prevsonglen, songlen, sizeof songlen);
+      for (c = 0; c < MAX_CHN; c++) prevepnum[c] = editorUndoInfo.editorInfo[c].epnum;
+    }
     for (c = 0; c < MAX_CHN; c++) prevmute[c] = chn[c].mute;
   }
   else
@@ -1128,7 +1600,7 @@ static int preview(int ch, char *err, int errsize)
     restoresong();
   }
   snd_lock();
-  ok = writebeat(ch, err, errsize);
+  ok = bs_whole ? writesongbeat(ch, err, errsize) : writebeat(ch, err, errsize);
   for (c = 0; c < numchannels; c++)
     chn[c].mute = bs.beatonly ? (c != ch) : prevmute[c];
   snd_unlock();
@@ -1146,7 +1618,8 @@ static int preview(int ch, char *err, int errsize)
   if (!previewing)
   {
     previewing = 1;
-    initsongpos(editorInfo.esnum, PLAY_PATTERN, 0);
+    if (bs_whole) initsong(editorInfo.esnum, PLAY_BEGINNING);
+    else initsongpos(editorInfo.esnum, PLAY_PATTERN, 0);
   }
   // loading a library instrument stops the player: go on with the new sound
   else
@@ -1154,7 +1627,8 @@ static int preview(int ch, char *err, int errsize)
     // a new drum sound or a new dice roll: stop, then start again (clean
     // SID state: filter, envelopes)
     stopandwait();
-    initsongpos(editorInfo.esnum, PLAY_PATTERN, 0);
+    if (bs_whole) initsong(editorInfo.esnum, PLAY_BEGINNING);
+    else initsongpos(editorInfo.esnum, PLAY_PATTERN, 0);
   }
   return 1;
 }
@@ -1182,6 +1656,14 @@ int beat_generate_cli(int chn, int genre, int sub, int var, int fill, char *err,
   {
     int r;
     for (r = 0; r < BR_NUM; r++) assign[r] = numlib[r] ? (atoi(getenv("GG_BEATLIB")) - 1) % numlib[r] : -1;
+  }
+  if (getenv("GG_BEATWHOLE"))
+  {
+    int r;
+    bs_whole = 1;
+    r = writesongbeat(chn, err, errsize);
+    if (r) fprintf(stderr, "%s\n", ws_info);
+    return r;
   }
   return writebeat(chn, err, errsize);
 }
@@ -1312,7 +1794,7 @@ void beatdialog(void)
   int ch = editorInfo.epchn;
   char msg[160] = "";
   int msgcol = 7;
-  enum { S_OPTIONS = 9, S_ROLES = S_OPTIONS + BR_NUM, S_PREVIEW = S_ROLES, S_INSERT, S_CANCEL, S_NUM };
+  enum { S_OPTIONS = 10, S_ROLES = S_OPTIONS + BR_NUM, S_PREVIEW = S_ROLES, S_INSERT, S_CANCEL, S_NUM };
 
   editorInfo.editmode = EDIT_PATTERN;
   if (isplaying()) stopsong();
@@ -1323,7 +1805,7 @@ void beatdialog(void)
   for (;;)
   {
     char buf[200], err[160];
-    int c, hitrow = -1, hitbtn = -1, hitdice = 0, changed = 0;
+    int c, hitrow = -1, hitbtn = -1, hitdice = 0, changed = 0, tgt = bs_whole ? ws_target(ch) : ch;
     int patt = chnpattern(ch), rows = pattlen[patt], r16 = currows16(ch), steps = 16;
     int used[BR_NUM];
     static BEATHIT tmp[MAXHITS];
@@ -1360,12 +1842,13 @@ void beatdialog(void)
           else sprintf(buf, "Swing        " GS_PREV " %d%% " GS_NEXT, bs.swing);
           if ((curswing() > 50) && (r16 < 2)) strcat(buf, " (needs 2+ rows)");
           break;
-        case 6: sprintf(buf, "Fill         " GS_PREV " %s " GS_NEXT, bs.fill ? "In the last bar" : "Off"); break;
+        case 6: sprintf(buf, "Fill         " GS_PREV " %s " GS_NEXT, bs.fill ? (bs_whole ? "Before every new part" : "In the last bar") : "Off"); break;
         case 7:
           if (bs.variation) sprintf(buf, "Variation    " GS_PREV " #%d " GS_NEXT "  (R = new)", bs.variation);
           else sprintf(buf, "Variation    " GS_PREV " Original " GS_NEXT "  (R = new)");
           break;
         case 8: sprintf(buf, "Preview      " GS_PREV " %s " GS_NEXT, bs.beatonly ? "Beat only" : "With the other voices"); break;
+        case 9: sprintf(buf, "Length       " GS_PREV " %s " GS_NEXT, bs_whole ? "Whole song (follows its parts)" : "This pattern"); break;
       }
       printblankc(x0 + 2, ry, MKCOL(8, bg), 58);
       printtext(x0 + 3, ry, MKCOL(isel ? 15 : 8, bg), buf);
@@ -1399,6 +1882,21 @@ void beatdialog(void)
       int y = y0 + 27;
       int uses = patternuses(patt);
       printtext(x0 + 3, y, MKCOL(14, C_PANEL), "Target:");
+      if (bs_whole)
+      {
+        char e2[160];
+        if (ws_analyse(tgt, e2, sizeof e2))
+        {
+          snprintf(buf, sizeof buf, "Channel %d.%d%s, the whole subtune %02X: %d bars. %s", tgt / 3 + 1, tgt % 3 + 1,
+                   tgt != ch ? " (a free voice)" : "", editorInfo.esnum, (ws_total + ws_barrows - 1) / ws_barrows,
+                   ws_empty(tgt) ? "The voice is empty." : "The notes of the voice are replaced.");
+          printtext(x0 + 12, y, MKCOL(8, C_PANEL), buf);
+          printtext(x0 + 12, y + 1, MKCOL(13, C_PANEL), ws_info);
+        }
+        else dlg_printwrapped(x0 + 12, y, w - 15, 2, MKCOL(10, C_PANEL), e2);
+      }
+      else
+      {
       sprintf(buf, "Channel %d.%d, pattern %02X: %d rows = %d.%d bars (%d rows per 16th). The whole pattern is replaced.",
               ch / 3 + 1, ch % 3 + 1, patt, rows, rows / (16 * r16), (rows % (16 * r16)) * 4 / (16 * r16), r16);
       printtext(x0 + 12, y, MKCOL(8, C_PANEL), buf);
@@ -1406,6 +1904,7 @@ void beatdialog(void)
       {
         sprintf(buf, "The pattern is used %d times in the orderlist: the beat changes in all places.", uses);
         printtext(x0 + 12, y + 1, MKCOL(10, C_PANEL), buf);
+      }
       }
       printtext(x0 + 3, y + 2, MKCOL(3, C_PANEL),
                 "x hit  X accent  g ghost  r roll. One sound per row: crash > snare > clap > kick > toms > rim > hats.");
@@ -1466,7 +1965,7 @@ void beatdialog(void)
     {
       sel = sel >= S_PREVIEW ? S_PREVIEW : sel;
       if (previewing) stoppreview();
-      else if (preview(ch, err, sizeof err)) msg[0] = 0;
+      else if (preview(tgt, err, sizeof err)) msg[0] = 0;
       else { snprintf(msg, sizeof msg, "%s", err); msgcol = 10; }
       continue;
     }
@@ -1564,6 +2063,11 @@ void beatdialog(void)
           if (bs.variation < 0) bs.variation = 0;
           break;
           case 8: bs.beatonly ^= 1; break;
+          case 9:
+          if (previewing) stoppreview();
+          bs_whole ^= 1;
+          if (bs_whole) { bs.fill = 1; bs.beatonly = 0; }
+          break;
           default:
           if ((sel >= S_OPTIONS) && (sel < S_ROLES))
           {
@@ -1585,7 +2089,7 @@ void beatdialog(void)
       if (sel == S_PREVIEW)
       {
         if (previewing) stoppreview();
-        else if (!preview(ch, err, sizeof err)) { snprintf(msg, sizeof msg, "%s", err); msgcol = 10; }
+        else if (!preview(tgt, err, sizeof err)) { snprintf(msg, sizeof msg, "%s", err); msgcol = 10; }
         break;
       }
       // insert (one undo step)
@@ -1595,8 +2099,15 @@ void beatdialog(void)
         stoppreview();
         ed = undoinstrbegin();
         undoAreaSetCheckForChange(UNDO_AREA_PATTERN_LEN, 0, UNDO_AREA_DIRTY_CHECK);
+        if (bs_whole)
+        {
+          int c2;
+          for (c2 = 0; c2 < numchannels; c2++)
+            undoAreaSetCheckForChange(UNDO_AREA_ORDERLIST, c2 + editorInfo.esnum * MAX_CHN, UNDO_AREA_DIRTY_CHECK);
+          undoAreaSetCheckForChange(UNDO_AREA_ORDERLIST_LEN, 0, UNDO_AREA_DIRTY_CHECK);
+        }
         snd_lock();
-        r = writebeat(ch, err, sizeof err);
+        r = bs_whole ? writesongbeat(tgt, err, sizeof err) : writebeat(ch, err, sizeof err);
         snd_unlock();
         undoinstrend(ed);
         if (!r)
@@ -1606,7 +2117,9 @@ void beatdialog(void)
           break;
         }
         songmodified = 1;
-        snprintf(buf, sizeof buf, "Beat \"%s / %s\" written to channel %d.%d, pattern %02X (CTRL+D)", cursub()->name, curvar()->name,
+        if (bs_whole) snprintf(buf, sizeof buf, "Beat \"%s / %s\" for the whole song written to channel %d.%d (CTRL+D)", cursub()->name,
+                               curvar()->name, tgt / 3 + 1, tgt % 3 + 1);
+        else snprintf(buf, sizeof buf, "Beat \"%s / %s\" written to channel %d.%d, pattern %02X (CTRL+D)", cursub()->name, curvar()->name,
                  ch / 3 + 1, ch % 3 + 1, patt);
         setstatusmessage(buf);
         goto done;
@@ -1614,7 +2127,7 @@ void beatdialog(void)
     }
     if ((changed) && (previewing))
     {
-      if (!preview(ch, err, sizeof err)) { snprintf(msg, sizeof msg, "%s", err); msgcol = 10; }
+      if (!preview(tgt, err, sizeof err)) { snprintf(msg, sizeof msg, "%s", err); msgcol = 10; }
     }
   }
 done:
