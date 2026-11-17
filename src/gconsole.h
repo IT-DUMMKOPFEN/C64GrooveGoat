@@ -87,7 +87,14 @@ void autoscript_tick(void);
 extern int autoshotframes;
 unsigned getcell(int x, int y);
 
+// tooltips of the dialog buttons (gconsole.c, texts in gtips.c)
+#define TOOLTIPDELAY 2000
+const char *tip_lookup(const char *context, const char *label);
+void tip_newframe(void);
+void tip_dump(const char *context, const char *raw);   // GG_TIPDUMP: the labels without a tooltip
 #ifndef GCONSOLE_C
+extern char tip_context[64];         // the title of the open dialog
+extern int tip_mainscreen;           // 1: the main screen draws its own tooltips
 extern unsigned kbdlayout;
 extern int key, rawkey, symkey, shiftpressed, ctrlpressed, altpressed, metapressed, shiftonlypressed, cursorflashdelay;
 extern int mouseb, prevmouseb;

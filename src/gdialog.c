@@ -36,6 +36,8 @@ int dlg_printwrapped(int x, int y, int width, int maxlines, int color, const cha
 void dlg_drawframe(int x, int y, int w, int h, const char *title)
 {
   int c;
+  snprintf(tip_context, sizeof tip_context, "%s", title ? title : "");
+  tip_newframe();
   clearclip();
   // drop shadow
   for (c = 1; c <= h; c++)

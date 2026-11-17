@@ -182,6 +182,8 @@ void displayupdate(void)
   }
   printstatus();
   drawtooltip();   // only on the main screen, not behind dialogs
+  tip_mainscreen = 1;
+  tip_context[0] = 0;
   fliptoscreen();
 }
 
@@ -948,7 +950,7 @@ static void drawpiano(void)
 
 // ---------------------------------------------------------------------------
 // Tooltips: name and shortcut of the button under the mouse pointer, shown
-// after the pointer rested on it for a second
+// after the pointer rested on it for 2 seconds
 // ---------------------------------------------------------------------------
 
 static int tooltip(int id, const char **name, const char **keys)
@@ -968,6 +970,9 @@ static int tooltip(int id, const char **name, const char **keys)
     case BTN_THEME: *name = "Night / day theme"; break;
     case BTN_HELP: *name = "Keyboard reference and manual"; *keys = "F12"; break;
     case BTN_INFO: *name = "What's new in this version, then credits and licenses"; break;
+    case BTN_MANUAL: *name = "The complete manual"; break;
+    case BTN_HISTORY: *name = "The history of SID music on the C64"; break;
+    case BTN_QUIT: *name = "Quit C64 GrooveGoat"; break;
     case BTN_PLAY: *name = "Play from the beginning"; *keys = "F1 (SHIFT+F1: follow)"; break;
     case BTN_PLAYPOS: *name = "Play from the orderlist position"; *keys = "F2 (SHIFT+F2: follow)"; break;
     case BTN_PLAYPATT: *name = "Play the current pattern"; *keys = "F3 (SHIFT+F3: follow)"; break;
@@ -1030,7 +1035,6 @@ static int tooltip(int id, const char **name, const char **keys)
   return 1;
 }
 
-#define TOOLTIPDELAY 1000      // milliseconds
 
 static void drawtooltip(void)
 {

@@ -586,11 +586,138 @@ static int clipped(int x, int y)
   return (clipon) && (y >= clipy0) && (y <= clipy1) && ((x < clipx0) || (x > clipx1));
 }
 
+// ---------------------------------------------------------------------------
+// Tooltips for the buttons of the dialogs: every text drawn in button colours
+// is remembered for this frame; when the mouse rests on it for 2 seconds, its
+// explanation (gtips.c) is shown. The main screen has its own (gdisplay.c).
+// ---------------------------------------------------------------------------
+
+#define MAXTIPREG 384
+typedef struct
+{
+  short x, y, w;
+  unsigned col;
+  char raw[64];
+} TIPREG;
+static TIPREG tipreg[MAXTIPREG];
+static int ntipreg = 0;
+char tip_context[64] = "";
+int tip_mainscreen = 0;
+
+// a dialog frame: what was drawn before it (the main screen) has no tooltips
+void tip_newframe(void)
+{
+  ntipreg = 0;
+}
+
+static void tip_register(int x, int y, int color, const char *text)
+{
+  TIPREG *t;
+  int n = (int)strlen(text);
+  if ((ntipreg >= MAXTIPREG) || (n < 2)) return;
+  t = &tipreg[ntipreg++];
+  t->x = x;
+  t->y = y;
+  t->w = n;
+  t->col = decodecolor(color);
+  snprintf(t->raw, sizeof t->raw, "%s", text);
+}
+
+static void tip_draw(void)
+{
+  static char cur[128] = "";
+  static Uint32 t0 = 0;
+  static int clicked = 0;
+  char key[128], label[64];
+  const char *tip;
+  int k, hit = -1, o = 0;
+  if (tip_mainscreen)
+  {
+    tip_mainscreen = 0;
+    ntipreg = 0;
+    cur[0] = 0;
+    return;
+  }
+  for (k = 0; k < ntipreg; k++)
+  {
+    TIPREG *t = &tipreg[k];
+    if ((mousey == t->y) && (mousex >= t->x) && (mousex < t->x + t->w)) hit = k;
+  }
+  if (hit >= 0)
+  {
+    // the button must still be there (not covered by a later dialog)
+    TIPREG *t = &tipreg[hit];
+    unsigned cell = getcell(mousex, mousey);
+    int i = mousex - t->x;
+    if (((cell & ~0xffffu) != t->col) || ((cell & 0xff) != (unsigned char)t->raw[i < 63 ? i : 63])) hit = -1;
+  }
+  if (getenv("GG_TIPDUMP"))
+    for (k = 0; k < ntipreg; k++) tip_dump(tip_context, tipreg[k].raw);
+  ntipreg = 0;
+  if (hit < 0)
+  {
+    cur[0] = 0;
+    return;
+  }
+  // the label: printable ASCII, spaces collapsed
+  {
+    const char *p = tipreg[hit].raw;
+    for (; *p && (o < (int)sizeof label - 1); p++)
+    {
+      unsigned char ch = *p;
+      if ((ch < 32) || (ch > 126)) ch = ' ';
+      if ((ch == ' ') && ((!o) || (label[o - 1] == ' '))) continue;
+      label[o++] = ch;
+    }
+    while ((o) && (label[o - 1] == ' ')) o--;
+    label[o] = 0;
+  }
+  snprintf(key, sizeof key, "%d/%d/%s", tipreg[hit].x, tipreg[hit].y, label);
+  if (strcmp(key, cur))
+  {
+    snprintf(cur, sizeof cur, "%s", key);
+    t0 = SDL_GetTicks();
+    clicked = 0;
+    return;
+  }
+  if (mouseb) clicked = 1;
+  if ((clicked) || (SDL_GetTicks() - t0 < TOOLTIPDELAY)) return;
+  tip = tip_lookup(tip_context, label);
+  if (!tip) return;
+  {
+    // one or two lines under (or above) the pointer
+    char l1[100], l2[100];
+    int len = (int)strlen(tip), cut = len, x, y, w;
+    l2[0] = 0;
+    if (len > 96)
+    {
+      for (cut = 96; (cut > 40) && (tip[cut] != ' '); cut--) ;
+      snprintf(l2, sizeof l2, " %.96s ", tip + cut + 1);
+    }
+    snprintf(l1, sizeof l1, " %.*s ", cut, tip);
+    w = (int)strlen(l1) > (int)strlen(l2) ? (int)strlen(l1) : (int)strlen(l2);
+    x = mousex - 1;
+    if (x + w > MAX_COLUMNS) x = MAX_COLUMNS - w;
+    if (x < 0) x = 0;
+    y = mousey + 1;
+    if (y + (l2[0] ? 2 : 1) > MAX_ROWS) y = mousey - (l2[0] ? 2 : 1);
+    printblankc(x, y, MKCOL(C_HEADERTEXT, C_HEADER), w);
+    printtext(x, y, MKCOL(C_HEADERTEXT, C_HEADER), l1);
+    if (l2[0])
+    {
+      printblankc(x, y + 1, MKCOL(C_HEADERTEXT, C_HEADER), w);
+      printtext(x, y + 1, MKCOL(C_HEADERTEXT, C_HEADER), l2);
+    }
+  }
+}
+
 void printtext(int x, int y, int color, const char *text)
 {
   unsigned *dptr;
   if (!gfxinitted) return;
   if ((y < 0) || (y >= MAX_ROWS)) return;
+  if ((color & 0x8000) && ((((color >> 5) & 0x1f) == C_BUTTON) || (((color >> 5) & 0x1f) == C_BUTTONHI)))
+    tip_register(x, y, color, text);
   dptr = scrbuffer + (x + y * MAX_COLUMNS);
   while (*text)
   {
@@ -899,6 +1026,7 @@ void fliptoscreen(void)
   static int presented = 0;
 
   if (!gfxinitted) return;
+  tip_draw();
 
   if (win_resized)
   {
