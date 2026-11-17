@@ -12,7 +12,7 @@
 set -e
 cd "$(dirname "$0")/.."
 
-VERSION=1.1
+VERSION=1.3
 NAME="C64-GrooveGoat-$VERSION"
 TOOLS=${TOOLS:-$(cd .. && pwd)/tools}
 INSTRUMENTS=${INSTRUMENTS:-$(cd .. && pwd)/ins_zip/Instrumente}

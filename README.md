@@ -1,7 +1,7 @@
 # C64 GrooveGoat
 
 A multi-SID music editor for the Commodore 64 SID chip, by **IT-Dummkopfen**.
-Version 1.0. Based on [GoatTracker 2](https://sourceforge.net/projects/goattracker2/)
+Version 1.3. Based on [GoatTracker 2](https://sourceforge.net/projects/goattracker2/)
 by Lasse Öörni (Cadaver) and the
 [GoatTracker 2 "Silver Fork"](https://github.com/joelricci/goattracker2) by Joel Ricci.
 
@@ -76,7 +76,11 @@ by Lasse Öörni (Cadaver) and the
   pitch, speed and melody options, preview and a text listing.
   Example: `examples/together_we_hunt.sng`
 - Buttons for the pattern tools (transpose half step / octave, mark, mark all, select pattern,
-  cut, copy, paste) and tooltips with the name and shortcut of every button
+  cut, copy, paste); every button - also in all dialogs - explains itself after 2 seconds
+- Orderlist editor (`CTRL+O`): all voices of all SIDs side by side, each with its own length
+  and loop; block selection, copy / cut / paste, duplicate, insert, delete, move, transpose,
+  repeat, make shared patterns unique, play from here, undo
+- Rows of new patterns per song (16, 72, 96 ... up to 128), saved with the song
 - Backup copies: `NAME.bak` on save, automatic backup every 3 minutes into one file in the project folder (interval and on / off in the start dialog),
   crash recovery on the next start
 - File formats: GoatTracker 2 `.sng` (1 SID), GoatTracker Stereo `.sng` (2 SIDs),

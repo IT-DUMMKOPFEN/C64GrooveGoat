@@ -77,6 +77,7 @@ static const char *genkeys[] = {
   "CTRL/CMD+D    Beat editor (cursor channel)",
   "CTRL/CMD+I    Improve the current subtune",
   "CTRL/CMD+K    Speech generator (cursor channel)",
+  "CTRL/CMD+O    Orderlist editor (all voices)",
   "SHIFT+ESC     Clear/optimize musicdata",
   "ESC           Exit program",
   "ALT+ENTER     Toggle fullscreen",
@@ -100,7 +101,7 @@ static const char *mousekeys[] = {
   "Click P00     Next pattern (right: prev.)",
   "Click M / S   Mute / solo a channel",
   "Drop a file   Load song or instrument",
-  "Hover         Button help, after 1 s tooltip",
+  "Hover         Button help, after 2 s tooltip",
   "Click piano   Play a note (drag: glissando)",
   NULL
 };
@@ -145,6 +146,7 @@ static const char *songkeys[] = {
   "SHIFT+R       Insert repeat command",
   "SHIFT+X,C,V   Cut,copy,paste orderlist",
   "SHIFT+1,2,3   Swap with voice 1-3 (same SID)",
+  "CTRL+O, Edit  Orderlist editor (all voices)",
   NULL
 };
 
@@ -210,7 +212,11 @@ static const char *newkeys[] = {
   "MIDI file     CTRL+F: MIDI file -> new song,",
   "              1-8 SIDs, A converts again",
   "Bass          CTRL+P: bass, chords, arpeggios",
-  "              on the cursor voice",
+  "              on the cursor voice, or a new SID",
+  "Orderlist ed. CTRL+O: all voices side by side,",
+  "              copy, duplicate, move, transpose",
+  "Pattern rows  Rows of new patterns per song",
+  "              (orderlist editor, Clear)",
   NULL
 };
 
@@ -1018,11 +1024,12 @@ int showversioninfo(int frominfo)
   int sidew = x, rightx = x + w, rightw = MAX_COLUMNS - x - w;
   static const char *items[] =
   {
-    "Composer 1.1: a theme with motifs, phrases with cadences, a tension arc over the song",
-    "SID dynamics: filter and pulse width follow the energy - plus swing, ghost notes, fills",
-    "Song plan: parts, chords, energy and theme of a new song - edit them as you like",
-    "Copy the prompt into any AI chatbot - it writes the plan from your idea in plain English",
-    "Composer Classic: every piece of version 1.0, note for note, is still there",
+    "Orderlist editor (CTRL+O): all voices of all SIDs at a glance, each with its own length",
+    "Copy, duplicate, move, transpose and repeat whole blocks; make shared patterns unique",
+    "Pattern length per song: 16, 72, 96 ... rows - every new pattern starts with it",
+    "Every button explains itself: rest the mouse on it for 2 seconds",
+    "Bass, Chords & Arps: genre and subgenre, or a whole new SID; a beat for the whole song",
+    "Composer 1.1 with song plan (paste one from any AI chatbot), Composer Classic as in 1.0",
     NULL
   };
   if (y < 0) y = 0;
@@ -1048,9 +1055,9 @@ int showversioninfo(int frominfo)
     dlg_drawframe(x, y, w, h, "Welcome to C64 GrooveGoat " PROGRAMVERSION);
     drawimage(x + 14, y + 2, "versionart", 70, 26);
     ly = y + 29;
-    printtext(x + 3, ly++, MKCOL(14, C_PANEL), "Version " PROGRAMVERSION " - The Monster Learns To Compose");
+    printtext(x + 3, ly++, MKCOL(14, C_PANEL), "Version " PROGRAMVERSION " - The Monster Keeps Order");
     ly++;
-    printtext(x + 3, ly++, MKCOL(7, C_PANEL), "The composer has grown up - it now thinks in themes, phrases and a tension arc:");
+    printtext(x + 3, ly++, MKCOL(7, C_PANEL), "More overview for big multi-SID songs, and help on every button:");
     ly++;
     for (c = 0; items[c]; c++)
     {
