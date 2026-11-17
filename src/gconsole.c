@@ -614,7 +614,7 @@ static void tip_register(int x, int y, int color, const char *text)
 {
   TIPREG *t;
   int n = (int)strlen(text);
-  if ((ntipreg >= MAXTIPREG) || (n < 2)) return;
+  if ((ntipreg >= MAXTIPREG) || (n < 1)) return;
   t = &tipreg[ntipreg++];
   t->x = x;
   t->y = y;
@@ -630,7 +630,7 @@ static void tip_draw(void)
   static int clicked = 0;
   char key[128], label[64];
   const char *tip;
-  int k, hit = -1, o = 0;
+  int k, hit = -1;
   if (tip_mainscreen)
   {
     tip_mainscreen = 0;
@@ -660,18 +660,7 @@ static void tip_draw(void)
     return;
   }
   // the label: printable ASCII, spaces collapsed
-  {
-    const char *p = tipreg[hit].raw;
-    for (; *p && (o < (int)sizeof label - 1); p++)
-    {
-      unsigned char ch = *p;
-      if ((ch < 32) || (ch > 126)) ch = ' ';
-      if ((ch == ' ') && ((!o) || (label[o - 1] == ' '))) continue;
-      label[o++] = ch;
-    }
-    while ((o) && (label[o - 1] == ' ')) o--;
-    label[o] = 0;
-  }
+  tip_normalize(tipreg[hit].raw, label, sizeof label);
   snprintf(key, sizeof key, "%d/%d/%s", tipreg[hit].x, tipreg[hit].y, label);
   if (strcmp(key, cur))
   {

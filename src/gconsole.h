@@ -91,6 +91,7 @@ unsigned getcell(int x, int y);
 #define TOOLTIPDELAY 2000
 const char *tip_lookup(const char *context, const char *label);
 void tip_newframe(void);
+void tip_normalize(const char *raw, char *out, int size);
 void tip_dump(const char *context, const char *raw);   // GG_TIPDUMP: the labels without a tooltip
 #ifndef GCONSOLE_C
 extern char tip_context[64];         // the title of the open dialog

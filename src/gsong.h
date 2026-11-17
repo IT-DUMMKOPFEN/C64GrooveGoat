@@ -41,6 +41,7 @@ void clearsong(int cs, int cp, int ci, int cf, int cn);
 void countpatternlengths(void);
 void countthispattern(void);
 void clearpattern(int p);
+int setsongpatternlength(int len);   // the length of new patterns in this song (empty, unused ones get it)
 int insertpattern(int p);
 void deletepattern(int p);
 void findusedpatterns(void);

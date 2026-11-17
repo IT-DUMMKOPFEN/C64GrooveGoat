@@ -653,6 +653,13 @@ int main(int argc, char **argv)
         }
       }
     }
+    if (getenv("GG_OETEST"))
+    {
+      extern int orderedit_selftest(void);
+      int bad = orderedit_selftest();
+      fprintf(stderr, "orderlist editor round trip: %d voices changed\n", bad);
+      exit(bad ? 1 : 0);
+    }
     // --beat=GENRE,SUBGENRE,BEAT[,FILL] (numbers from 1): beat editor on
     // channel 1 (or GG_BEATCHN), the pattern at the start of its orderlist
     if (beatspec[0])
@@ -753,6 +760,8 @@ int main(int argc, char **argv)
     {
       if (getenv("GG_SONGNAME")) snprintf((char *)songname, sizeof songname, "%s", getenv("GG_SONGNAME"));
       if (getenv("GG_SONGAUTHOR")) snprintf((char *)authorname, sizeof authorname, "%s", getenv("GG_SONGAUTHOR"));
+      if (getenv("GG_PATTLEN")) setsongpatternlength(atoi(getenv("GG_PATTLEN")));
+      printf("pattern length of the song: %d\n", defaultpatternlength);
       strncpy(songfilename, savename, MAX_FILENAME - 1);
       ok = savesong();
       printf("%s\n", statusmessage);
@@ -1485,6 +1494,14 @@ void docommand(void)
     key = 0;
     rawkey = 0;
   }
+  if (((ctrlpressed) || (metapressed)) && (!altpressed) && (rawkey == KEY_O))
+  {
+    key = 0;
+    rawkey = 0;
+    orderlisteditor();
+    key = 0;
+    rawkey = 0;
+  }
   if (((ctrlpressed) || (metapressed)) && (!altpressed) && (rawkey == KEY_F))
   {
     key = 0;
@@ -1770,6 +1787,7 @@ static void buttoncommand(int id, int param)
     case BTN_SPEECH: speechdialog(); break;
     case BTN_BEAT: beatdialog(); break;
     case BTN_JOIN: joinsongsdialog(); break;
+    case BTN_ORDEDIT: orderlisteditor(); break;
     case BTN_IMPROVE: improvedialog(); break;
     case BTN_COMPOSE: composedialog(); break;
     case BTN_MIDIFILE: midiimportdialog(); break;
@@ -2576,10 +2594,13 @@ void clear(void)
 
   if (cp == 1)
   {
-    unsigned len = defaultpatternlength;
-    // Ask for the pattern length (decimal shown as hex input for simplicity)
-    if (dlg_edithex("Clear patterns", "Default pattern length (hex):", &len, 2))
+    char lbuf[8];
+    int len;
+    // the pattern length of the song (rows, decimal)
+    snprintf(lbuf, sizeof lbuf, "%d", defaultpatternlength);
+    if (dlg_edittext("Clear patterns", "Pattern length of the song (1-128 rows):", lbuf, 3, 1))
     {
+      len = atoi(lbuf);
       if (len < 1) len = 1;
       if (len > MAX_PATTROWS) len = MAX_PATTROWS;
       defaultpatternlength = len;

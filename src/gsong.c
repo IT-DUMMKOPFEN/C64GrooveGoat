@@ -284,6 +284,86 @@ static void setextension(char *name, const char *ext)
   if (strlen(name) + strlen(ext) < MAX_FILENAME) strcat(name, ext);
 }
 
+// ---------------------------------------------------------------------------
+// The pattern length of the song: every empty pattern that no orderlist uses
+// has this length, so a new pattern starts with it. Saved in a small trailer
+// at the end of the file ("GGX1"), which GoatTracker 2 does not read.
+// ---------------------------------------------------------------------------
+
+static int pattinuse(int p)
+{
+  int s2, c, d;
+  for (s2 = 0; s2 < MAX_SONGS; s2++)
+    for (c = 0; c < MAX_CHN; c++)
+      for (d = 0; d < songlen[s2][c]; d++)
+        if (songorder[s2][c][d] == p) return 1;
+  for (c = 0; c < MAX_CHN; c++)
+    if (editorUndoInfo.editorInfo[c].epnum == p) return 1;
+  return 0;
+}
+
+static int pattempty(int p)
+{
+  int r;
+  for (r = 0; r < pattlen[p]; r++)
+    if ((pattern[p][r * 4] != REST) || (pattern[p][r * 4 + 1]) || (pattern[p][r * 4 + 2]) || (pattern[p][r * 4 + 3])) return 0;
+  return 1;
+}
+
+// 0 = not possible; the number of patterns that got the new length
+int setsongpatternlength(int len)
+{
+  int p, n = 0;
+  if ((len < 1) || (len > MAX_PATTROWS)) return -1;
+  defaultpatternlength = len;
+  for (p = 0; p < MAX_PATT; p++)
+  {
+    if ((pattlen[p] == len) || (!pattempty(p)) || (pattinuse(p))) continue;
+    clearpattern(p);
+    pattlen[p] = len;
+    n++;
+  }
+  return n;
+}
+
+// a song without the trailer: the most common length of its patterns
+static int guesspatternlength(void)
+{
+  int count[MAX_PATTROWS + 1], p, best = 64, bn = 0;
+  memset(count, 0, sizeof count);
+  for (p = 0; p < MAX_PATT; p++)
+    if ((!pattempty(p)) && (pattlen[p] >= 1) && (pattlen[p] <= MAX_PATTROWS)) count[pattlen[p]]++;
+  for (p = 1; p <= MAX_PATTROWS; p++)
+    if (count[p] > bn) { bn = count[p]; best = p; }
+  return best;
+}
+
+static void writetrailer(FILE *handle)
+{
+  // items: 'P' <pattern length>; then the size of the items and the mark
+  unsigned char t[8];
+  int n = 0;
+  t[n++] = 'P';
+  t[n++] = (unsigned char)defaultpatternlength;
+  fwrite(t, n, 1, handle);
+  fwrite8(handle, n & 0xff);
+  fwrite8(handle, n >> 8);
+  fwrite("GGX1", 4, 1, handle);
+}
+
+// the length of the file without the trailer; *plen: its pattern length (0 = none)
+static int readtrailer(const unsigned char *buf, int len, int *plen)
+{
+  int n, k;
+  *plen = 0;
+  if ((len < 10) || (memcmp(buf + len - 4, "GGX1", 4))) return len;
+  n = buf[len - 6] | (buf[len - 5] << 8);
+  if (n + 6 > len - 4) return len;
+  for (k = len - 6 - n; k < len - 6; k += 2)
+    if ((buf[k] == 'P') && (buf[k + 1] >= 1) && (buf[k + 1] <= MAX_PATTROWS)) *plen = buf[k + 1];
+  return len - 6 - n;
+}
+
 // Save the song. 1 or 2 SIDs: GoatTracker (Stereo) compatible .sng,
 // 4 or 8 SIDs (or a .ggt name): C64 GrooveGoat format.
 // Write the song into a file (GTS5 = GoatTracker 2 / Stereo format, or GGT1
@@ -308,6 +388,7 @@ int writesongfile(const char *name, int ggt)
     fwrite("GTS5", 4, 1, handle);
   }
   writesongbody(handle, numchannels);
+  writetrailer(handle);
   return fclose(handle) == 0;
 }
 
@@ -549,8 +630,10 @@ void loadsong(void)
   FILE *handle;
   int len = 0;
   unsigned char *buf = readwholefile(songfilename, &len);
+  int songplen = 0;
 
   statusmessage[0] = 0;
+  if (buf) len = readtrailer(buf, len, &songplen);
 
   if ((buf) && (len >= 4))
   {
@@ -1220,6 +1303,9 @@ void loadsong(void)
     snprintf(statusmessage, sizeof statusmessage, "Could not load %s - unknown or damaged file", songfilename);
   if (ok)
   {
+    // the pattern length of the song (else: the most common one)
+    setsongpatternlength(songplen ? songplen : guesspatternlength());
+
     songmodified = 0;
     strcpy(loadedsongfilename, songfilename);
     backup_saved();

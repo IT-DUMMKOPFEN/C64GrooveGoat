@@ -541,12 +541,13 @@ static void draworderlist(void)
   int hc = MKCOL(C_HEADERTEXT, active ? C_BUTTONHI : C_HEADER);
 
   panelheader(ORD_Y, "ORDERLIST", active);
-  sprintf(buf, "SUBTUNE " GS_PREV "%02X" GS_NEXT, editorInfo.esnum);
-  printtext(RP_X + 12, ORD_Y, hc, buf);
-  ui_addbutton(RP_X + 20, ORD_Y, 4, BTN_SUBTUNE, 0);
+  sprintf(buf, "SUB " GS_PREV "%02X" GS_NEXT, editorInfo.esnum);
+  printtext(RP_X + 11, ORD_Y, hc, buf);
+  ui_addbutton(RP_X + 15, ORD_Y, 4, BTN_SUBTUNE, 0);
   sprintf(buf, "POS %02X", editorInfo.eseditpos);
-  printtext(RP_X + 27, ORD_Y, hc, buf);
-  ui_drawbutton(RP_X + 34, ORD_Y, " Join ", BTN_JOIN, 0, 0);
+  printtext(RP_X + 20, ORD_Y, hc, buf);
+  ui_drawbutton(RP_X + 27, ORD_Y, " Join ", BTN_JOIN, 0, 0);
+  ui_drawbutton(RP_X + 33, ORD_Y, " Edit ", BTN_ORDEDIT, 0, 0);
   if (numchannels > VISIBLEORDERCHNS)
   {
     ui_drawbutton(RP_X + RP_W - 5, ORD_Y, " " GS_UP " ", BTN_ORDVIEW, -1, 0);
@@ -1002,6 +1003,7 @@ static int tooltip(int id, const char **name, const char **keys)
     case BTN_CHNVIEW: *name = "Show the voices of these SIDs"; break;
     case BTN_ORDVIEW: *name = "Scroll the orderlist voices"; break;
     case BTN_SUBTUNE: *name = "Subtune"; *keys = "< > in the orderlist"; break;
+    case BTN_ORDEDIT: *name = "Orderlist editor: all voices of all SIDs, copy, duplicate, move, transpose ..."; *keys = "CTRL+O"; break;
     case BTN_JOIN: *name = "Join Songs: load other songs as subtunes or as a medley"; *keys = "SHIFT+F10"; break;
     case BTN_INSTRNUM: *name = "Instrument"; *keys = "- +"; break;
     case BTN_MUTE: *name = "Mute voice"; *keys = "SHIFT+F4"; break;

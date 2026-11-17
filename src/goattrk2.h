@@ -170,6 +170,8 @@ void showsidinfo(void);
 void helpscreenshot(const char *filename);
 int calcsonglength(int subtune);
 int calcsonglengthex(int subtune, int *stopped);
+int calcentryframes(int subtune, int frames[MAX_CHN][MAX_SONGLEN + 2]);
+void orderlisteditor(void);
 void toggle_interpolation_mode(void);
 
 #endif

@@ -19,13 +19,18 @@ static const TIP tips[] =
   {NULL, NULL, NULL}
 };
 
-static void normalize(const char *raw, char *out, int size)
+void tip_normalize(const char *raw, char *out, int size)
 {
   int o = 0;
   for (; *raw && (o < size - 1); raw++)
   {
     unsigned char ch = *raw;
-    if ((ch < 32) || (ch > 126)) ch = ' ';
+    // arrow glyphs become ^ v < >
+    if (ch == 0x15) ch = '^';
+    else if (ch == 0x16) ch = 'v';
+    else if (ch == 0x9b) ch = '<';
+    else if (ch == 0x9c) ch = '>';
+    else if ((ch < 32) || (ch > 126)) ch = ' ';
     if ((ch == ' ') && ((!o) || (out[o - 1] == ' '))) continue;
     out[o++] = ch;
   }
@@ -42,6 +47,8 @@ static int ctxmatch(const char *pattern, const char *context)
 const char *tip_lookup(const char *context, const char *label)
 {
   int k;
+  // a number alone (a value button): its entry is "#"
+  if ((label[0]) && (strspn(label, "0123456789") == strlen(label))) label = "#";
   for (k = 0; tips[k].label; k++)
     if ((strcmp(tips[k].context, "*")) && (ctxmatch(tips[k].context, context)) && (!strcmp(tips[k].label, label))) return tips[k].tip;
   for (k = 0; tips[k].label; k++)
@@ -56,7 +63,7 @@ void tip_dump(const char *context, const char *raw)
   char label[64], key[96];
   int k;
   FILE *f;
-  normalize(raw, label, sizeof label);
+  tip_normalize(raw, label, sizeof label);
   if (!label[0]) return;
   snprintf(key, sizeof key, "%s|%s", context, label);
   for (k = 0; k < nseen; k++)
