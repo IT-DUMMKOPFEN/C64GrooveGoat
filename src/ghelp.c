@@ -1041,17 +1041,6 @@ int showversioninfo(int frominfo)
   {
     int c, ly, bx = x + 3, by = y + h - 2, cbx = x + w - 33;
     printmainscreen();
-    // the night sky with the fireworks, left and right of the window
-    if (sidew > 0)
-    {
-      fxframe(0, sidew, MAX_ROWS);
-      fxcanvas_draw(0, 0, 0);
-    }
-    if (rightw > 0)
-    {
-      fxframe(1, rightw, MAX_ROWS);
-      fxcanvas_draw(1, rightx, 0);
-    }
     dlg_drawframe(x, y, w, h, "Welcome to C64 GrooveGoat " PROGRAMVERSION);
     ly = y + 2;
     printtext(x + 3, ly++, MKCOL(14, C_PANEL), "Version " PROGRAMVERSION " - The Monster Keeps Order");
