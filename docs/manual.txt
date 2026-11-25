@@ -1,10 +1,10 @@
-# C64 GrooveGoat 1.3 - Manual
+# C64 GrooveGoat 1.4 - Manual
 
 C64 GrooveGoat is a tracker-style music editor for the SID sound chip of the Commodore 64. It is
 based on GoatTracker 2 by Lasse Oorni (Cadaver) and the "Silver Fork" of Joel Ricci. It adds:
 
 - songs with 1, 2, 4 or 8 SID chips (up to 24 voices) with free SID addresses
-- a modern, resizable window with mouse support and a day and a night (C64 blue) theme
+- a modern, resizable window with mouse support, rounded buttons and panels and 12 colour schemes
 - an instrument library with more than 5000 instruments, search, favourites and preview
 - a random instrument generator for bass, drums, woodwinds, guitars, brass, strings and more
 - a graphical ADSR envelope display
@@ -115,11 +115,39 @@ When the mouse pointer is over a button, the message line at the bottom shows wh
 does. When the pointer rests on a button for 2 seconds, a tooltip next to it explains the
 function and shows its keyboard shortcut - on the main screen and in every dialog.
 
+## Colour schemes
+
+Since version 1.4 the window has a modern look: buttons, panels and highlighted rows have
+rounded corners, the active panel has a coloured title bar, and a dialog floats over the
+dimmed screen. The arrangement of the screen is the same as before.
+
+The button in the top right corner of the toolbar shows the name of the current colour scheme.
+A click opens the menu of all 12 schemes; every scheme has a small preview (background and
+three accent colours). Point at a scheme and the whole screen shows it at once; a click (or
+ENTER) keeps it, ESC or a click outside the menu goes back to the scheme from before. The
+cursor keys move through the list with the same live preview. The choice is saved.
+
+|  Paper        light grey and white with blue accents - the default
+|  Graphite     dark grey with cyan and amber
+|  Lavender     light with violet and pink
+|  Sand         warm light beige with rust and teal
+|  Frost        cool blue-grey (dark) with ice blue
+|  Ocean        deep sea blue with turquoise
+|  Forest       dark green with leaf green and gold
+|  Neon         dark violet with magenta and cyan
+|  Sunset       dark warm brown with orange and pink
+|  Amber        the amber monitor: orange on black
+|  C64 Modern   the colours of the C64 (blue, light blue, green) in a modern form
+|  Mono         black and white with a yellow accent
+
+The command line option -T sets the scheme (0 = Paper ... 11 = Mono, in the order above).
+
 ## Piano keyboard
 
 The piano keyboard above the status bar spans all 8 octaves of the note range (C-0 to B-7). The
-keys of the notes that are playing light up in the colour of their voice - voice 1 of a SID in
-red, voice 2 in yellow and voice 3 in blue, as in the video export - while the note is held
+keys of the notes that are playing light up in the colour of their voice - three colours of
+the colour scheme, for example voice 1 of a SID in red, voice 2 in orange and voice 3 in blue
+with Paper (the video export uses red, yellow and blue) - while the note is held
 (gate on), during playback as well as when you play notes in jam or edit mode. When several
 voices play the same note, the key is divided into stripes. Muted voices are not shown.
 
@@ -176,7 +204,7 @@ the bug report.
 |  Audio        Export a WAV or MP3 file, optionally every voice as its own WAV (CTRL+F9)
 |  Video        Export an MP4 video (1280x720) with an oscilloscope for every voice
 |               (CTRL+SHIFT+F9)
-|  Moon / Sun   Switch between the night theme (C64 blue) and the day theme
+|  Paper v      The colour scheme: a menu with all 12 schemes (see "Colour schemes")
 |  Help         Keyboard reference, F12
 |  Info         Version, author, credits and licenses
 
@@ -1637,6 +1665,8 @@ song name and author come from the song name editor (F8). Rendering a video take
 the playing time on a modern computer (more with 8 SIDs); the progress window shows the state,
 ESC cancels.
 
+The video colours are independent of the colour scheme of the editor.
+
 The video is stored with BT.709 colour information, so the colours look the same in every
 player. The MP4 files play in all common players, web browsers and on phones.
 
@@ -1670,7 +1700,7 @@ The format is chosen by the extension (.wav, .mp3 or .mp4). See "Command line".
 |  -Qxx   Equal divisions per octave (12 default)
 |  -Rxx   Realtime command optimization (0 off, 1 on)
 |  -Sxx   Speed multiplier (0 = 25Hz, 1 = 1x, 2 = 2x ...)
-|  -Txx   Theme (0 night, 1 day)
+|  -Txx   Colour scheme (0 Paper ... 11 Mono, see "Colour schemes")
 |  -Vxx   Fine vibrato conversion (0 off, 1 on)
 |  -Xxx   Window (0) or fullscreen (1)
 |  -Yxx   Scala tuning file (.scl)

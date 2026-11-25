@@ -5,6 +5,7 @@
 
 #define GDISPLAY_C
 
+#include <math.h>
 #include "goattrk2.h"
 #include "gres.h"
 #include "gpiano.h"
@@ -90,7 +91,7 @@ static const char *buttonhint(int id)
     case BTN_EXPORTPRG: return "Export a C64 program (.prg), optionally with a player screen";
     case BTN_EXPORTAUDIO: return "Export audio: WAV (also single voices) or MP3 - Ctrl+F9";
     case BTN_EXPORTVIDEO: return "Export an MP4 video (720p) with an oscilloscope for every voice";
-    case BTN_THEME: return "Switch between the night (C64 blue) and the day theme";
+    case BTN_THEME: return "Colour scheme: choose one of 12 looks, the screen shows it while you point at it";
     case BTN_HELP: return "Help: keys and commands - F12";
     case BTN_INFO: return "Version, author, credits and licenses";
     case BTN_UNDO: return "Undo the last change - Ctrl+Z";
@@ -195,17 +196,14 @@ static void drawtoolbar(void)
 {
   int x;
   char buf[80];
-  int hc = MKCOL(C_HEADERTEXT, C_HEADER);
+  int hc = MKCOL(C_HEADERTEXT, C_PANEL);
 
   printblankc(0, TOOLBAR_Y, hc, MAX_COLUMNS);
   drawimage(0, TOOLBAR_Y, "logo", 2, 1);
-  printtext(3, TOOLBAR_Y, hc, PROGRAMNAME);
-  printtext(3 + strlen(PROGRAMNAME) + 1, TOOLBAR_Y, MKCOL(C_RB3, C_HEADER), PROGRAMVERSION);
-  // the C64 rainbow
-  for (x = 0; x < 5; x++)
-    printglyph(23 + x, TOOLBAR_Y, MKCOL(C_RB1 + x, C_HEADER), GL_RIGHTH);
+  printtext(3, TOOLBAR_Y, MKCOL(15, C_PANEL), "GrooveGoat");
+  printtext(14, TOOLBAR_Y, MKCOL(3, C_PANEL), PROGRAMVERSION);
 
-  x = 29;
+  x = 18;
   ui_drawbutton(x, TOOLBAR_Y, " " GS_NEWDOC " New ", BTN_NEW, 0, 0); x += 8;
   ui_drawbutton(x, TOOLBAR_Y, " " GS_FOLDER " Open ", BTN_OPEN, 0, 0); x += 9;
   ui_drawbutton(x, TOOLBAR_Y, " " GS_DISK " Save ", BTN_SAVE, 0, 0); x += 9;
@@ -216,16 +214,13 @@ static void drawtoolbar(void)
   ui_drawbutton(x, TOOLBAR_Y, " " GS_WAVE " Audio ", BTN_EXPORTAUDIO, 0, 0); x += 10;
   ui_drawbutton(x, TOOLBAR_Y, " " GS_FILM " Video ", BTN_EXPORTVIDEO, 0, 0); x += 10;
 
-  x = MAX_COLUMNS - 21;
-  if (theme == THEME_NIGHT)
-    ui_drawbutton(x, TOOLBAR_Y, " " GS_MOON " ", BTN_THEME, 0, 0);
-  else
-    ui_drawbutton(x, TOOLBAR_Y, " " GS_SUN " ", BTN_THEME, 0, 0);
-  x += 4;
+  // the colour scheme: a menu with a live preview
+  snprintf(buf, sizeof buf, " %s " GS_DOWN " ", theme_name(theme));
+  x = MAX_COLUMNS - 18 - (int)strlen(buf);
+  ui_drawbutton(x, TOOLBAR_Y, buf, BTN_THEME, 0, 1);
+  x = MAX_COLUMNS - 17;
   ui_drawbutton(x, TOOLBAR_Y, " " GS_HELP " Help ", BTN_HELP, 0, 0); x += 9;
   ui_drawbutton(x, TOOLBAR_Y, " " GS_INFO " Info ", BTN_INFO, 0, 0);
-
-  (void)buf;
 }
 
 static void drawsettingsbar(void)
@@ -317,8 +312,8 @@ static void drawpatterns(void)
   validatechnview();
 
   // Panel header
-  printblankc(PATT_X, PATT_Y, MKCOL(C_HEADERTEXT, editorInfo.editmode == EDIT_PATTERN ? C_BUTTONHI : C_HEADER), PATT_W);
-  printtext(PATT_X + 1, PATT_Y, MKCOL(C_HEADERTEXT, editorInfo.editmode == EDIT_PATTERN ? C_BUTTONHI : C_HEADER), "PATTERNS");
+  printblankc(PATT_X, PATT_Y, MKCOL(C_HEADERTEXT, editorInfo.editmode == EDIT_PATTERN ? C_SELECT : C_HEADER), PATT_W);
+  printtext(PATT_X + 1, PATT_Y, MKCOL(C_HEADERTEXT, editorInfo.editmode == EDIT_PATTERN ? C_SELECT : C_HEADER), "PATTERNS");
   if (numsids > 2)
   {
     int x = PATT_X + 14;
@@ -331,7 +326,7 @@ static void drawpatterns(void)
   }
   if (numsids > 2) sprintf(buf, "%d SIDs", numsids);
   else sprintf(buf, "%d SID%s  %d channels", numsids, numsids > 1 ? "s" : "", numchannels);
-  printtext(PATT_X + PATT_W - strlen(buf) - 1, PATT_Y, MKCOL(C_HEADERTEXT, editorInfo.editmode == EDIT_PATTERN ? C_BUTTONHI : C_HEADER), buf);
+  printtext(PATT_X + PATT_W - strlen(buf) - 1, PATT_Y, MKCOL(C_HEADERTEXT, editorInfo.editmode == EDIT_PATTERN ? C_SELECT : C_HEADER), buf);
   // generators: new song, MIDI import, bass / chords / arpeggios
   {
     int x = PATT_X + PATT_W - strlen(buf) - 2 - 28;
@@ -528,7 +523,7 @@ static void drawpatterns(void)
 
 static void panelheader(int y, const char *title, int active)
 {
-  int col = MKCOL(C_HEADERTEXT, active ? C_BUTTONHI : C_HEADER);
+  int col = MKCOL(C_HEADERTEXT, active ? C_SELECT : C_HEADER);
   printblankc(RP_X, y, col, RP_W);
   printtext(RP_X + 1, y, col, title);
 }
@@ -538,7 +533,7 @@ static void draworderlist(void)
   int c, d;
   char buf[80];
   int active = editorInfo.editmode == EDIT_ORDERLIST;
-  int hc = MKCOL(C_HEADERTEXT, active ? C_BUTTONHI : C_HEADER);
+  int hc = MKCOL(C_HEADERTEXT, active ? C_SELECT : C_HEADER);
 
   panelheader(ORD_Y, "ORDERLIST", active);
   sprintf(buf, "SUB " GS_PREV "%02X" GS_NEXT, editorInfo.esnum);
@@ -637,7 +632,7 @@ static void drawinstrument(void)
 {
   char buf[80];
   int active = (editorInfo.editmode == EDIT_INSTRUMENT);
-  int hc = MKCOL(C_HEADERTEXT, active ? C_BUTTONHI : C_HEADER);
+  int hc = MKCOL(C_HEADERTEXT, active ? C_SELECT : C_HEADER);
   int c;
   static const char *names[9] = {"Attack/Decay", "Sustain/Release", "Wavetable Pos", "Pulsetable Pos",
     "Filtertable Pos", "Vibrato Param", "Vibrato Delay", "HR/Gate Timer", "1stFrame Wave"};
@@ -648,7 +643,7 @@ static void drawinstrument(void)
   printtext(RP_X + 12, INS_Y, hc, buf);
   ui_addbutton(RP_X + 12, INS_Y, 4, BTN_INSTRNUM, 0);
   sprintf(buf, "%-15s", instr[editorInfo.einum].name);
-  printtext(RP_X + 17, INS_Y, MKCOL(C_RB3, active ? C_BUTTONHI : C_HEADER), buf);
+  printtext(RP_X + 17, INS_Y, MKCOL(C_RB3, active ? C_SELECT : C_HEADER), buf);
   ui_drawbutton(RP_X + RP_W - 13, INS_Y, " " GS_DICE GS_DICER " ", BTN_RANDOMINS, 0, 0);
   ui_drawbutton(RP_X + RP_W - 9, INS_Y, " Library ", BTN_LIBRARY, 0, 0);
 
@@ -709,7 +704,7 @@ static void drawtables(void)
 
   panelheader(TBL_Y, "", active);
   for (c = 0; c < MAX_TABLES; c++)
-    printtext(TBL_X(c), TBL_Y, MKCOL(C_HEADERTEXT, active ? C_BUTTONHI : C_HEADER), tnames[c]);
+    printtext(TBL_X(c), TBL_Y, MKCOL(C_HEADERTEXT, active ? C_SELECT : C_HEADER), tnames[c]);
   fillarea(RP_X, TBL_ROWS_Y, RP_W, VISIBLETABLEROWS, MKCOL(8, C_PANEL), ' ');
 
   for (c = 0; c < MAX_TABLES; c++)
@@ -943,8 +938,31 @@ static void drawpiano(void)
   int r;
   fillarea(0, PIANO_SEP_Y, MAX_COLUMNS, 1, MKCOL(8, 0), ' ');
   piano_getstate(keys);
-  piano_render(buf, RGBCANVAS_STRIDE, MAX_COLUMNS * 16, PIANO_H * 32, keys,
-    theme == THEME_DAY ? &piano_day : &piano_night, &f);
+  {
+    // the frame: a rounded keybed on the background
+    const PIANOCOLORS *pc = theme_piano();
+    unsigned bgc = theme_color(theme, 0);
+    int w = MAX_COLUMNS * 16, h = PIANO_H * 32, x, y, rr = 18;
+    int fx0 = 16, fy0 = 2, fx1 = w - 16, fy1 = h - 2;
+    for (y = 0; y < h; y++)
+      for (x = 0; x < w; x++)
+      {
+        float px = x + 0.5f, py = y + 0.5f;
+        float cx = px < fx0 + rr ? fx0 + rr : (px > fx1 - rr ? fx1 - rr : px);
+        float cy = py < fy0 + rr ? fy0 + rr : (py > fy1 - rr ? fy1 - rr : py);
+        float d = rr - sqrtf((px - cx) * (px - cx) + (py - cy) * (py - cy));
+        int a;
+        if ((px < fx0) || (px > fx1) || (py < fy0) || (py > fy1)) d = -1;
+        a = d >= 0.5f ? 256 : (d <= -0.5f ? 0 : (int)((d + 0.5f) * 256));
+        {
+          int r = (((bgc >> 16) & 0xff) * (256 - a) + ((pc->bg >> 16) & 0xff) * a) >> 8;
+          int g = (((bgc >> 8) & 0xff) * (256 - a) + ((pc->bg >> 8) & 0xff) * a) >> 8;
+          int b = ((bgc & 0xff) * (256 - a) + (pc->bg & 0xff) * a) >> 8;
+          buf[y * RGBCANVAS_STRIDE + x] = (r << 16) | (g << 8) | b;
+        }
+      }
+    piano_render(buf + PIANO_KY * RGBCANVAS_STRIDE + PIANO_KX, RGBCANVAS_STRIDE, PIANO_KW, PIANO_KH, keys, pc, &f);
+  }
   rgbcanvas_draw(0, PIANO_Y);
   for (r = 0; r < PIANO_H; r++) ui_addbutton(0, PIANO_Y + r, MAX_COLUMNS, BTN_PIANOKEY, 0);
 }
@@ -968,7 +986,7 @@ static int tooltip(int id, const char **name, const char **keys)
     case BTN_EXPORTPRG: *name = "Export C64 program (.prg)"; break;
     case BTN_EXPORTAUDIO: *name = "Export audio (WAV / MP3)"; *keys = "CTRL+F9"; break;
     case BTN_EXPORTVIDEO: *name = "Export MP4 video"; *keys = "CTRL+SHIFT+F9"; break;
-    case BTN_THEME: *name = "Night / day theme"; break;
+    case BTN_THEME: *name = "Colour scheme (12 looks, live preview)"; break;
     case BTN_HELP: *name = "Keyboard reference and manual"; *keys = "F12"; break;
     case BTN_INFO: *name = "What's new in this version, then credits and licenses"; break;
     case BTN_MANUAL: *name = "The complete manual"; break;
@@ -1071,13 +1089,14 @@ static void drawtooltip(void)
   if (x < 0) x = 0;
   y = mousey + 1;
   if (y >= MAX_ROWS - 1) y = mousey - 1;
-  printtext(x, y, MKCOL(C_HEADERTEXT, C_HEADER), buf);
-  if (keys[0]) printtext(x + 1 + strlen(name) + 3, y, MKCOL(C_RB3, C_HEADER), keys);
+  printtext(x, y, MKCOL(C_PANEL, C_TOOLTIP), buf);
+  if (keys[0]) printtext(x + 1 + strlen(name) + 3, y, MKCOL(C_BEATROW, C_TOOLTIP), keys);
 }
 
 void printstatus(void)
 {
   clearclip();
+  cleardimrect();
   menu = 0;
   numuibuttons = 0;
 

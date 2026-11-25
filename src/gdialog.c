@@ -6,6 +6,7 @@
 
 #include "goattrk2.h"
 #include "gres.h"
+#include <math.h>
 
 // Text wrapped at word boundaries into lines of "width" columns; returns the
 // number of lines printed (at most maxlines)
@@ -39,25 +40,15 @@ void dlg_drawframe(int x, int y, int w, int h, const char *title)
   snprintf(tip_context, sizeof tip_context, "%s", title ? title : "");
   tip_newframe();
   clearclip();
-  // drop shadow
-  for (c = 1; c <= h; c++)
-    printbgx(x + w, y + c, C_LINE, 1);
-  printbgx(x + 1, y + h, C_LINE, w);
-
+  setdimrect(x, y, w, h);
+  // a card with rounded corners on the dimmed screen
   fillarea(x, y, w, h, MKCOL(8, C_PANEL), ' ');
   printblankc(x, y, MKCOL(C_HEADERTEXT, C_HEADER), w);
-  if (title) printtext(x + 2, y, MKCOL(C_HEADERTEXT, C_HEADER), title);
-  for (c = 0; c < 5; c++)
-    printglyph(x + w - 7 + c, y, MKCOL(C_RB1 + c, C_HEADER), GL_RIGHTH);
-  for (c = 1; c < h; c++)
+  if (title)
   {
-    printglyph(x, y + c, MKCOL(C_LINE, C_PANEL), GL_VLINE);
-    printglyph(x + w - 1, y + c, MKCOL(C_LINE, C_PANEL), GL_VLINE);
+    printglyph(x + 2, y, MKCOL(2, C_HEADER), GL_BULLET);
+    printtext(x + 4, y, MKCOL(15, C_HEADER), title);
   }
-  for (c = 1; c < w - 1; c++)
-    printglyph(x + c, y + h - 1, MKCOL(C_LINE, C_PANEL), GL_HLINE);
-  printglyph(x, y + h - 1, MKCOL(C_LINE, C_PANEL), GL_BL);
-  printglyph(x + w - 1, y + h - 1, MKCOL(C_LINE, C_PANEL), GL_BR);
   // text inside the window stays inside the frame
   setclip(x + 1, y + 1, x + w - 2, y + h - 2);
 }
@@ -343,4 +334,134 @@ int dlg_edittext(const char *title, const char *label, char *text, int maxlen, i
   if (result == 1) strcpy(text, buf);
   printmainscreen();
   return result == 1;
+}
+
+// ---------------------------------------------------------------------------
+// The menu of the colour schemes (the button in the top right corner).
+// Pointing at a scheme shows it at once; a click keeps it, ESC or a click
+// outside goes back to the scheme from before.
+// ---------------------------------------------------------------------------
+
+static unsigned mixrgb(unsigned a, unsigned b, int t)
+{
+  int r = (((a >> 16) & 0xff) * (256 - t) + ((b >> 16) & 0xff) * t) >> 8;
+  int g = (((a >> 8) & 0xff) * (256 - t) + ((b >> 8) & 0xff) * t) >> 8;
+  int bl = ((a & 0xff) * (256 - t) + (b & 0xff) * t) >> 8;
+  return (r << 16) | (g << 8) | bl;
+}
+
+// coverage (0-256) of a pixel by a rounded rectangle
+static int rrcover(int px, int py, int x0, int y0, int x1, int y1, int r)
+{
+  float fx = px + 0.5f, fy = py + 0.5f, cx, cy, dx, dy, d;
+  if ((fx < x0) || (fx > x1) || (fy < y0) || (fy > y1)) return 0;
+  cx = fx < x0 + r ? x0 + r : (fx > x1 - r ? x1 - r : fx);
+  cy = fy < y0 + r ? y0 + r : (fy > y1 - r ? y1 - r : fy);
+  dx = fx - cx;
+  dy = fy - cy;
+  if ((dx == 0) && (dy == 0)) return 256;
+  d = r - sqrtf(dx * dx + dy * dy) + 0.5f;
+  if (d <= 0) return 0;
+  if (d >= 1) return 256;
+  return (int)(d * 256);
+}
+
+static void drawswatches(int x, int y, int sel)
+{
+  int cw = 6, ch = NUM_THEMES, t, px, py;
+  int pw = cw * 16;
+  unsigned *buf = fxcanvas_begin(0, cw, ch);
+  unsigned panel = theme_color(theme, C_PANEL);
+  if (!buf) return;
+  for (t = 0; t < NUM_THEMES; t++)
+  {
+    unsigned bgc = (t == sel) ? theme_color(theme, C_SELECT) : panel;
+    unsigned *row = buf + t * 32 * pw;
+    for (py = 0; py < 32; py++)
+      for (px = 0; px < pw; px++)
+      {
+        unsigned c = bgc;
+        int k, a;
+        // the card: background and frame of the scheme
+        a = rrcover(px, py, 4, 5, pw - 4, 27, 8);
+        if (a) c = mixrgb(c, theme_color(t, 27), a);
+        a = rrcover(px, py, 5, 6, pw - 5, 26, 7);
+        if (a) c = mixrgb(c, theme_color(t, 0), a);
+        // three dots: accent, second accent, playing
+        for (k = 0; k < 3; k++)
+        {
+          static const int idx[3] = {2, 5, 4};
+          a = rrcover(px, py, 16 + k * 24 - 6, 10, 16 + k * 24 + 6, 22, 6);
+          if (a) c = mixrgb(c, theme_color(t, idx[k]), a);
+        }
+        row[py * pw + px] = c;
+      }
+  }
+  fxcanvas_draw(0, x, y);
+}
+
+void themechooser(void)
+{
+  int prevmx = mousex, prevmy = mousey;
+  int old = theme, sel = theme, c, done = 0;
+  int w = 26, h = NUM_THEMES + 2;
+  int x = MAX_COLUMNS - 17 - w, y = 1;
+
+  key = 0;
+  rawkey = 0;
+  while (!done)
+  {
+    int hit = -1;
+    printstatus();
+    clearclip();
+    snprintf(tip_context, sizeof tip_context, "%s", "Colour scheme");
+    tip_newframe();
+    setdimrect(x, y, w - 1, h - 1);
+    setdimamount(60);
+    fillarea(x, y, w, h, MKCOL(8, C_PANEL), ' ');
+    for (c = 0; c < NUM_THEMES; c++)
+    {
+      int ry = y + 1 + c;
+      int bg = c == sel ? C_SELECT : C_PANEL;
+      printblankc(x + 1, ry, MKCOL(8, bg), w - 2);
+      printtext(x + 9, ry, MKCOL(c == old ? 15 : 8, bg), theme_name(c));
+      if (c == old) printtext(x + w - 3, ry, MKCOL(2, bg), GS_CHECK);
+    }
+    drawswatches(x + 2, y + 1, sel);
+    fliptoscreen();
+    getkey();
+
+    // the scheme under the pointer (after the pointer moved) is shown at once
+    hit = -1;
+    if ((mousex >= x) && (mousex < x + w) && (mousey >= y + 1) && (mousey < y + 1 + NUM_THEMES)) hit = mousey - y - 1;
+    if ((hit >= 0) && (hit != sel) && ((mousex != prevmx) || (mousey != prevmy))) sel = hit;
+    if (win_quitted) { sel = old; break; }
+    if ((mouseb & MOUSEB_LEFT) && (!prevmouseb))
+    {
+      if (hit < 0) sel = old;
+      else sel = hit;
+      done = 1;
+    }
+    switch (rawkey)
+    {
+      case KEY_UP: if (sel > 0) sel--; break;
+      case KEY_DOWN: if (sel < NUM_THEMES - 1) sel++; break;
+      case KEY_ENTER: case KEY_SPACE: done = 1; break;
+      case KEY_ESC: sel = old; done = 1; break;
+    }
+    prevmx = mousex;
+    prevmy = mousey;
+    if (sel != theme) settheme(sel);
+  }
+  if (sel != theme) settheme(sel);
+  // wait until the mouse button is up, the click is not passed on
+  while ((mouseb) && (!win_quitted))
+  {
+    fliptoscreen();
+    getkey();
+  }
+  fxcanvas_end();
+  key = 0;
+  rawkey = 0;
+  printmainscreen();
 }

@@ -8,5 +8,6 @@ int dlg_edithex(const char *title, const char *label, unsigned *value, int digit
 int dlg_printwrapped(int x, int y, int width, int maxlines, int color, const char *text);
 void dlg_drawframe(int x, int y, int w, int h, const char *title);
 int dlg_edittext(const char *title, const char *label, char *text, int maxlen, int decimal);
+void themechooser(void);
 
 #endif

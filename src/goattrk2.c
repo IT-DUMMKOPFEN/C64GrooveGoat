@@ -88,7 +88,8 @@ int stereowidth(void)
   static const int w[5] = {0, 100, 90, 80, 70};
   return w[stereomode <= 4 ? stereomode : 1];
 }
-unsigned themesetting = THEME_NIGHT;
+unsigned themesetting = THEME_DEFAULT;   // the colour scheme (0 = Paper)
+static unsigned oldthemesetting = 0;   // night / day before 1.4 (unused)
 unsigned prgfrontend = 1;
 unsigned prgpiano = 1;          // piano keyboard on the screen of a runnable PRG
 char projectdir[MAX_PATHNAME] = "";   // working folder of the project (asked at the start)
@@ -156,7 +157,7 @@ static char *usage[] = {
   "-Xxx Set window type (0 = window, 1 = fullscreen) DEFAULT=window",
   "-Yxx Path to a Scala tuning file .scl",
   "-Zxx Set random reSID write delay in cycles (0 = off) DEFAULT=off",
-  "-Txx Set theme (0 = night, 1 = day)",
+  "-Txx Set the colour scheme (0 = Paper ... 11 = Mono)",
   "-N   Use NTSC timing",
   "-P   Use PAL timing (DEFAULT)",
   "-W   Write sound output to a file SIDAUDIO.RAW",
@@ -481,7 +482,7 @@ int main(int argc, char **argv)
   if (residdelay > 63) residdelay = 63;
   if (customclockrate < 100) customclockrate = 0;
   if (fileformat > FORMAT_BIN) fileformat = FORMAT_SID;
-  themesetting &= 1;
+  if (themesetting >= NUM_THEMES) themesetting = THEME_DEFAULT;
   if (stereomode > 4) stereomode = 1;
   if (mastervolume > 100) mastervolume = 100;
   // Older versions used 44100 Hz; most sound systems run at 48000 Hz, which
@@ -1000,7 +1001,7 @@ static void loadconfig(void)
   getfloatparam(configfile, &equaldivisionsperoctave);
   getstringparam(configfile, specialnotenames);
   getstringparam(configfile, scalatuningfilepath);
-  getparam(configfile, &themesetting);
+  getparam(configfile, &oldthemesetting);
   getparam(configfile, &stereomode);
   getparam(configfile, &prgfrontend);
   getparam(configfile, &mastervolume);
@@ -1016,6 +1017,7 @@ static void loadconfig(void)
   getlineparam(configfile, mididevice);
   getlineparam(configfile, versioninfoseen);
   getparam(configfile, &versioninfoalways);
+  getparam(configfile, &themesetting);
   fclose(configfile);
   versioninfoalways &= 1;
   if (!strcmp(versioninfoseen, "-")) versioninfoseen[0] = 0;
@@ -1080,7 +1082,7 @@ static void saveconfig(void)
     ";Equal divisions per octave (12 = default, 8.2019143 = Bohlen-Pierce)\n%f\n\n"
     ";Special note names (2 chars for every note in an octave/cycle, - = none)\n%s\n\n"
     ";Path to a Scala tuning file .scl (- = none)\n%s\n\n"
-    ";Theme (0 = night, 1 = day)\n%d\n\n"
+    ";Theme of versions before 1.4 (unused)\n%d\n\n"
     ";Stereo output for multi-SID songs (0 = mono, 1 = stereo)\n%d\n\n"
     ";PRG export includes the player frontend (0 = no, 1 = yes)\n%d\n\n"
     ";Output volume in percent (0-100)\n%d\n\n"
@@ -1095,7 +1097,8 @@ static void saveconfig(void)
     ";MIDI keyboard input (0 = off, 1 = on)\n%d\n\n"
     ";MIDI device (- = all devices)\n%s\n\n"
     ";Version whose info window was shown (- = none)\n%s\n\n"
-    ";Show the version info at every start (0 = no, 1 = yes)\n%d\n\n",
+    ";Show the version info at every start (0 = no, 1 = yes)\n%d\n\n"
+    ";Colour scheme (0 = Paper, 1 = Graphite, 2 = Lavender, 3 = Sand, 4 = Frost, 5 = Ocean,\n; 6 = Forest, 7 = Neon, 8 = Sunset, 9 = Amber, 10 = C64 Modern, 11 = Mono)\n%d\n\n",
     b,
     mr,
     hardsid,
@@ -1136,7 +1139,7 @@ static void saveconfig(void)
     equaldivisionsperoctave,
     specialnotenames[0] ? specialnotenames : "-",
     scalatuningfilepath[0] ? scalatuningfilepath : "-",
-    themesetting,
+    oldthemesetting,
     stereomode,
     prgfrontend,
     mastervolume,
@@ -1151,7 +1154,8 @@ static void saveconfig(void)
     midion,
     mididevice[0] ? mididevice : "-",
     versioninfoseen[0] ? versioninfoseen : "-",
-    versioninfoalways);
+    versioninfoalways,
+    themesetting);
   fclose(configfile);
 }
 
@@ -1401,7 +1405,8 @@ void changenumsids(int n)
 
 void togglethemekey(void)
 {
-  settheme(theme ^ 1);
+  // the menu of the colour schemes with a live preview
+  themechooser();
   themesetting = theme;
   printmainscreen();
 }
@@ -1861,7 +1866,7 @@ void mousecommands(void)
     static int pianonote = -1, pianochn = 0;
     int note = -1;
     if ((showpiano) && (mouseb & MOUSEB_LEFT) && (mousey >= PIANO_Y) && (mousey < PIANO_Y + PIANO_H))
-      note = piano_keyat(mousepx, mousepy - PIANO_Y * 32, MAX_COLUMNS * 16, PIANO_H * 32);
+      note = piano_keyat(mousepx - PIANO_KX, mousepy - PIANO_Y * 32 - PIANO_KY, PIANO_KW, PIANO_KH);
     if ((pianonote >= 0) && ((!(mouseb & MOUSEB_LEFT)) || (note < 0)))
     {
       releasenote(pianochn);

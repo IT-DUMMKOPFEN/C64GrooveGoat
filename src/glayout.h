@@ -51,6 +51,11 @@ extern unsigned showpiano;
 #define PIANO_H 3
 #define PIANO_Y (STATUS_Y - 1 - PIANO_H)           // 43
 #define PIANO_SEP_Y (PIANO_Y - 1)                  // 42
+// the keyboard sits in a rounded frame (pixels of the 16x32 canvas)
+#define PIANO_KX 26
+#define PIANO_KY 11
+#define PIANO_KW (MAX_COLUMNS * 16 - 2 * PIANO_KX)
+#define PIANO_KH (PIANO_H * 32 - 2 * PIANO_KY)
 
 #define NAMES_Y (showpiano ? 38 : 42)          // song info header
 #define NAMES_ROWS_Y (NAMES_Y + 1)

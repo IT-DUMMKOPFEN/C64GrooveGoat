@@ -1,7 +1,7 @@
 # C64 GrooveGoat
 
 A multi-SID music editor for the Commodore 64 SID chip, by **IT-Dummkopfen**.
-Version 1.3. Based on [GoatTracker 2](https://sourceforge.net/projects/goattracker2/)
+Version 1.4. Based on [GoatTracker 2](https://sourceforge.net/projects/goattracker2/)
 by Lasse Öörni (Cadaver) and the
 [GoatTracker 2 "Silver Fork"](https://github.com/joelricci/goattracker2) by Joel Ricci.
 
@@ -20,8 +20,9 @@ by Lasse Öörni (Cadaver) and the
   filter / speed tables, multispeed, 6581 / 8580, PAL / NTSC, microtonal tunings
 - Undo (`CTRL+Z`) and redo (`CTRL+Y` / `CTRL+SHIFT+Z`), keyboard layout switch EN / DE so that
   the shortcuts follow the key labels on German QWERTZ keyboards
-- Modern window: SDL 2, resizable, HiDPI, mouse support, toolbar, day theme and a night theme
-  in the original C64 blue
+- Modern window: SDL 2, resizable, HiDPI, mouse support, toolbar, rounded buttons and panels,
+  dialogs over the dimmed screen and 12 colour schemes with live preview (Paper, Graphite,
+  Lavender, Sand, Frost, Ocean, Forest, Neon, Sunset, Amber, C64 Modern, Mono)
 - Instrument library with more than 5000 instruments for the 6581 and the 8580, with search,
   favourites, preview and ADSR graph
 - Random instrument generator (bass, acid bass, bass drum, snare, hi-hat, tom, woodwinds,

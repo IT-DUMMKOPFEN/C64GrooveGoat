@@ -11,9 +11,9 @@
 #define HOLDDELAY 24
 #define DOUBLECLICKDELAY 15
 
-// Themes
-#define THEME_NIGHT 0
-#define THEME_DAY 1
+// Colour schemes (0 = Paper, the default)
+#define NUM_THEMES 12
+#define THEME_DEFAULT 0
 
 // Extended palette entries (16-31). Entries 0-15 keep the semantic meaning
 // of the original GoatTracker colors.
@@ -33,6 +33,7 @@
 #define C_PLAYROW 29
 #define C_EDITROW 30
 #define C_SELECT 31
+#define C_TOOLTIP C_HEADERTEXT   // tooltips: the text colour as background
 
 // Build a cell color from 5-bit foreground and background indices
 #define MKCOL(fg, bg) (0x8000 | (fg) | ((bg) << 5))
@@ -43,6 +44,12 @@ void clearscreen(void);
 void fliptoscreen(void);
 void forceredraw(void);
 void settheme(int t);
+void setdimrect(int x, int y, int w, int h);   // dims the screen around a dialog
+void cleardimrect(void);
+void setdimamount(int a);                      // 0-255, 110 for dialogs
+const char *theme_name(int t);
+int theme_islight(void);
+unsigned theme_color(int t, int idx);
 void printtext(int x, int y, int color, const char *text);
 void setclip(int x0, int y0, int x1, int y1);
 void clearclip(void);

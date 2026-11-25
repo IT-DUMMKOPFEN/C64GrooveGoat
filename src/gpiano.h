@@ -33,7 +33,9 @@ void piano_render(unsigned *buf, int stride, int w, int h, const unsigned keyvoi
 // Key under a pixel position of the keyboard (black keys first), or -1
 int piano_keyat(int px, int py, int w, int h);
 
-// Colour sets for the night and the day theme
+// Colour sets of the video export (night and day)
 extern const PIANOCOLORS piano_night, piano_day;
+// The piano colours of the current colour scheme (gconsole.c)
+const PIANOCOLORS *theme_piano(void);
 
 #endif

@@ -2,8 +2,8 @@
  * C64 GrooveGoat "console" output routines
  *
  * Character cell screen like in GoatTracker, but rendered into a 32-bit
- * framebuffer with anti-aliased fonts, two color themes (night = C64 blue,
- * day = light) and HiDPI support. The framebuffer is scaled to the window.
+ * framebuffer with anti-aliased fonts, colour schemes with rounded buttons
+ * and panels, and HiDPI support. The framebuffer is scaled to the window.
  */
 
 #define GCONSOLE_C
@@ -11,8 +11,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 #include "goattrk2.h"
 #include "gres.h"
+#include "gpiano.h"
 
 int gfxinitted = 0;
 unsigned *scrbuffer = NULL;
@@ -35,7 +37,7 @@ int mousepx = 0;
 int mousepy = 0;
 int mousewheel = 0;
 int mouseheld = 0;
-int theme = THEME_NIGHT;
+int theme = THEME_DEFAULT;
 unsigned bigwindow = 1;
 
 extern int plat_dstx, plat_dsty, plat_dstw, plat_dsth, plat_fbw, plat_fbh;
@@ -50,87 +52,89 @@ static int cursorbg = 2;
 static int cursorfg = 0;
 
 // ---------------------------------------------------------------------------
-// Themes
+// Colour schemes (1.4): a modern look with rounded buttons and panels.
+// Every scheme has the 32 screen colours (0-15 keep the meaning of the
+// original GoatTracker colours, see gconsole.h for 16-31) and the colours of
+// the piano keyboard.
 // ---------------------------------------------------------------------------
 
-static const Uint32 nightpal[32] = {
-  0x352879, // 0  background: original C64 dark blue
-  0x6c5eb5, // 1  C64 light blue (title/mark background)
-  0x9ad284, // 2  light green (cursor)
-  0x7b71b8, // 3  muted channels
-  0xd0574a, // 4  red
-  0xa0782f, // 5  brown
-  0xe09b48, // 6  orange
-  0xbcb6ec, // 7  secondary text
-  0x948adf, // 8  normal text (C64 light blue, a bit brighter)
-  0xa9a0f5, // 9  light blue
-  0xa8f0a0, // 10 edit highlight (light green)
-  0x78d8e4, // 11 cyan
-  0xff8f80, // 12 playing (light red)
-  0xd37be0, // 13 magenta
-  0xf2f07a, // 14 yellow
-  0xffffff, // 15 white / titles
-  0x2c2168, // 16 panel
-  0x4a3c9e, // 17 header bar
-  0xffffff, // 18 header text
-  0x4b3ea3, // 19 button
-  0xf4f2ff, // 20 button text
-  0x7a6ad8, // 21 button highlight
-  0xe2231a, // 22 rainbow red
-  0xf7941d, // 23 rainbow orange
-  0xffde17, // 24 rainbow yellow
-  0x39b54a, // 25 rainbow green
-  0x00aeef, // 26 rainbow blue
-  0x5a4cb0, // 27 lines
-  0x34287a, // 28 beat row
-  0x6b3a78, // 29 playing row
-  0x2a5a7c, // 30 edit row
-  0x5d50b8, // 31 selection
+typedef struct
+{
+  const char *name;
+  int light;
+  Uint32 pal[32];
+  PIANOCOLORS piano;
+} THEMEDEF;
+
+static const THEMEDEF themes[NUM_THEMES] = {
+  {"Paper", 1,
+   {0xe6e9ee, 0xdbeafe, 0x2563eb, 0xa3abb8, 0xdc2626, 0xc2410c, 0xc2410c, 0x5f6879, 0x2b3240, 0x1d4ed8, 0x15803d, 0x1d4ed8, 0xdc2626, 0x7e22ce, 0xc2410c, 0x0b1220, 0xffffff, 0xf1f3f6, 0x2b3240, 0xe7eaee, 0x1f2937, 0x2563eb, 0xe2231a, 0xf7941d, 0xf2c500, 0x39b54a, 0x00aeef, 0xcfd5de, 0xf6f7f9, 0xfde4e1, 0xd8e3fb, 0xdbeafe},
+   {0x2b3240, 0xfbfcfe, 0xd6d8dc, 0x1a1f29, 0x4c5058, 0x898d96, 0x5f6879, {0xdc2626, 0xc2410c, 0x2563eb}}},
+  {"Graphite", 0,
+   {0x121418, 0x24464d, 0x3ddbd9, 0x5f6774, 0xff6b6b, 0xffb454, 0xffb454, 0x8a93a1, 0xcfd5de, 0x8fb8ff, 0x7ee787, 0x8fb8ff, 0xff6b6b, 0xd2a8ff, 0xffb454, 0xffffff, 0x1b1e24, 0x22262e, 0xcfd5de, 0x262a32, 0xdde3ea, 0x3ddbd9, 0xe2231a, 0xf7941d, 0xffde17, 0x39b54a, 0x00aeef, 0x2c313a, 0x1f2228, 0x3a242a, 0x214045, 0x24464d},
+   {0x0b0c10, 0xe9ecf1, 0xc1c4c8, 0x14161a, 0x48494c, 0x6f7175, 0x919293, {0xff6b6b, 0xffb454, 0x3ddbd9}}},
+  {"Lavender", 1,
+   {0xecebf6, 0xe4dcfd, 0x7c3aed, 0xa9a4c7, 0xe11d48, 0xdb2777, 0xdb2777, 0x6a6491, 0x2e2a4a, 0x6d28d9, 0x059669, 0x6d28d9, 0xe11d48, 0x0e7490, 0xdb2777, 0x17132e, 0xffffff, 0xf3f1fb, 0x2e2a4a, 0xeae8f6, 0x2e2a4a, 0x7c3aed, 0xe2231a, 0xf7941d, 0xf2c500, 0x39b54a, 0x00aeef, 0xd6d2ec, 0xf7f6fc, 0xfde4ec, 0xe7dcfc, 0xe4dcfd},
+   {0x2e2a4a, 0xffffff, 0xd9d9de, 0x1d1934, 0x4f4c61, 0x8c8a9b, 0x6a6491, {0xe11d48, 0xdb2777, 0x7c3aed}}},
+  {"Sand", 1,
+   {0xefe8dc, 0xf5e1c0, 0xb45309, 0xb0a38e, 0xc2410c, 0x0f766e, 0x0f766e, 0x7a6c58, 0x3d3428, 0x0f766e, 0x4d7c0f, 0x0f766e, 0xc2410c, 0x7c2d12, 0x0f766e, 0x1f1a12, 0xfbf7f0, 0xf3ece0, 0x3d3428, 0xece4d8, 0x3d3428, 0xb45309, 0xe2231a, 0xf7941d, 0xf2c500, 0x39b54a, 0x00aeef, 0xddd2c0, 0xf7f1e7, 0xf9dcd0, 0xeed9c6, 0xf5e1c0},
+   {0x3d3428, 0xfffdf8, 0xdcd9d3, 0x2a2218, 0x59534b, 0x948e86, 0x7a6c58, {0xc2410c, 0x0f766e, 0xb45309}}},
+  {"Frost", 0,
+   {0x242933, 0x4c566a, 0x88c0d0, 0x69758b, 0xbf616a, 0xebcb8b, 0xebcb8b, 0x9aa5b8, 0xd8dee9, 0x81a1c1, 0xa3be8c, 0x81a1c1, 0xbf616a, 0xb48ead, 0xebcb8b, 0xeceff4, 0x2e3440, 0x3b4252, 0xd8dee9, 0x3b4252, 0xe5e9f0, 0x88c0d0, 0xe2231a, 0xf7941d, 0xffde17, 0x39b54a, 0x00aeef, 0x434c5e, 0x323846, 0x4a3a44, 0x3e4d5a, 0x4c566a},
+   {0x1b1f27, 0xeceff4, 0xc6cacf, 0x242933, 0x545860, 0x797d83, 0x989a9e, {0xbf616a, 0xebcb8b, 0x88c0d0}}},
+  {"Ocean", 0,
+   {0x0b1d26, 0x1f5a66, 0x2ec4b6, 0x4f7a8a, 0xff6b6b, 0xffbf69, 0xffbf69, 0x86aebb, 0xcde7ef, 0x7fd1ff, 0x7ae582, 0x7fd1ff, 0xff6b6b, 0xb8a1ff, 0xffbf69, 0xffffff, 0x102a36, 0x163746, 0xcde7ef, 0x173a4a, 0xe3f4f8, 0x2ec4b6, 0xe2231a, 0xf7941d, 0xffde17, 0x39b54a, 0x00aeef, 0x1f4657, 0x0f2632, 0x3a2a34, 0x15464d, 0x1f5a66},
+   {0x061218, 0xe8f6f9, 0xbfcdd0, 0x0b1d26, 0x414f56, 0x6c797d, 0x8f9497, {0xff6b6b, 0xffbf69, 0x2ec4b6}}},
+  {"Forest", 0,
+   {0x141b16, 0x34503a, 0x8bc34a, 0x61715f, 0xe76f51, 0xe9c46a, 0xe9c46a, 0x94a690, 0xd6e2d4, 0xa3d9a5, 0x8bc34a, 0xa3d9a5, 0xe76f51, 0xcdb4db, 0xe9c46a, 0xf4faf2, 0x1b241e, 0x232e26, 0xd6e2d4, 0x25302a, 0xe6efe3, 0x8bc34a, 0xe2231a, 0xf7941d, 0xffde17, 0x39b54a, 0x00aeef, 0x2f3c33, 0x18201a, 0x40302a, 0x2f4126, 0x34503a},
+   {0x0c110d, 0xeef4ec, 0xc5cbc4, 0x141b16, 0x484d49, 0x727771, 0x929492, {0xe76f51, 0xe9c46a, 0x8bc34a}}},
+  {"Neon", 0,
+   {0x0b0a18, 0x3a2f80, 0xff4fd8, 0x5a5590, 0xff5c7a, 0x29e7ff, 0x29e7ff, 0x8f88c9, 0xd8d4ff, 0x29e7ff, 0x3dffa2, 0x29e7ff, 0xff5c7a, 0xffe156, 0x29e7ff, 0xffffff, 0x14112b, 0x1d1840, 0xd8d4ff, 0x211c48, 0xf1edff, 0xff4fd8, 0xe2231a, 0xf7941d, 0xffde17, 0x39b54a, 0x00aeef, 0x2a2458, 0x18143a, 0x4a1846, 0x3e1c4a, 0x3a2f80},
+   {0x05040d, 0xe8e4ff, 0xbfbcd3, 0x0b0a18, 0x41404b, 0x6b697a, 0x8e8e92, {0xff5c7a, 0x29e7ff, 0xff4fd8}}},
+  {"Sunset", 0,
+   {0x1a1416, 0x5a3a33, 0xff8a5b, 0x7d6a66, 0xef476f, 0xffd166, 0xffd166, 0xb39d95, 0xf1dfd6, 0xffb38a, 0x06d6a0, 0xffb38a, 0xef476f, 0xc9a0ff, 0xffd166, 0xfff7f0, 0x241b1e, 0x2e2327, 0xf1dfd6, 0x30252a, 0xf7e9e1, 0xff8a5b, 0xe2231a, 0xf7941d, 0xffde17, 0x39b54a, 0x00aeef, 0x3d2e33, 0x211a1c, 0x4a2630, 0x4b2f29, 0x5a3a33},
+   {0x100c0d, 0xfbeee6, 0xd1c5bf, 0x1a1416, 0x4c4849, 0x7a726f, 0x939292, {0xef476f, 0xffd166, 0xff8a5b}}},
+  {"Amber", 0,
+   {0x0f0b05, 0x4a3410, 0xffb000, 0x7a5a26, 0xff5a36, 0xff7a00, 0xff7a00, 0xb8893f, 0xffcf80, 0xffc04d, 0xffd000, 0xffc04d, 0xff5a36, 0xff9a3c, 0xff7a00, 0xffe2a8, 0x17110a, 0x21180d, 0xffcf80, 0x251a0c, 0xffd893, 0xffb000, 0xe2231a, 0xf7941d, 0xffde17, 0x39b54a, 0x00aeef, 0x33250f, 0x140e07, 0x3d1f0a, 0x412e08, 0x4a3410},
+   {0x080603, 0xffe9bf, 0xd3c09d, 0x17110a, 0x4a4540, 0x776c58, 0x908f8e, {0xff5a36, 0xff7a00, 0xffb000}}},
+  {"C64 Modern", 0,
+   {0x1d1a3d, 0x4b44a8, 0xa8f0a0, 0x6d66b8, 0xff8f80, 0xf2f07a, 0xf2f07a, 0x9a93e0, 0xc9c4ff, 0x78d8e4, 0xa8f0a0, 0x78d8e4, 0xff8f80, 0xd37be0, 0xf2f07a, 0xffffff, 0x272358, 0x312c6b, 0xc9c4ff, 0x353078, 0xf4f2ff, 0xa8f0a0, 0xe2231a, 0xf7941d, 0xffde17, 0x39b54a, 0x00aeef, 0x3d3780, 0x2b275f, 0x5a2f6b, 0x3e4865, 0x4b44a8},
+   {0x13102c, 0xebe9ff, 0xc4c2d9, 0x1d1a3d, 0x4f4c68, 0x74728b, 0x9593a0, {0xff8f80, 0xf2f07a, 0xa8f0a0}}},
+  {"Mono", 0,
+   {0x000000, 0x3a3a3a, 0xffffff, 0x666666, 0xff4d4d, 0xffd400, 0xffd400, 0xa0a0a0, 0xe6e6e6, 0xbdbdbd, 0x4dff88, 0xbdbdbd, 0xff4d4d, 0x9e9e9e, 0xffd400, 0xffffff, 0x0d0d0d, 0x1a1a1a, 0xe6e6e6, 0x1f1f1f, 0xffffff, 0xffffff, 0xe2231a, 0xf7941d, 0xffde17, 0x39b54a, 0x00aeef, 0x333333, 0x0a0a0a, 0x3a1414, 0x393939, 0x3a3a3a},
+   {0x000000, 0xf2f2f2, 0xc6c6c6, 0x000000, 0x383838, 0x6d6d6d, 0x8c8c8c, {0xff4d4d, 0xffd400, 0xffffff}}},
 };
 
-static const Uint32 daypal[32] = {
-  0xeceaf6, // 0  background
-  0xc9c2f0, // 1  marks
-  0x6cc46c, // 2  green
-  0x9a96b4, // 3  muted
-  0xc0392b, // 4  red
-  0x8a6420, // 5  brown
-  0xc8700f, // 6  orange
-  0x5a5480, // 7  secondary text
-  0x2e2a55, // 8  normal text
-  0x3e31a2, // 9  C64 blue accent
-  0x15803a, // 10 edit highlight
-  0x0f7585, // 11 cyan
-  0xc82828, // 12 playing
-  0x8a2e9a, // 13 magenta
-  0x7d6e00, // 14 yellow (dark)
-  0x121030, // 15 titles (darkest)
-  0xfbfaff, // 16 panel
-  0x352879, // 17 header bar (C64 blue)
-  0xffffff, // 18 header text
-  0xdcd7f5, // 19 button
-  0x1a1640, // 20 button text
-  0xb4aaf0, // 21 button highlight
-  0xe2231a, // 22 rainbow red
-  0xf7941d, // 23 rainbow orange
-  0xf2c500, // 24 rainbow yellow
-  0x39b54a, // 25 rainbow green
-  0x00aeef, // 26 rainbow blue
-  0xc4bee6, // 27 lines
-  0xf0eefa, // 28 beat row
-  0xf8d7d0, // 29 playing row
-  0xd3ecdc, // 30 edit row
-  0xcfc8f5, // 31 selection
-};
+const char *theme_name(int t)
+{
+  if ((t < 0) || (t >= NUM_THEMES)) t = 0;
+  return themes[t].name;
+}
+
+int theme_islight(void)
+{
+  return themes[theme].light;
+}
+
+const PIANOCOLORS *theme_piano(void)
+{
+  return &themes[theme].piano;
+}
+
+// a colour of a scheme as 0xRRGGBB (the swatches of the scheme menu)
+unsigned theme_color(int t, int idx)
+{
+  if ((t < 0) || (t >= NUM_THEMES)) t = 0;
+  return themes[t].pal[idx & 31];
+}
 
 void settheme(int t)
 {
   int c;
-  const Uint32 *src;
 
-  theme = t ? THEME_DAY : THEME_NIGHT;
-  src = theme == THEME_DAY ? daypal : nightpal;
-  for (c = 0; c < 32; c++) palette[c] = 0xff000000 | src[c];
+  if ((t < 0) || (t >= NUM_THEMES)) t = THEME_DEFAULT;
+  theme = t;
+  for (c = 0; c < 32; c++) palette[c] = 0xff000000 | themes[t].pal[c];
   if (getenv("GG_PALETTE"))
   {
     // a test palette: 32 hex colours (concepts for new looks)
@@ -142,16 +146,8 @@ void settheme(int t)
       fclose(f);
     }
   }
-  if (theme == THEME_DAY)
-  {
-    cursorbg = 9;
-    cursorfg = 0;
-  }
-  else
-  {
-    cursorbg = 2;
-    cursorfg = 16;
-  }
+  cursorbg = 2;
+  cursorfg = 16;
   fulldirty = 1;
 }
 
@@ -701,12 +697,12 @@ static void tip_draw(void)
     if (x < 0) x = 0;
     y = mousey + 1;
     if (y + (l2[0] ? 2 : 1) > MAX_ROWS) y = mousey - (l2[0] ? 2 : 1);
-    printblankc(x, y, MKCOL(C_HEADERTEXT, C_HEADER), w);
-    printtext(x, y, MKCOL(C_HEADERTEXT, C_HEADER), l1);
+    printblankc(x, y, MKCOL(C_PANEL, C_TOOLTIP), w);
+    printtext(x, y, MKCOL(C_PANEL, C_TOOLTIP), l1);
     if (l2[0])
     {
-      printblankc(x, y + 1, MKCOL(C_HEADERTEXT, C_HEADER), w);
-      printtext(x, y + 1, MKCOL(C_HEADERTEXT, C_HEADER), l2);
+      printblankc(x, y + 1, MKCOL(C_PANEL, C_TOOLTIP), w);
+      printtext(x, y + 1, MKCOL(C_PANEL, C_TOOLTIP), l2);
     }
   }
 }
@@ -801,8 +797,8 @@ void drawpanel(int x, int y, int w, int h, const char *title, int active)
   fillarea(x, y, w, h, MKCOL(8, C_PANEL), ' ');
   if (title)
   {
-    printblankc(x, y, MKCOL(C_HEADERTEXT, active ? C_BUTTONHI : C_HEADER), w);
-    printtext(x + 1, y, MKCOL(C_HEADERTEXT, active ? C_BUTTONHI : C_HEADER), title);
+    printblankc(x, y, MKCOL(C_HEADERTEXT, active ? C_SELECT : C_HEADER), w);
+    printtext(x + 1, y, MKCOL(C_HEADERTEXT, active ? C_SELECT : C_HEADER), title);
   }
 }
 
@@ -891,7 +887,135 @@ static inline Uint32 blend(Uint32 bg, Uint32 fg, unsigned a)
   return 0xff000000 | (r << 16) | (g << 8) | b;
 }
 
+// ---------------------------------------------------------------------------
+// The modern look: buttons, panels and highlighted rows get rounded corners,
+// and the screen behind a dialog is dimmed
+// ---------------------------------------------------------------------------
+
+static int dimx0 = 0, dimy0 = 0, dimx1 = -1, dimy1 = -1;     // the dialog that is not dimmed
+static int lastdim[5] = {0, 0, -1, -1, 0};
+static int dimamount = 110, nextdimamount = 110;
+
+void setdimamount(int a)
+{
+  nextdimamount = a;
+}
+
+void setdimrect(int x, int y, int w, int h)
+{
+  dimx0 = x;
+  dimy0 = y;
+  dimx1 = x + w - 1;
+  dimy1 = y + h - 1;
+}
+
+void cleardimrect(void)
+{
+  nextdimamount = 110;
+  dimx0 = dimy0 = 0;
+  dimx1 = dimy1 = -1;
+}
+
+static int isdimmed(int x, int y)
+{
+  if (dimx1 < 0) return 0;
+  if ((x >= 0) && (y >= 0) && (x < MAX_COLUMNS) && (y < MAX_ROWS) && (((scrbuffer[x + y * MAX_COLUMNS] >> 21) & 31) == C_TOOLTIP)) return 0;
+  return (x < dimx0) || (x > dimx1) || (y < dimy0) || (y > dimy1);
+}
+
+// background colours whose areas get rounded corners
+static int roundbg(int bg)
+{
+  switch (bg)
+  {
+    case 1: case 2: case C_PANEL: case C_HEADER: case C_BUTTON: case C_BUTTONHI: case C_TOOLTIP:
+    case C_BEATROW: case C_PLAYROW: case C_EDITROW: case C_SELECT:
+    return 1;
+  }
+  return 0;
+}
+
+static inline int cellbg(int x, int y)
+{
+  if ((x < 0) || (y < 0) || (x >= MAX_COLUMNS) || (y >= MAX_ROWS)) return -1;
+  {
+    unsigned c = scrbuffer[x + y * MAX_COLUMNS];
+    if ((c & 0xffff) >= 256) return -2;          // pictures and canvases
+    return (c >> 21) & 31;
+  }
+}
+
+static void roundcorners(int x, int y, int bg, Uint32 *cellfb)
+{
+  int cw = CELLW * scale, ch = CELLH * scale;
+  int r = (bg == C_PANEL || bg == C_HEADER) ? 8 * scale : 4 * scale;
+  int corner;
+  if (r > cw) r = cw;
+  for (corner = 0; corner < 4; corner++)
+  {
+    int dx = (corner & 1) ? 1 : -1, dy = (corner & 2) ? 1 : -1;
+    int hb = cellbg(x + dx, y), vb = cellbg(x, y + dy), db = cellbg(x + dx, y + dy);
+    int outer, px, py, me = isdimmed(x, y);
+    Uint32 oc;
+    // a dialog on the dimmed screen and a tooltip: their corners are always round
+    int edge = (dimx1 >= 0) && (!me) && (isdimmed(x + dx, y)) && (isdimmed(x, y + dy)) && (isdimmed(x + dx, y + dy));
+    if (bg == C_TOOLTIP) edge = (hb != bg) && (vb != bg) && (db != bg);
+    if (!edge)
+    {
+      if ((bg == C_TOOLTIP) || (hb == bg) || (vb == bg) || (db == bg)) continue;
+      // panels are cards on the background: only their outer corners are round
+      if ((bg == C_PANEL) || (bg == C_HEADER))
+        if ((hb > 0) || (vb > 0) || (db > 0)) continue;
+      if ((hb == -2) || (vb == -2)) continue;
+    }
+    if ((hb < 0) && (vb < 0)) continue;
+    outer = hb >= 0 ? hb : vb;
+    oc = palette[outer];
+    // at the edge of a dialog the outside is dimmed (the cell itself is dimmed later)
+    if ((!me) && (isdimmed(hb >= 0 ? x + dx : x, hb >= 0 ? y : y + dy)))
+      oc = blend(oc, 0xff000000, dimamount);
+    for (py = 0; py < r; py++)
+      for (px = 0; px < r; px++)
+      {
+        // distance of the pixel centre from the centre of the corner circle
+        float fx = r - (px + 0.5f), fy = r - (py + 0.5f);
+        float d = sqrtf(fx * fx + fy * fy) - r;
+        int a, sx, sy;
+        Uint32 *p;
+        if (d <= -0.5f) continue;
+        a = d >= 0.5f ? 255 : (int)((d + 0.5f) * 255);
+        sx = (dx < 0) ? px : cw - 1 - px;
+        sy = (dy < 0) ? py : ch - 1 - py;
+        p = cellfb + sy * fbw + sx;
+        *p = blend(*p, oc, a);
+      }
+  }
+}
+
+static void rendercell_(int x, int y, unsigned cell);
+
 static void rendercell(int x, int y, unsigned cell)
+{
+  int glyph = cell & 0xffff;
+  int bg = (cell >> 21) & 31, fg = (cell >> 16) & 31;
+  int dim = isdimmed(x, y);
+  // text on the accent colour (active buttons) uses the panel colour
+  if ((bg == C_BUTTONHI) && ((fg == C_BUTTONTEXT) || (fg == C_HEADERTEXT) || (fg == 15) || (fg == 8)))
+    cell = (cell & ~(31u << 16)) | ((unsigned)C_PANEL << 16);
+  rendercell_(x, y, cell);
+  if ((glyph < 256) && (roundbg(bg)))
+    roundcorners(x, y, bg, fb + (y * CELLH * scale) * fbw + x * CELLW * scale);
+  if ((dim) && (bg != C_TOOLTIP))     // tooltips stay bright
+  {
+    int cw = CELLW * scale, ch = CELLH * scale, px, py;
+    Uint32 *d = fb + (y * ch) * fbw + x * cw;
+    for (py = 0; py < ch; py++, d += fbw)
+      for (px = 0; px < cw; px++) d[px] = blend(d[px], 0xff000000, dimamount);
+  }
+  (void)fg;
+}
+
+static void rendercell_(int x, int y, unsigned cell)
 {
   int glyph = cell & 0xffff;
   Uint32 fgc = palette[(cell >> 16) & 31];
@@ -1040,18 +1164,51 @@ void fliptoscreen(void)
     presented = 0;
   }
 
-  for (y = 0; y < MAX_ROWS; y++)
+  // the dimmed screen behind a dialog
+  dimamount = nextdimamount;
+  if ((lastdim[0] != dimx0) || (lastdim[1] != dimy0) || (lastdim[2] != dimx1) || (lastdim[3] != dimy1) || (lastdim[4] != dimamount))
   {
-    unsigned *sptr = scrbuffer + y * MAX_COLUMNS;
-    unsigned *cmpptr = prevscrbuffer + y * MAX_COLUMNS;
-    for (x = 0; x < MAX_COLUMNS; x++)
+    lastdim[4] = dimamount;
+    lastdim[0] = dimx0;
+    lastdim[1] = dimy0;
+    lastdim[2] = dimx1;
+    lastdim[3] = dimy1;
+    fulldirty = 1;
+  }
+  // a cell is drawn again when it or a neighbour changed (rounded corners)
+  {
+    static unsigned char changed[MAX_ROWS][MAX_COLUMNS];
+    for (y = 0; y < MAX_ROWS; y++)
     {
-      if ((fulldirty) || (sptr[x] != cmpptr[x]))
+      unsigned *sptr = scrbuffer + y * MAX_COLUMNS;
+      unsigned *cmpptr = prevscrbuffer + y * MAX_COLUMNS;
+      for (x = 0; x < MAX_COLUMNS; x++)
       {
+        changed[y][x] = (fulldirty) || (sptr[x] != cmpptr[x]);
         cmpptr[x] = sptr[x];
-        rendercell(x, y, sptr[x]);
-        if (y < firstrow) firstrow = y;
-        if (y > lastrow) lastrow = y;
+      }
+    }
+    for (y = 0; y < MAX_ROWS; y++)
+    {
+      unsigned *sptr = scrbuffer + y * MAX_COLUMNS;
+      for (x = 0; x < MAX_COLUMNS; x++)
+      {
+        int dirty = changed[y][x];
+        if (!dirty)
+        {
+          int y0 = y > 0 ? y - 1 : 0, y1 = y < MAX_ROWS - 1 ? y + 1 : y;
+          int x0 = x > 0 ? x - 1 : 0, x1 = x < MAX_COLUMNS - 1 ? x + 1 : x, yy, xx;
+          if (!roundbg((sptr[x] >> 21) & 31)) continue;
+          for (yy = y0; (yy <= y1) && (!dirty); yy++)
+            for (xx = x0; xx <= x1; xx++)
+              if (changed[yy][xx]) { dirty = 1; break; }
+        }
+        if (dirty)
+        {
+          rendercell(x, y, sptr[x]);
+          if (y < firstrow) firstrow = y;
+          if (y > lastrow) lastrow = y;
+        }
       }
     }
   }

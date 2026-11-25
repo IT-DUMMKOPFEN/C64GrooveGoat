@@ -103,6 +103,7 @@ static const char *mousekeys[] = {
   "Drop a file   Load song or instrument",
   "Hover         Button help, after 2 s tooltip",
   "Click piano   Play a note (drag: glissando)",
+  "Scheme menu   Top right: 12 looks, live view",
   NULL
 };
 
@@ -1024,12 +1025,12 @@ int showversioninfo(int frominfo)
   int sidew = x, rightx = x + w, rightw = MAX_COLUMNS - x - w;
   static const char *items[] =
   {
-    "Orderlist editor (CTRL+O): all voices of all SIDs at a glance, each with its own length",
-    "Copy, duplicate, move, transpose and repeat whole blocks; make shared patterns unique",
-    "Pattern length per song: 16, 72, 96 ... rows - every new pattern starts with it",
-    "Every button explains itself: rest the mouse on it for 2 seconds",
-    "Bass, Chords & Arps: genre and subgenre, or a whole new SID; a beat for the whole song",
-    "Composer 1.1 with song plan (paste one from any AI chatbot), Composer Classic as in 1.0",
+    "A new modern look: rounded buttons and panels, dialogs float over the dimmed screen",
+    "12 colour schemes - Paper is the new default, the menu at the top right shows each live",
+    "Graphite, Lavender, Sand, Frost, Ocean, Forest, Neon, Sunset, Amber, C64 Modern, Mono",
+    "The piano keyboard sits in its own frame, in the colours of the scheme",
+    "Tooltips in high contrast, easy to read in every scheme",
+    "Everything stays where you know it - only the paint is new",
     NULL
   };
   if (y < 0) y = 0;
@@ -1043,9 +1044,9 @@ int showversioninfo(int frominfo)
     printmainscreen();
     dlg_drawframe(x, y, w, h, "Welcome to C64 GrooveGoat " PROGRAMVERSION);
     ly = y + 2;
-    printtext(x + 3, ly++, MKCOL(14, C_PANEL), "Version " PROGRAMVERSION " - The Monster Keeps Order");
+    printtext(x + 3, ly++, MKCOL(14, C_PANEL), "Version " PROGRAMVERSION " - The Goat Got a Makeover");
     ly++;
-    printtext(x + 3, ly++, MKCOL(7, C_PANEL), "More overview for big multi-SID songs, and help on every button:");
+    printtext(x + 3, ly++, MKCOL(7, C_PANEL), "A fresh coat of paint for every taste - pick your favourite:");
     ly++;
     for (c = 0; items[c]; c++)
     {
