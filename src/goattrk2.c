@@ -27,6 +27,7 @@
 
 #include "goattrk2.h"
 #include "gexport.h"
+#include "gcrash.h"
 #include "ginslib.h"
 #include "grandins.h"
 #include "gres.h"
@@ -228,6 +229,7 @@ static void starttime(const char *what)
   if (on < 0) { on = getenv("GG_STARTTIME") ? 1 : 0; t0 = SDL_GetTicks(); }
   snprintf(startlog + l, sizeof startlog - l, "%6u ms  %s\n", SDL_GetTicks() - t0, what);
   if (on) fprintf(stderr, "%6u ms  %s\n", SDL_GetTicks() - t0, what);
+  crash_note("start: %s", what);
 }
 
 static void writestartlog(void)
@@ -264,6 +266,7 @@ int main(int argc, char **argv)
   scalatuningfilepath[0] = 0;
   if (!getcwd(startcwd, MAX_PATHNAME)) startcwd[0] = 0;
 
+  crash_install(PROGRAMVERSION);
   starttime("start");
   initdirectories();
   starttime("directories");

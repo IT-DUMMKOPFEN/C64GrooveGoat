@@ -5,6 +5,7 @@
 #define GSONG_C
 
 #include "goattrk2.h"
+#include "gcrash.h"
 
 INSTR instr[MAX_INSTR];
 unsigned char ltable[MAX_TABLES][MAX_TABLELEN];
@@ -632,6 +633,7 @@ void loadsong(void)
   unsigned char *buf = readwholefile(songfilename, &len);
   int songplen = 0;
 
+  crash_note("load song: %s", songfilename);
   statusmessage[0] = 0;
   if (buf) len = readtrailer(buf, len, &songplen);
 

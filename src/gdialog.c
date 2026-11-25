@@ -7,6 +7,7 @@
 #include "goattrk2.h"
 #include "gres.h"
 #include <math.h>
+#include "gcrash.h"
 
 // Text wrapped at word boundaries into lines of "width" columns; returns the
 // number of lines printed (at most maxlines)
@@ -40,6 +41,15 @@ void dlg_drawframe(int x, int y, int w, int h, const char *title)
   snprintf(tip_context, sizeof tip_context, "%s", title ? title : "");
   tip_newframe();
   clearclip();
+  {
+    // the dialog in the crash report (only when another one opens)
+    static char lasttitle[64];
+    if ((title) && (strncmp(lasttitle, title, sizeof lasttitle - 1)))
+    {
+      snprintf(lasttitle, sizeof lasttitle, "%s", title);
+      crash_note("dialog: %s", title);
+    }
+  }
   setdimrect(x, y, w, h);
   // a card with rounded corners on the dimmed screen
   fillarea(x, y, w, h, MKCOL(8, C_PANEL), ' ');
