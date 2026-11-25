@@ -1018,7 +1018,7 @@ static void fxframe(int side, int cw, int ch)
 int showversioninfo(int frominfo)
 {
   int result = 0;
-  int w = 98, h = 47;
+  int w = 98, h = 21;
   int x = (MAX_COLUMNS - w) / 2;
   int y = (MAX_ROWS - h) / 2;
   int sidew = x, rightx = x + w, rightw = MAX_COLUMNS - x - w;
@@ -1053,8 +1053,7 @@ int showversioninfo(int frominfo)
       fxcanvas_draw(1, rightx, 0);
     }
     dlg_drawframe(x, y, w, h, "Welcome to C64 GrooveGoat " PROGRAMVERSION);
-    drawimage(x + 14, y + 2, "versionart", 70, 26);
-    ly = y + 29;
+    ly = y + 2;
     printtext(x + 3, ly++, MKCOL(14, C_PANEL), "Version " PROGRAMVERSION " - The Monster Keeps Order");
     ly++;
     printtext(x + 3, ly++, MKCOL(7, C_PANEL), "More overview for big multi-SID songs, and help on every button:");
