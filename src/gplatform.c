@@ -126,11 +126,14 @@ int plat_init(const char *title, int fbwidth, int fbheight)
   SDL_SetHint(SDL_HINT_MAC_CTRL_CLICK_EMULATE_RIGHT_CLICK, "1");
 #endif
 
-  if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER) < 0)
+  if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) < 0)
   {
     fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
     return 0;
   }
+  // without a sound device the editor still starts (and says so)
+  if (SDL_InitSubSystem(SDL_INIT_AUDIO) < 0)
+    fprintf(stderr, "SDL audio init failed: %s\n", SDL_GetError());
   atexit(SDL_Quit);
 
   plat_fbw = fbwidth;

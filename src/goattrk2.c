@@ -782,7 +782,12 @@ int main(int argc, char **argv)
   starttime("before screen");
   if (!initscreen())
   {
-    fprintf(stderr, "Could not open the program window.\n");
+    char msg[512];
+    // a message box: on Windows nobody sees stderr
+    snprintf(msg, sizeof msg, "Could not open the program window.\n\n%s", SDL_GetError());
+    fprintf(stderr, "%s\n", msg);
+    crash_note("no window: %s", SDL_GetError());
+    SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "C64 GrooveGoat", msg, NULL);
     return EXIT_FAILURE;
   }
 
