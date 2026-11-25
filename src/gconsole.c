@@ -131,6 +131,17 @@ void settheme(int t)
   theme = t ? THEME_DAY : THEME_NIGHT;
   src = theme == THEME_DAY ? daypal : nightpal;
   for (c = 0; c < 32; c++) palette[c] = 0xff000000 | src[c];
+  if (getenv("GG_PALETTE"))
+  {
+    // a test palette: 32 hex colours (concepts for new looks)
+    FILE *f = fopen(getenv("GG_PALETTE"), "rt");
+    unsigned v;
+    if (f)
+    {
+      for (c = 0; (c < 32) && (fscanf(f, "%x", &v) == 1); c++) palette[c] = 0xff000000 | v;
+      fclose(f);
+    }
+  }
   if (theme == THEME_DAY)
   {
     cursorbg = 9;
