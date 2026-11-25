@@ -91,7 +91,7 @@ static const char *buttonhint(int id)
     case BTN_EXPORTPRG: return "Export a C64 program (.prg), optionally with a player screen";
     case BTN_EXPORTAUDIO: return "Export audio: WAV (also single voices) or MP3 - Ctrl+F9";
     case BTN_EXPORTVIDEO: return "Export an MP4 video (720p) with an oscilloscope for every voice";
-    case BTN_THEME: return "Colour scheme: choose one of 12 looks, the screen shows it while you point at it";
+    case BTN_THEME: return "Colour scheme: choose one of 23 looks (light, high contrast, dark), the screen shows it while you point at it";
     case BTN_HELP: return "Help: keys and commands - F12";
     case BTN_INFO: return "Version, author, credits and licenses";
     case BTN_UNDO: return "Undo the last change - Ctrl+Z";
@@ -986,7 +986,7 @@ static int tooltip(int id, const char **name, const char **keys)
     case BTN_EXPORTPRG: *name = "Export C64 program (.prg)"; break;
     case BTN_EXPORTAUDIO: *name = "Export audio (WAV / MP3)"; *keys = "CTRL+F9"; break;
     case BTN_EXPORTVIDEO: *name = "Export MP4 video"; *keys = "CTRL+SHIFT+F9"; break;
-    case BTN_THEME: *name = "Colour scheme (12 looks, live preview)"; break;
+    case BTN_THEME: *name = "Colour scheme (23 looks, live preview)"; break;
     case BTN_HELP: *name = "Keyboard reference and manual"; *keys = "F12"; break;
     case BTN_INFO: *name = "What's new in this version, then credits and licenses"; break;
     case BTN_MANUAL: *name = "The complete manual"; break;

@@ -366,33 +366,59 @@ static int rrcover(int px, int py, int x0, int y0, int x1, int y1, int r)
   return (int)(d * 256);
 }
 
+// the rows of the menu: a heading for every group, then its schemes
+#define MENUROWS (NUM_THEMES + 3)
+static int menurow[MENUROWS];         // scheme, or -1 - group for a heading
+
+static void buildmenu(void)
+{
+  int g, t, n = 0;
+  for (g = 0; g < 3; g++)
+  {
+    menurow[n++] = -1 - g;
+    for (t = 0; t < NUM_THEMES; t++)
+      if (theme_group(t) == g) menurow[n++] = t;
+  }
+}
+
+static int menurowof(int t)
+{
+  int r;
+  for (r = 0; r < MENUROWS; r++) if (menurow[r] == t) return r;
+  return 1;
+}
+
 static void drawswatches(int x, int y, int sel)
 {
-  int cw = 6, ch = NUM_THEMES, t, px, py;
+  int cw = 6, ch = MENUROWS, r, px, py;
   int pw = cw * 16;
   unsigned *buf = fxcanvas_begin(0, cw, ch);
   unsigned panel = theme_color(theme, C_PANEL);
   if (!buf) return;
-  for (t = 0; t < NUM_THEMES; t++)
+  for (r = 0; r < MENUROWS; r++)
   {
+    int t = menurow[r];
     unsigned bgc = (t == sel) ? theme_color(theme, C_SELECT) : panel;
-    unsigned *row = buf + t * 32 * pw;
+    unsigned *row = buf + r * 32 * pw;
     for (py = 0; py < 32; py++)
       for (px = 0; px < pw; px++)
       {
         unsigned c = bgc;
         int k, a;
-        // the card: background and frame of the scheme
-        a = rrcover(px, py, 4, 5, pw - 4, 27, 8);
-        if (a) c = mixrgb(c, theme_color(t, 27), a);
-        a = rrcover(px, py, 5, 6, pw - 5, 26, 7);
-        if (a) c = mixrgb(c, theme_color(t, 0), a);
-        // three dots: accent, second accent, playing
-        for (k = 0; k < 3; k++)
+        if (t >= 0)
         {
-          static const int idx[3] = {2, 5, 4};
-          a = rrcover(px, py, 16 + k * 24 - 6, 10, 16 + k * 24 + 6, 22, 6);
-          if (a) c = mixrgb(c, theme_color(t, idx[k]), a);
+          // the card: background and frame of the scheme
+          a = rrcover(px, py, 4, 5, pw - 4, 27, 8);
+          if (a) c = mixrgb(c, theme_color(t, 27), a);
+          a = rrcover(px, py, 5, 6, pw - 5, 26, 7);
+          if (a) c = mixrgb(c, theme_color(t, 0), a);
+          // three dots: accent, second accent, playing
+          for (k = 0; k < 3; k++)
+          {
+            static const int idx[3] = {2, 5, 4};
+            a = rrcover(px, py, 16 + k * 24 - 6, 10, 16 + k * 24 + 6, 22, 6);
+            if (a) c = mixrgb(c, theme_color(t, idx[k]), a);
+          }
         }
         row[py * pw + px] = c;
       }
@@ -402,16 +428,18 @@ static void drawswatches(int x, int y, int sel)
 
 void themechooser(void)
 {
+  static const char *groupname[3] = {"Light", "High contrast", "Dark"};
   int prevmx = mousex, prevmy = mousey;
   int old = theme, sel = theme, c, done = 0;
-  int w = 26, h = NUM_THEMES + 2;
+  int w = 26, h = MENUROWS + 2;
   int x = MAX_COLUMNS - 17 - w, y = 1;
 
+  buildmenu();
   key = 0;
   rawkey = 0;
   while (!done)
   {
-    int hit = -1;
+    int hit = -1, r;
     printstatus();
     clearclip();
     snprintf(tip_context, sizeof tip_context, "%s", "Colour scheme");
@@ -419,33 +447,60 @@ void themechooser(void)
     setdimrect(x, y, w - 1, h - 1);
     setdimamount(60);
     fillarea(x, y, w, h, MKCOL(8, C_PANEL), ' ');
-    for (c = 0; c < NUM_THEMES; c++)
-    {
-      int ry = y + 1 + c;
-      int bg = c == sel ? C_SELECT : C_PANEL;
-      printblankc(x + 1, ry, MKCOL(8, bg), w - 2);
-      printtext(x + 9, ry, MKCOL(c == old ? 15 : 8, bg), theme_name(c));
-      if (c == old) printtext(x + w - 3, ry, MKCOL(2, bg), GS_CHECK);
-    }
     drawswatches(x + 2, y + 1, sel);
+    for (r = 0; r < MENUROWS; r++)
+    {
+      int ry = y + 1 + r;
+      c = menurow[r];
+      if (c < 0)
+      {
+        printblankc(x + 1, ry, MKCOL(7, C_PANEL), w - 2);
+        printtext(x + 2, ry, MKCOL(7, C_PANEL), groupname[-1 - c]);
+        continue;
+      }
+      {
+        int bg = c == sel ? C_SELECT : C_PANEL;
+        printblankc(x + 1, ry, MKCOL(8, bg), 1);       // the swatch is drawn in between
+        printblankc(x + 8, ry, MKCOL(8, bg), w - 9);
+        printtext(x + 9, ry, MKCOL(c == old ? 15 : 8, bg), theme_name(c));
+        if (c == old) printtext(x + w - 3, ry, MKCOL(2, bg), GS_CHECK);
+      }
+    }
     fliptoscreen();
     getkey();
 
     // the scheme under the pointer (after the pointer moved) is shown at once
     hit = -1;
-    if ((mousex >= x) && (mousex < x + w) && (mousey >= y + 1) && (mousey < y + 1 + NUM_THEMES)) hit = mousey - y - 1;
+    if ((mousex >= x) && (mousex < x + w) && (mousey >= y + 1) && (mousey < y + 1 + MENUROWS)) hit = menurow[mousey - y - 1];
     if ((hit >= 0) && (hit != sel) && ((mousex != prevmx) || (mousey != prevmy))) sel = hit;
     if (win_quitted) { sel = old; break; }
     if ((mouseb & MOUSEB_LEFT) && (!prevmouseb))
     {
-      if (hit < 0) sel = old;
-      else sel = hit;
-      done = 1;
+      if ((mousex >= x) && (mousex < x + w) && (mousey >= y) && (mousey < y + h))
+      {
+        if (hit >= 0)
+        {
+          sel = hit;
+          done = 1;
+        }
+      }
+      else
+      {
+        sel = old;
+        done = 1;
+      }
     }
+    r = menurowof(sel);
     switch (rawkey)
     {
-      case KEY_UP: if (sel > 0) sel--; break;
-      case KEY_DOWN: if (sel < NUM_THEMES - 1) sel++; break;
+      case KEY_UP:
+      do r--; while ((r >= 0) && (menurow[r] < 0));
+      if (r >= 0) sel = menurow[r];
+      break;
+      case KEY_DOWN:
+      do r++; while ((r < MENUROWS) && (menurow[r] < 0));
+      if (r < MENUROWS) sel = menurow[r];
+      break;
       case KEY_ENTER: case KEY_SPACE: done = 1; break;
       case KEY_ESC: sel = old; done = 1; break;
     }

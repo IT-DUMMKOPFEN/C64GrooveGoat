@@ -157,7 +157,7 @@ static char *usage[] = {
   "-Xxx Set window type (0 = window, 1 = fullscreen) DEFAULT=window",
   "-Yxx Path to a Scala tuning file .scl",
   "-Zxx Set random reSID write delay in cycles (0 = off) DEFAULT=off",
-  "-Txx Set the colour scheme (0 = Paper ... 11 = Mono)",
+  "-Txx Set the colour scheme (0-22, 0 = Paper, see the manual)",
   "-N   Use NTSC timing",
   "-P   Use PAL timing (DEFAULT)",
   "-W   Write sound output to a file SIDAUDIO.RAW",
@@ -1098,7 +1098,7 @@ static void saveconfig(void)
     ";MIDI device (- = all devices)\n%s\n\n"
     ";Version whose info window was shown (- = none)\n%s\n\n"
     ";Show the version info at every start (0 = no, 1 = yes)\n%d\n\n"
-    ";Colour scheme (0 = Paper, 1 = Graphite, 2 = Lavender, 3 = Sand, 4 = Frost, 5 = Ocean,\n; 6 = Forest, 7 = Neon, 8 = Sunset, 9 = Amber, 10 = C64 Modern, 11 = Mono)\n%d\n\n",
+    ";Colour scheme (0 = Paper, 1 = Graphite, 2 = Lavender, 3 = Sand, 4 = Frost, 5 = Ocean,\n; 6 = Forest, 7 = Neon, 8 = Sunset, 9 = Amber, 10 = C64 Modern, 11 = Mono, 12 = Sky,\n; 13 = Mint, 14 = Rose, 15 = Peach, 16 = Lemon, 17 = Latte, 18 = Solar Light, 19 = HC Light,\n; 20 = HC Dark, 21 = HC Yellow, 22 = Midnight)\n%d\n\n",
     b,
     mr,
     hardsid,

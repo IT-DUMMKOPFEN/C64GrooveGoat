@@ -12,7 +12,7 @@
 #define DOUBLECLICKDELAY 15
 
 // Colour schemes (0 = Paper, the default)
-#define NUM_THEMES 12
+#define NUM_THEMES 23
 #define THEME_DEFAULT 0
 
 // Extended palette entries (16-31). Entries 0-15 keep the semantic meaning
@@ -49,6 +49,7 @@ void cleardimrect(void);
 void setdimamount(int a);                      // 0-255, 110 for dialogs
 const char *theme_name(int t);
 int theme_islight(void);
+int theme_group(int t);      // 0 light, 1 high contrast, 2 dark
 unsigned theme_color(int t, int idx);
 void printtext(int x, int y, int color, const char *text);
 void setclip(int x0, int y0, int x1, int y1);

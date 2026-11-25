@@ -103,7 +103,7 @@ static const char *mousekeys[] = {
   "Drop a file   Load song or instrument",
   "Hover         Button help, after 2 s tooltip",
   "Click piano   Play a note (drag: glissando)",
-  "Scheme menu   Top right: 12 looks, live view",
+  "Scheme menu   Top right: 23 looks, live view",
   NULL
 };
 
@@ -1026,8 +1026,8 @@ int showversioninfo(int frominfo)
   static const char *items[] =
   {
     "A new modern look: rounded buttons and panels, dialogs float over the dimmed screen",
-    "12 colour schemes - Paper is the new default, the menu at the top right shows each live",
-    "Graphite, Lavender, Sand, Frost, Ocean, Forest, Neon, Sunset, Amber, C64 Modern, Mono",
+    "23 colour schemes - Paper is the new default, the menu at the top right shows each live",
+    "10 light ones, 4 with high contrast and 9 dark ones - from Mint and Rose to HC Yellow",
     "The piano keyboard sits in its own frame, in the colours of the scheme",
     "Tooltips in high contrast, easy to read in every scheme",
     "Everything stays where you know it - only the paint is new",

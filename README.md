@@ -21,8 +21,10 @@ by Lasse Öörni (Cadaver) and the
 - Undo (`CTRL+Z`) and redo (`CTRL+Y` / `CTRL+SHIFT+Z`), keyboard layout switch EN / DE so that
   the shortcuts follow the key labels on German QWERTZ keyboards
 - Modern window: SDL 2, resizable, HiDPI, mouse support, toolbar, rounded buttons and panels,
-  dialogs over the dimmed screen and 12 colour schemes with live preview (Paper, Graphite,
-  Lavender, Sand, Frost, Ocean, Forest, Neon, Sunset, Amber, C64 Modern, Mono)
+  dialogs over the dimmed screen and 23 colour schemes with live preview - light (Paper,
+  Lavender, Sand, Sky, Mint, Rose, Peach, Lemon, Latte, Solar Light), high contrast (Mono,
+  HC Light, HC Dark, HC Yellow) and dark (Graphite, Frost, Ocean, Forest, Neon, Sunset, Amber,
+  C64 Modern, Midnight)
 - Instrument library with more than 5000 instruments for the 6581 and the 8580, with search,
   favourites, preview and ADSR graph
 - Random instrument generator (bass, acid bass, bass drum, snare, hi-hat, tom, woodwinds,

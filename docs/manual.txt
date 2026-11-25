@@ -4,7 +4,8 @@ C64 GrooveGoat is a tracker-style music editor for the SID sound chip of the Com
 based on GoatTracker 2 by Lasse Oorni (Cadaver) and the "Silver Fork" of Joel Ricci. It adds:
 
 - songs with 1, 2, 4 or 8 SID chips (up to 24 voices) with free SID addresses
-- a modern, resizable window with mouse support, rounded buttons and panels and 12 colour schemes
+- a modern, resizable window with mouse support, rounded buttons and panels and 23 colour schemes
+  (light, high contrast and dark)
 - an instrument library with more than 5000 instruments, search, favourites and preview
 - a random instrument generator for bass, drums, woodwinds, guitars, brass, strings and more
 - a graphical ADSR envelope display
@@ -122,25 +123,44 @@ rounded corners, the active panel has a coloured title bar, and a dialog floats 
 dimmed screen. The arrangement of the screen is the same as before.
 
 The button in the top right corner of the toolbar shows the name of the current colour scheme.
-A click opens the menu of all 12 schemes; every scheme has a small preview (background and
-three accent colours). Point at a scheme and the whole screen shows it at once; a click (or
+A click opens the menu of all 23 schemes in three groups - light, high contrast and dark;
+every scheme has a small preview (background and three accent colours). Point at a scheme and the whole screen shows it at once; a click (or
 ENTER) keeps it, ESC or a click outside the menu goes back to the scheme from before. The
 cursor keys move through the list with the same live preview. The choice is saved.
 
-|  Paper        light grey and white with blue accents - the default
-|  Graphite     dark grey with cyan and amber
-|  Lavender     light with violet and pink
-|  Sand         warm light beige with rust and teal
-|  Frost        cool blue-grey (dark) with ice blue
-|  Ocean        deep sea blue with turquoise
-|  Forest       dark green with leaf green and gold
-|  Neon         dark violet with magenta and cyan
-|  Sunset       dark warm brown with orange and pink
-|  Amber        the amber monitor: orange on black
-|  C64 Modern   the colours of the C64 (blue, light blue, green) in a modern form
-|  Mono         black and white with a yellow accent
+Light:
 
-The command line option -T sets the scheme (0 = Paper ... 11 = Mono, in the order above).
+|   0  Paper        light grey and white with blue accents - the default
+|   2  Lavender     light with violet and pink
+|   3  Sand         warm light beige with rust and teal
+|  12  Sky          light blue with sky blue and amber
+|  13  Mint         light green with emerald and rust
+|  14  Rose         soft pink with raspberry and violet
+|  15  Peach        warm apricot with orange and teal
+|  16  Lemon        pale yellow with ochre and blue
+|  17  Latte        cool grey-white with violet, orange and blue
+|  18  Solar Light  the cream of Solarized with blue and orange
+
+High contrast (for bright rooms, projectors and tired eyes):
+
+|  11  Mono         black and white with a yellow accent
+|  19  HC Light     black on white, strong blue and red, a yellow highlight
+|  20  HC Dark      white on black with cyan and yellow
+|  21  HC Yellow    yellow on black with cyan and white
+
+Dark:
+
+|   1  Graphite     dark grey with cyan and amber
+|   4  Frost        cool blue-grey with ice blue
+|   5  Ocean        deep sea blue with turquoise
+|   6  Forest       dark green with leaf green and gold
+|   7  Neon         dark violet with magenta and cyan
+|   8  Sunset       dark warm brown with orange and pink
+|   9  Amber        the amber monitor: orange on black
+|  10  C64 Modern   the colours of the C64 (blue, light blue, green) in a modern form
+|  22  Midnight     night blue with blue and apricot
+
+The command line option -T sets the scheme by its number (for example -T19 for HC Light).
 
 ## Piano keyboard
 
@@ -204,7 +224,7 @@ the bug report.
 |  Audio        Export a WAV or MP3 file, optionally every voice as its own WAV (CTRL+F9)
 |  Video        Export an MP4 video (1280x720) with an oscilloscope for every voice
 |               (CTRL+SHIFT+F9)
-|  Paper v      The colour scheme: a menu with all 12 schemes (see "Colour schemes")
+|  Paper v      The colour scheme: a menu with all 23 schemes (see "Colour schemes")
 |  Help         Keyboard reference, F12
 |  Info         Version, author, credits and licenses
 
@@ -1700,7 +1720,7 @@ The format is chosen by the extension (.wav, .mp3 or .mp4). See "Command line".
 |  -Qxx   Equal divisions per octave (12 default)
 |  -Rxx   Realtime command optimization (0 off, 1 on)
 |  -Sxx   Speed multiplier (0 = 25Hz, 1 = 1x, 2 = 2x ...)
-|  -Txx   Colour scheme (0 Paper ... 11 Mono, see "Colour schemes")
+|  -Txx   Colour scheme (0-22, see "Colour schemes")
 |  -Vxx   Fine vibrato conversion (0 off, 1 on)
 |  -Xxx   Window (0) or fullscreen (1)
 |  -Yxx   Scala tuning file (.scl)
